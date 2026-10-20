@@ -99,3 +99,12 @@ This repository is an early prototype, **not a production-ready cloud drive**.
 - **Diagnostics:** requests exceeding 1.5 seconds on `/api/thumb`, `/api/list`, or `/api/video` generate `Slow request` log lines with elapsed milliseconds. Responses include `Server-Timing`.
 - This code has **not** been benchmarked on a real Raspberry Pi / Simple NAS. The first read of an unseen photo still downloads the source over SMB; HDD throughput, CPU, Wi-Fi and browser behavior remain hardware-dependent.
 - Test LAN-only; external KeenDNS publication is not cleared for this build.
+
+
+## NAS Web 0.7.0
+
+- Faster cold photo thumbnails: small previews are generated without full-resolution preview encoding. Opening a photo requests the larger preview on demand.
+- Entire file rows and cards are clickable. Double folder navigation is fixed.
+- Uniform blue-gray SVG icons for folders, images, video and documents.
+- MOV: native playback is tried first, with a manual FFmpeg MP4 conversion fallback. Only MOV up to 300 MB, one conversion at a time and 5-minute processing limit; long or unsupported files remain downloadable.
+- GitHub Actions checks Python and JS syntax and HTML/JS element references. Raspberry Pi hardware testing is still required; keep access LAN-only.
