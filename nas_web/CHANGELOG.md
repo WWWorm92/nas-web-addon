@@ -1,3 +1,8 @@
+## 0.18.2
+
+- Fix GitHub Actions UI DOM contract: declare galleryOrderSelect in HTML rather than creating it dynamically.
+- Keep existing EXIF ordering, index, SMB access controls and cached data unchanged.
+
 ## 0.18.1
 
 - Fix SQL concatenation error in EXIF-date gallery pagination discovered by GitHub Actions.
