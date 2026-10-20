@@ -11,10 +11,17 @@ import time
 from pathlib import Path
 from PIL import Image, ImageOps
 
-CACHE_ROOT = Path("/tmp/nasweb-thumbs")
-CACHE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
-MAX_BYTES = 192 * 1024 * 1024
-TTL = 24 * 3600
+# Persist across add-on updates, fall back if data volume is unavailable.
+CACHE_ROOT = Path("/data/nasweb-thumbs")
+try:
+    CACHE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if not os.access(CACHE_ROOT, os.W_OK):
+        raise PermissionError("Cache unwritable")
+except OSError:
+    CACHE_ROOT = Path("/tmp/nasweb-thumbs")
+    CACHE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+MAX_BYTES = 384 * 1024 * 1024
+TTL = 7 * 24 * 3600
 WORKERS = threading.BoundedSemaphore(2)
 FILES_LOCK = threading.RLock()
 OPS = 0
@@ -87,3 +94,21 @@ def render_image(source, large=False):
         out = io.BytesIO()
         img.convert("RGB").save(out, format="WEBP", quality=78 if large else 68, method=0)
         return out.getvalue()
+
+def render_pair(source):
+    """Decode once to generate both thumbnail and full-screen preview."""
+    source.seek(0)
+    with Image.open(source) as original:
+        if original.width * original.height > 30_000_000:
+            raise ValueError("Image dimensions too large")
+        if original.format == "JPEG":
+            original.draft("RGB", (1600, 1200))
+        large = ImageOps.exif_transpose(original)
+        large.thumbnail((1600, 1200), Image.Resampling.BILINEAR)
+        large = large.convert("RGB")
+        small = large.copy()
+        small.thumbnail((256, 192), Image.Resampling.BILINEAR)
+        out_small, out_large = io.BytesIO(), io.BytesIO()
+        small.save(out_small, format="WEBP", quality=64, method=0)
+        large.save(out_large, format="WEBP", quality=75, method=0)
+        return out_small.getvalue(), out_large.getvalue()
