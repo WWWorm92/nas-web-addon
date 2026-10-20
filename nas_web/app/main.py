@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache
+from . import thumb_cache, media_convert
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -281,6 +281,36 @@ def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool 
     except Exception as exc:
         logger.warning("Thumbnail unavailable: %s", type(exc).__name__)
         fail(403, "Нет доступа или ошибка чтения SMB")
+
+@app.get("/api/mov-mp4")
+def converted_mov(request: Request, share: str, path: str, v: str = ""):
+    """Explicit, bounded MOV compatibility fallback for browser playback."""
+    u = user_for(request)
+    p = path_ok(path)
+    if not p.lower().endswith(".mov"):
+        fail(404, "Only MOV conversion supported")
+    name_ok(share)
+    if share not in u.get("shares", []):
+        fail(403, "Нет доступа к шаре")
+    try:
+        with smb(u) as conn:
+            size = conn.file_size(share, "/" + p)
+            conn.can_read(share, "/" + p)
+        key = media_convert.key(u["name"], share, p, v[:80])
+        def fetch(destination):
+            with destination.open("wb") as out:
+                with smb(u) as conn:
+                    conn.retrieveFile(share, "/" + p, out, timeout=300)
+        output = media_convert.prepare(key, size, fetch)
+        return FileResponse(output, media_type="video/mp4",
+            headers={"Cache-Control": "private, no-store", "Accept-Ranges": "bytes"})
+    except media_convert.ConversionError as exc:
+        fail(422, str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("MOV fallback error: %s", type(exc).__name__)
+        fail(502, "Не удалось подготовить видео. Проверьте журнал NAS Web")
 
 @app.get("/api/video")
 def video_stream(request: Request, share: str, path: str):
