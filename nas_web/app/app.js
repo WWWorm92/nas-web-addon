@@ -65,8 +65,43 @@ function choose(share){clearSelection();photoCacheClear();hideMenu();selected=sh
 function enterFolder(name){clearSelection();photoCacheClear();hideMenu();dir=fpath(name);el('search').value='';refresh()}
 function download(f){const a=document.createElement('a');a.href=fileUrl(f.name);a.download=f.name;a.click()}
 const isPhoto=f=>!f.directory&&imageExt.includes(ext(f.name));
-const photoGalleryItems=()=>sortedFiltered().filter(isPhoto).sort((a,b)=>Number(b.modified||0)-Number(a.modified||0)||a.name.localeCompare(b.name,'ru'));
-function photoMonth(f){const stamp=Number(f.modified||0);if(!stamp||!Number.isFinite(stamp))return 'Без даты';const d=new Date(stamp*1000);if(!Number.isFinite(d.getTime()))return 'Без даты';return new Intl.DateTimeFormat('ru',{month:'long',year:'numeric'}).format(d)}
+const photoDate=f=>f.taken?new Date(f.taken):new Date(Number(f.modified||0)*1000);
+const photoGalleryItems=()=>sortedFiltered().filter(isPhoto).sort((a,b)=>photoDate(b)-photoDate(a)||a.name.localeCompare(b.name,'ru'));
+function photoMonth(f){const d=photoDate(f);if(!Number.isFinite(d.getTime())||d.getFullYear()<1970)return 'Без даты';return new Intl.DateTimeFormat('ru',{month:'long',year:'numeric'}).format(d)}
+function photoYear(f){const d=photoDate(f);return Number.isFinite(d.getTime())&&d.getFullYear()>=1970?String(d.getFullYear()):'Без даты'}
+let galleryDateGeneration=0;
+async function scanGalleryDates(){
+  const generation=++galleryDateGeneration,share=selected,folder=dir;
+  if(view!=='gallery'||!share)return;
+  const photos=items.filter(isPhoto),batchSize=8;
+  for(let i=0;i<photos.length;i+=batchSize){
+    if(generation!==galleryDateGeneration||view!=='gallery'||selected!==share||dir!==folder)return;
+    const batch=photos.slice(i,i+batchSize);
+    try{
+      const data=await api('/api/photo-dates',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({share,path:folder,files:batch.map(f=>({name:f.name,size:f.size,modified:f.modified}))})});
+      if(generation!==galleryDateGeneration||selected!==share||dir!==folder)return;
+      for(const f of batch){const entry=data.dates?.[f.name];if(entry&&entry.cached)f.taken=entry.taken||null}
+    }catch(e){if(generation===galleryDateGeneration)message('EXIF: '+e.message);return}
+    if(i+batchSize<photos.length)await new Promise(resolve=>setTimeout(resolve,140));
+  }
+  if(generation===galleryDateGeneration&&view==='gallery'&&selected===share&&dir===folder){
+    // Rebuild once after indexing, not for each photo: thumbnails keep priority.
+    if(previewIndex<0){const before=window.scrollY;render();window.scrollTo(0,before)}
+    message(photos.length+' фотографий · даты съёмки проверены');
+  }
+}
+function renderGalleryYears(photos){
+  const bar=el('galleryYears');bar.replaceChildren();
+  bar.classList.toggle('hidden',view!=='gallery'||!photos.length);
+  if(view!=='gallery')return;
+  const years=[...new Set(photos.map(photoYear))];
+  for(const year of years){
+    const button=document.createElement('button');button.type='button';button.textContent=year;
+    button.onclick=()=>{const heading=[...el('entries').querySelectorAll('.galleryMonth')].find(h=>h.dataset.year===year);if(heading)heading.scrollIntoView({behavior:'smooth',block:'start'});for(const b of bar.children)b.classList.toggle('galleryYearCurrent',b===button)};
+    bar.append(button);
+  }
+}
 let gallery=[],zoom=1,panX=0,panY=0,preloadTimer=null,viewerSerial=0,shownShare='',shownDir='',filmNodes=new Map();
 let originalController=null, originalObjectUrl=null;
 const originalCache=new Map();
