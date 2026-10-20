@@ -1,3 +1,9 @@
+## 0.14.1
+
+- Fix background photo/EXIF indexing stopping immediately for sessions restored by the Remember me login option.
+- Continue indexing with the existing photo database and previously extracted EXIF; no reset or migration required.
+- Background worker remains bounded and is restarted by gallery polling as needed.
+
 ## 0.14.0
 
 - Refreshed responsive gallery styling: tighter photo spacing, smaller date headings, and removed per-tile folder captions. Photo source remains available in the information panel.
