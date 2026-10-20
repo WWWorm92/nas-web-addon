@@ -59,9 +59,9 @@ def parse_exif(buffer):
     return None
 
 
-def from_jpeg_header(conn, share, path):
+def from_jpeg_header(conn, share, path, file_size):
     # Read up to 128 KiB, enough for ordinary JPEG EXIF without downloading originals.
     chunks = []
-    for block in conn.iter_range(share, "/" + path, 0, JPEG_HEADER_LIMIT):
+    for block in conn.iter_range(share, "/" + path, 0, min(int(file_size), JPEG_HEADER_LIMIT)):
         chunks.append(block)
     return parse_exif(io.BytesIO(b"".join(chunks)))
