@@ -96,8 +96,8 @@ function previewable(){return items.filter(canPreview)}
 function resetZoom(){zoom=1;panX=0;panY=0}
 function setZoom(scale,cx=0,cy=0){const img=el('previewBody').querySelector('img');if(!img)return;const prev=zoom;zoom=Math.max(1,Math.min(5,scale));if(zoom===1){panX=panY=0}else if(prev!==zoom){panX+=(cx-panX)*(1-prev/zoom);panY+=(cy-panY)*(1-prev/zoom)}drawZoom()}
 function drawZoom(){const img=el('previewBody').querySelector('img');if(!img)return;const bound=el('photoStage').getBoundingClientRect(),w=(img.naturalWidth||bound.width),h=(img.naturalHeight||bound.height),fit=Math.min(bound.width/w,bound.height/h),cw=w*fit,ch=h*fit;panX=Math.max(-Math.max(0,(cw*zoom-bound.width)/2),Math.min(Math.max(0,(cw*zoom-bound.width)/2),panX));panY=Math.max(-Math.max(0,(ch*zoom-bound.height)/2),Math.min(Math.max(0,(ch*zoom-bound.height)/2),panY));img.style.transform='translate('+panX+'px,'+panY+'px) scale('+zoom+')'}
-function openPreview(f){if(f.directory)return enterFolder(f.name);filmNodes.clear();if(!canPreview(f))return download(f);shownShare=selected;shownDir=dir;const photos=isPhoto(f);gallery=photos?items.filter(isPhoto):[f];previewIndex=Math.max(0,gallery.findIndex(x=>x.name===f.name));el('preview').style.display='flex';document.body.style.overflow='hidden';showPreview(0)}
-function closePreview(){viewerSerial++;clearOriginal();for(const job of photoFetches.values())job.controller.abort();photoFetches.clear();clearTimeout(preloadTimer);el('previewBody').replaceChildren();el('preview').style.display='none';el('filmstrip').replaceChildren();previewIndex=-1;gallery=[];filmNodes.clear();resetZoom();document.body.style.overflow='';pumpThumbs()}
+function openPreview(f){el('preview').classList.remove('controlsHidden');if(f.directory)return enterFolder(f.name);filmNodes.clear();if(!canPreview(f))return download(f);shownShare=selected;shownDir=dir;const photos=isPhoto(f);gallery=photos?items.filter(isPhoto):[f];previewIndex=Math.max(0,gallery.findIndex(x=>x.name===f.name));el('preview').style.display='flex';document.body.style.overflow='hidden';showPreview(0)}
+function closePreview(){clearTimeout(tapTimer);el('preview').classList.remove('controlsHidden');viewerSerial++;clearOriginal();for(const job of photoFetches.values())job.controller.abort();photoFetches.clear();clearTimeout(preloadTimer);el('previewBody').replaceChildren();el('preview').style.display='none';el('filmstrip').replaceChildren();previewIndex=-1;gallery=[];filmNodes.clear();resetZoom();document.body.style.overflow='';pumpThumbs()}
 function showPreview(direction=0){if(previewIndex<0||!gallery.length)return;if(direction)swipeDirection=Math.sign(direction);const serial=++viewerSerial,f=gallery[previewIndex],box=el('previewBody');clearOriginal();clearTimeout(preloadTimer);resetZoom();box.replaceChildren();el('viewerSpinner').textContent='Загрузка…';el('previewCounter').textContent=(previewIndex+1)+' / '+gallery.length;el('previewTitle').textContent=f.name;el('viewerSpinner').classList.toggle('hidden',!isPhoto(f));el('photoStage').style.touchAction=isPhoto(f)?'none':'auto';let node;if(isPhoto(f)){node=document.createElement('img');node.alt=f.name;node.draggable=false;node.className='arriving';node.style.setProperty('--slide',direction>0?'30px':direction<0?'-30px':'0px');node.onload=()=>{if(serial!==viewerSerial)return;el('viewerSpinner').classList.add('hidden');drawZoom()};node.onerror=()=>{if(serial===viewerSerial)el('viewerSpinner').textContent='Изображение недоступно'};const photoId=photoKey(f),cachedPhoto=photoCacheGet(photoId);
 node.src=cachedPhoto||imageURL(f,false);
 for(const [key,job] of photoFetches){if(key!==photoId){job.controller.abort();photoFetches.delete(key)}}
@@ -179,7 +179,8 @@ el('listView').onclick=()=>{view='list';localStorage.setItem('nas_view',view);re
 el('upload').onchange=e=>{uploadFiles([...e.target.files]);e.target.value=''};
 el('closePreview').onclick=closePreview;
 el('previewDownload').onclick=()=>{if(previewIndex>=0){const f=gallery[previewIndex];const a=document.createElement('a');a.href='/api/file?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/')});a.download=f.name;a.click()}};
-let gesture=null,lastTap=0;
+let gesture=null,lastTap=0,tapTimer=null,lastTouchAt=0;
+function toggleViewerControls(){const viewer=el('preview');if(viewer.style.display==='flex')viewer.classList.toggle('controlsHidden')}
 const previewArea=el('previewBody');
 const dist=(a,b)=>Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
 
@@ -255,13 +256,17 @@ previewArea.addEventListener('touchend',event=>{
     return;
   }
   if(tapped){
-    const now=Date.now();if(now-lastTap<330){setZoom(zoom>1?1:2.5);lastTap=0}else lastTap=now;
+    lastTouchAt=Date.now();
+    const now=lastTouchAt;
+    if(now-lastTap<330){clearTimeout(tapTimer);setZoom(zoom>1?1:2.5);lastTap=0}
+    else {lastTap=now;clearTimeout(tapTimer);tapTimer=setTimeout(()=>{if(previewIndex>=0)toggleViewerControls()},340)}
   }else if(zoom===1&&Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.25){
     stepPreview(dx<0?1:-1);
   }
 },{passive:true});
 previewArea.addEventListener('touchcancel',()=>{gesture=null;if(dismissActive)dismissReset()});
-previewArea.addEventListener('dblclick',event=>{if(!previewArea.querySelector('img'))return;setZoom(zoom>1?1:2.5)});
+previewArea.addEventListener('click',event=>{if(!event.target.closest('img')||Date.now()-lastTouchAt<600)return;clearTimeout(tapTimer);tapTimer=setTimeout(toggleViewerControls,210)});
+previewArea.addEventListener('dblclick',event=>{if(!previewArea.querySelector('img'))return;clearTimeout(tapTimer);setZoom(zoom>1?1:2.5)});
 previewArea.addEventListener('wheel',event=>{if(!previewArea.querySelector('img')||!(event.ctrlKey||event.metaKey))return;event.preventDefault();setZoom(zoom*(event.deltaY<0?1.18:.85))},{passive:false});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(activeDialog)activeDialog(null);else{closePreview();hideMenu()}}if(el('preview').style.display==='flex'){if(e.key==='ArrowLeft')stepPreview(-1);if(e.key==='ArrowRight')stepPreview(1);if(e.key==='0')setZoom(1);if(e.key==='+')setZoom(zoom*1.25);if(e.key==='-')setZoom(zoom/1.25)}});
 document.addEventListener('pointerdown',e=>{if(!el('fileMenu').contains(e.target)&&!e.target.closest('.more'))hideMenu()});
