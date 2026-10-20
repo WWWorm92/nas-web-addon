@@ -21,7 +21,7 @@ def _db():
 
 
 def _key(user, share, path, modified, size):
-    raw = "\0".join((user.casefold(), share, path, str(modified), str(size)))
+    raw = "\0".join((share, path, str(modified), str(size)))
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
