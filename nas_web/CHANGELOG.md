@@ -1,3 +1,10 @@
+## 0.22.9
+
+- Fix `STATUS_ACCESS_DENIED` during EXIF extraction and ranged media streaming on read-only SMB files: Impacket `openFile()` defaults to requesting both READ and WRITE; range reads now explicitly request READ only with read/write/delete sharing.
+- Expire old false-positive EXIF SMB access-denied cooldowns one time, allowing the repaired reader to retry immediately; new genuine denial cooldowns are still respected.
+- Do not change file access permissions, user credentials, photo index entries, gallery sorting or saved EXIF dates.
+- Add CI regression tests for exact SMB open access flags and one-time denied-file cooldown migration.
+
 ## 0.22.8
 
 - Fix inflated EXIF pending count after admin "retry": safe resume does not reset already-checked photos with no capture date or delete cached negative metadata.
