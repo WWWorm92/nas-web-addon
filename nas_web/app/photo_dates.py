@@ -46,7 +46,7 @@ def _normalize_date(value):
         value = value.decode("utf-8", "ignore")
     if not isinstance(value, str):
         return None
-    match = re.search(r"(\\d{4})[:\\-](\\d{2})[:\\-](\\d{2})[ T](\\d{2}):(\\d{2}):(\\d{2})", value)
+    match = re.search(r"(\d{4})[:-](\d{2})[:-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})", value)
     if not match:
         return None
     try:
