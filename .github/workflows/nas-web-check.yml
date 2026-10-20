@@ -188,6 +188,40 @@ jobs:
               assert photo_dates.lookup("alice","Photos","no-date.jpg",100.0,120)==(True,None)
           print("EXIF negative results preserved; SMB ACL failures isolated and time-bounded")
           PY
+      - name: Expire legacy SMB denial cooldown on upgrade
+        run: |
+          PYTHONPATH=nas_web python - <<'PY'
+          import tempfile
+          import time
+          from pathlib import Path
+          from types import SimpleNamespace
+          from app import gallery_index as g
+
+          with tempfile.TemporaryDirectory() as tmp:
+              g.DB = Path(tmp) / "gallery.sqlite3"
+              owner = g.key("read-only")
+              with g.connect() as db:
+                  g.begin(db, owner, ["Disk"])
+                  entry = SimpleNamespace(filename="locked.jpg",isDirectory=False,
+                                          file_size=123,last_write_time=100)
+                  g.add_folder_contents(db,owner,"Disk","",[entry])
+                  row = g.next_unchecked(db,owner,["Disk"])
+                  g.mark_exif_denied(db,owner,row)
+                  # Simulate metadata created under the old read/write opener.
+                  db.execute("DELETE FROM index_migrations WHERE name='exif_readonly_smb_open_0229'")
+              with g.connect() as db:
+                  # The repaired opener gets an immediate chance at re-reading.
+                  assert g.next_unchecked(db,owner,["Disk"])["path"]=="locked.jpg"
+                  assert db.execute("SELECT exif_checked FROM photos WHERE owner=?",(owner,)).fetchone()[0]==0
+                  assert db.execute("SELECT COUNT(*) FROM photos").fetchone()[0]==1
+                  db.execute("UPDATE exif_denied SET retry_after=? WHERE owner=?",
+                             (time.time()+3600,owner))
+              with g.connect() as db:
+                  # Migration occurs only once; a new real ACL failure remains cooled down.
+                  assert g.next_unchecked(db,owner,["Disk"]) is None
+                  assert db.execute("SELECT COUNT(*) FROM photos").fetchone()[0]==1
+          print("Legacy denial cooldowns expired once without altering photo index")
+          PY
       - name: Unified gallery index tests
         run: |
           PYTHONPATH=nas_web python - <<'PY'
