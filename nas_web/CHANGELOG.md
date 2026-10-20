@@ -1,3 +1,8 @@
+## 0.18.4
+
+- Restore valid JavaScript API function declaration, fixing an initialization failure that disabled login form interactions.
+- Retain startup session race protection and preserve photo index and SMB permissions.
+
 ## 0.18.3
 
 - Prevent an outdated initial /api/me session check from replacing a successful login with the login screen.
