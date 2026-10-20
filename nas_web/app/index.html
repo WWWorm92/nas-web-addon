@@ -110,6 +110,21 @@
  #app:not(.globalGalleryOpen) #uploadCenterButton{display:none}
  #app:not(.globalGalleryOpen) .status:empty{display:none}
 }
+/* Mobile breadcrumb and file density refinements */
+@media(max-width:700px){
+ #app:not(.globalGalleryOpen) .mobileFilesBreadcrumb{display:flex;align-items:center;gap:8px;min-height:42px;padding:0 0 10px;white-space:normal;overflow:visible}
+ .mobilePathBack{flex:0 0 40px;width:40px;height:40px;min-height:40px;padding:5px;background:var(--panel2);border-radius:11px;font-size:21px}
+ .mobilePathTrail{display:flex;align-items:center;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
+ .mobilePathTrail::-webkit-scrollbar{display:none}
+ .mobilePathTrail button{min-height:38px;padding:7px 5px;background:transparent;border:0;color:var(--muted);white-space:nowrap;font-size:13px}
+ .mobilePathTrail button[aria-current=page]{color:var(--text);font-weight:650}
+ .mobilePathSeparator{color:var(--muted);padding:0 2px}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode){gap:2px}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .item{min-height:58px;padding:3px 0}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .thumb{height:48px;width:48px;flex-basis:48px;font-size:24px}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .details{padding:5px 10px}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .more{min-height:44px}
+}
 </style><style>
 #login{background:radial-gradient(ellipse 55% 50% at 50% 0%,#21395555,transparent 85%),var(--bg)}.authShell{width:min(430px,100%)}.authLogo{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:32px;font-size:23px;font-weight:780;letter-spacing:-.8px}.authAccent{color:var(--accent)}.loginCard{width:100%;border-radius:20px;padding:36px;background:var(--panel);box-shadow:0 25px 100px #0002}.authHeading h1{margin:10px 0;font-size:28px;font-weight:750;letter-spacing:-.7px}.authEyebrow{letter-spacing:2px;font-size:10px;color:var(--accent);font-weight:750}.authHeading .sub{margin:0;line-height:1.65}.loginCard form{gap:10px;margin-top:28px}.loginCard form label{font-size:12px;font-weight:650;color:var(--muted);margin-top:7px}.loginCard form input{min-height:48px;background:var(--bg);border-radius:10px}.passwordBox{display:flex;position:relative}.passwordBox input{padding-right:98px}.passwordBox button{position:absolute;right:5px;top:5px;min-height:38px;border:0;background:transparent;font-size:12px;color:var(--accent);padding:7px 10px}.loginCard form button.primary{margin-top:13px;min-height:49px;display:flex;align-items:center;justify-content:center;gap:12px}.authFooter{text-align:center;margin-top:24px;color:var(--muted);font-size:11px}.loginCard #loginError{margin:12px 0 0}#dialogOverlay{position:fixed;inset:0;z-index:70;background:#0009;display:flex;align-items:center;justify-content:center;padding:16px}.dialogBox{width:min(420px,100%);border:1px solid var(--border);border-radius:20px;background:var(--panel);padding:25px;box-shadow:0 24px 90px #0005}.dialogIcon{background:var(--accentbg);color:var(--accent);width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:23px}.dialogBox h2{font-size:19px;margin:18px 0 8px}.dialogBox p{font-size:13px;line-height:1.6;color:var(--muted);margin:0 0 18px;overflow-wrap:anywhere}.dialogBox input{width:100%;margin:0 0 18px;min-height:46px}.dialogActions{display:flex;justify-content:flex-end;gap:9px}.dialogActions button{min-width:105px}.dialogActions .dangerConfirm{background:#a53b43;color:white;border-color:#a53b43}@media(max-width:650px){.authShell{max-width:430px}.loginCard{padding:27px 22px}.authLogo{margin-bottom:24px}.dialogBox{border-radius:18px}.dialogActions button{min-height:46px;flex:1}}
 </style><style>
