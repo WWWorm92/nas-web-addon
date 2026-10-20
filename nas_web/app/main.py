@@ -372,7 +372,7 @@ def photo_capture_dates(request: Request, payload: dict, x_csrf_token: str = Hea
                     taken = None
                     if name.lower().endswith((".jpg", ".jpeg")) and entry.file_size:
                         try:
-                            taken = photo_dates.from_jpeg_header(conn, share, p)
+                            taken = photo_dates.from_jpeg_header(conn, share, p, entry.file_size)
                         except Exception as exc:
                             logger.info("EXIF scan unavailable: %s", type(exc).__name__)
                     photo_dates.save(u["name"], share, p, file["modified"], file["size"], taken)
