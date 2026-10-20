@@ -45,11 +45,15 @@ def connect():
 
 
 def begin(db, owner, shares):
-    if db.execute("SELECT 1 FROM jobs WHERE owner=?", (owner,)).fetchone():
-        return
-    db.execute("INSERT INTO jobs(owner,started) VALUES (?,?)", (owner, time.time()))
-    db.executemany("INSERT OR IGNORE INTO folders(owner,share,path) VALUES (?,?,?)",
-                   [(owner, share, "") for share in shares])
+    exists = db.execute("SELECT 1 FROM jobs WHERE owner=?", (owner,)).fetchone()
+    if not exists:
+        db.execute("INSERT INTO jobs(owner,started) VALUES (?,?)", (owner, time.time()))
+    for share in shares:
+        present = db.execute("SELECT 1 FROM folders WHERE owner=? AND share=? AND path=''",
+                             (owner, share)).fetchone()
+        if not present:
+            db.execute("INSERT INTO folders(owner,share,path) VALUES (?,?, '')", (owner, share))
+            db.execute("UPDATE jobs SET complete=0 WHERE owner=?", (owner,))
 
 
 def reset(owner, shares):
@@ -89,20 +93,21 @@ def pending_folder(db, owner):
 
 
 def add_folder_contents(db, owner, share, folder, entries):
+    folders_count = db.execute("SELECT COUNT(*) FROM folders WHERE owner=?", (owner,)).fetchone()[0]
+    photos_count = db.execute("SELECT COUNT(*) FROM photos WHERE owner=?", (owner,)).fetchone()[0]
     for entry in entries:
         name = entry.filename
         if name in (".", "..") or "/" in name or "\\" in name or not name:
             continue
         path = "/".join(x for x in (folder, name) if x)
         if entry.isDirectory:
-            count = db.execute("SELECT COUNT(*) FROM folders WHERE owner=?", (owner,)).fetchone()[0]
-            if count >= MAX_FOLDERS:
+            if folders_count >= MAX_FOLDERS:
                 db.execute("UPDATE jobs SET limited=1 WHERE owner=?", (owner,))
                 continue
-            db.execute("INSERT OR IGNORE INTO folders(owner,share,path) VALUES (?,?,?)", (owner, share, path))
+            result = db.execute("INSERT OR IGNORE INTO folders(owner,share,path) VALUES (?,?,?)", (owner, share, path))
+            folders_count += max(0, result.rowcount)
         elif name.lower().endswith(IMAGE_EXTS):
-            count = db.execute("SELECT COUNT(*) FROM photos WHERE owner=?", (owner,)).fetchone()[0]
-            if count >= MAX_PHOTOS:
+            if photos_count >= MAX_PHOTOS:
                 db.execute("UPDATE jobs SET limited=1 WHERE owner=?", (owner,))
                 continue
             modified = float(entry.last_write_time or 0)
@@ -110,6 +115,7 @@ def add_folder_contents(db, owner, share, folder, entries):
             db.execute("INSERT OR REPLACE INTO photos(owner,share,path,folder,name,size,modified,sort_key) "
                        "VALUES (?,?,?,?,?,?,?,?)",
                        (owner, share, path, folder, name, int(entry.file_size), modified, sort_key))
+            photos_count += 1
     db.execute("UPDATE folders SET done=1 WHERE owner=? AND share=? AND path=?", (owner, share, folder))
 
 
