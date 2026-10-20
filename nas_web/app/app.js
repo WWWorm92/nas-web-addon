@@ -99,6 +99,22 @@ async function scanGalleryDates(){
     message(photos.length+' фотографий · даты съёмки проверены');
   }
 }
+function showPhotoDetails(f){
+  const loc=photoLocation(f),overlay=document.createElement('div');
+  overlay.className='transferOverlay';
+  const panel=document.createElement('div');panel.className='transferPanel';
+  const title=document.createElement('h3');title.textContent='Сведения о фотографии';
+  panel.append(title);
+  const rows=[
+    ['Имя',f.name],['Дата съёмки',f.taken?new Date(f.taken).toLocaleString('ru'):'Нет данных EXIF'],
+    ['Дата изменения',new Date(Number(f.modified||0)*1000).toLocaleString('ru')],
+    ['Размер',f.size!=null?(Number(f.size)/1048576).toFixed(2)+' МБ':'Неизвестен'],
+    ['Расположение',loc.share+' / '+[loc.folder,f.name].filter(Boolean).join('/')]
+  ];
+  for(const [name,value] of rows){const line=document.createElement('div');line.className='photoInfoRow';const label=document.createElement('small');label.textContent=name;const detail=document.createElement('span');detail.textContent=value;line.append(label,detail);panel.append(line)}
+  const close=document.createElement('button');close.textContent='Закрыть';close.onclick=()=>overlay.remove();
+  panel.append(close);overlay.append(panel);overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};document.body.append(overlay);
+}
 function renderGalleryYears(photos){
   const bar=el('galleryYears');bar.replaceChildren();
   bar.classList.toggle('hidden',view!=='gallery'||!photos.length);
@@ -367,7 +383,7 @@ function renderAllGallery(){
     tile.setAttribute('aria-label','Открыть '+f.name+' — '+f.share+'/'+f.folder);
     tile.onclick=()=>{if(!tile.dataset.longPress)openPreview(f);else delete tile.dataset.longPress};
     let hold=null,sx=0,sy=0;
-    tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;hold=setTimeout(()=>{tile.dataset.longPress='1';navigator.vibrate?.(15);openMobileSheet(f.name,[{label:'Открыть фото',run:()=>openPreview(f)},{label:'Открыть папку',run:()=>{leaveGlobalGallery();selected=f.share;dir=f.folder;renderShares();refresh()}},{label:'Скачать',run:()=>{const a=document.createElement('a');a.href='/api/file?'+qs({share:f.share,path:f.path});a.download=f.name;a.click()}}])},550)},{passive:true});
+    tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;hold=setTimeout(()=>{tile.dataset.longPress='1';navigator.vibrate?.(15);openMobileSheet(f.name,[{label:'Открыть фото',run:()=>openPreview(f)},{label:'Открыть папку',run:()=>{leaveGlobalGallery();selected=f.share;dir=f.folder;renderShares();refresh()}},{label:'Сведения',run:()=>showPhotoDetails(f)},{label:'Скачать',run:()=>{const a=document.createElement('a');a.href='/api/file?'+qs({share:f.share,path:f.path});a.download=f.name;a.click()}}])},550)},{passive:true});
     tile.addEventListener('touchmove',e=>{if(e.touches.length&&Math.hypot(e.touches[0].clientX-sx,e.touches[0].clientY-sy)>12)clearTimeout(hold)},{passive:true});
     tile.addEventListener('touchend',()=>clearTimeout(hold));tile.addEventListener('touchcancel',()=>clearTimeout(hold));
     tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openPreview(f)}};
