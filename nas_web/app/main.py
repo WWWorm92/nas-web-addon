@@ -126,6 +126,7 @@ def smb(u):
     try:
         if not conn.connect(HOST, PORT, timeout=12):
             fail(401, "Не удалось войти в SMB")
+        conn.authorized_shares = u.get("shares", ())
         yield conn
     finally:
         conn.close()
@@ -143,8 +144,13 @@ def visible_shares(conn):
     return result
 
 def check_share(conn, share):
+    """Avoid re-enumerating every SMB share for each file operation.
+
+    The list was verified at sign-in; Samba itself enforces permissions for
+    every individual request even when a share is later revoked.
+    """
     name_ok(share)
-    if share not in visible_shares(conn):
+    if share not in getattr(conn, "authorized_shares", ()):
         fail(403, "Нет доступа к этой шаре")
 
 @app.middleware("http")
