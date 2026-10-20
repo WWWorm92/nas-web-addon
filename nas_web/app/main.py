@@ -229,31 +229,33 @@ def list_files(request: Request, share: str, path: str = ""):
 
 @app.get("/api/thumb")
 def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool = False):
-    """Cache resized images per active user session; avoid repeated HDD reads."""
+    """Fast persistent user-scoped preview, checked against live SMB permissions."""
     u = user_for(request)
     p = path_ok(path)
     name_ok(share)
-    if share not in u.get("shares", []):
-        fail(403, "Нет доступа к шаре")
-    if not p or p.rsplit(".", 1)[-1].lower() not in {"jpg", "jpeg", "png", "webp", "gif"}:
-        fail(404, "Недоступный формат")
-    token = request.cookies.get("nas_session", "")
-    key = thumb_cache.key_for(token, share, p, v[:80] + (":large" if large else ":small"))
-    cached = thumb_cache.get(key)
-    if cached is not None:
-        return Response(cached, media_type="image/webp")
+    if share not in u.get("shares", []) or not p:
+        fail(403, "Нет доступа")
+    if p.rsplit(".", 1)[-1].lower() not in {"jpg", "jpeg", "png", "webp", "gif"}:
+        fail(404, "Unsupported image")
+    key = thumb_cache.key_for(u["name"], share, p, v[:80] + (":large" if large else ":small"))
     class LimitedBuffer(io.BytesIO):
         def write(self, data):
             if self.tell() + len(data) > 25 * 1024 * 1024:
                 raise ValueError("Image too large")
             return super().write(data)
     try:
+        cached = thumb_cache.get(key)
+        if cached is not None:
+            # Do not allow access to cached bytes after SMB rights were revoked.
+            with smb(u) as conn:
+                conn.can_read(share, "/" + p)
+            return Response(cached, media_type="image/webp")
         with thumb_cache.WORKERS:
             cached = thumb_cache.get(key)
-            if cached is not None:
-                return Response(cached, media_type="image/webp")
             with smb(u) as conn:
-                # On a cache miss, Samba verifies file-level access.
+                if cached is not None:
+                    conn.can_read(share, "/" + p)
+                    return Response(cached, media_type="image/webp")
                 buffer = LimitedBuffer()
                 conn.retrieveFile(share, "/" + p, buffer, timeout=40)
             result = thumb_cache.render_image(buffer, large=large)
@@ -263,8 +265,9 @@ def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool 
         raise
     except (ValueError, UnidentifiedImageError, OSError):
         fail(415, "Миниатюра недоступна")
-    except Exception:
-        fail(403, "Недоступно")
+    except Exception as exc:
+        logger.warning("Thumbnail unavailable: %s", type(exc).__name__)
+        fail(403, "Нет доступа или ошибка чтения SMB")
 
 @app.get("/api/video")
 def video_stream(request: Request, share: str, path: str):
