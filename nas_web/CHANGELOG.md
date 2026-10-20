@@ -1,3 +1,10 @@
+## 0.22.2
+
+- Move manual EXIF retry to admin-only maintenance. Requires both independent admin authorization and a current SMB user session, preserving SMB access boundaries.
+- Replace user-facing refresh behavior with a safe reload and incremental scan; no full index reset.
+- Disable legacy destructive /api/gallery/reindex endpoint to protect existing photo index and capture dates.
+- Keep normal user incremental photo discovery working.
+
 ## 0.22.1
 
 - Finish standalone /admin dashboard: photo-index progress, EXIF queue, cache usage, /data free space and safe maintenance events.
