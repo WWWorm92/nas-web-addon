@@ -64,6 +64,40 @@ jobs:
               assert photo_dates.lookup("other", "disk", "photo.jpg", 1, 100) == (False, None)
           print("EXIF and metadata cache OK")
           PY
+      - name: Unified gallery index tests
+        run: |
+          PYTHONPATH=nas_web python - <<'PY'
+          import tempfile
+          from pathlib import Path
+          from types import SimpleNamespace
+          from app import gallery_index as index
+          with tempfile.TemporaryDirectory() as temp:
+              index.DB = Path(temp) / "photos.sqlite3"
+              owner=index.key("Alex")
+              other=index.key("Olga")
+              assert owner != other
+              with index.LOCK, index.connect() as db:
+                  index.begin(db, owner, ["Private"])
+                  index.add_folder_contents(db, owner, "Private", "", [
+                    SimpleNamespace(filename="Photos",isDirectory=True,file_size=0,last_write_time=1),
+                    SimpleNamespace(filename="a.jpg",isDirectory=False,file_size=300,last_write_time=1650000000),
+                    SimpleNamespace(filename="notes.txt",isDirectory=False,file_size=200,last_write_time=2)])
+                  index.add_folder_contents(db, owner, "Private", "Photos", [
+                    SimpleNamespace(filename="b.png",isDirectory=False,file_size=400,last_write_time=1660000000)])
+              assert index.state(owner, ["Private"])["total"] == 2
+              assert index.state(other, ["Private"])["total"] == 0
+              assert index.page(owner, ["Private"], 0, 5)[0]["name"] == "b.png"
+              assert index.page(owner, [], 0, 5) == []
+              with index.LOCK, index.connect() as db:
+                  index.save_date(db, owner, "Private", "a.jpg", "2025-06-07T09:11:00")
+              assert index.page(owner, ["Private"], 0, 5)[0]["name"] == "a.jpg"
+              assert index.state(owner, ["Private"])["dates_pending"] == 0
+              assert index.state(owner, ["Other"])["total"] == 0
+              assert index.state(owner, ["Other"])["pending"] >= 1
+              index.reset(owner, ["Private"])
+              assert index.state(owner, ["Private"])["total"] == 0
+          print("Unified gallery index and access scoping OK")
+          PY
       - name: JavaScript syntax
         run: node --check nas_web/app/app.js
       - name: Basic UI DOM contracts
