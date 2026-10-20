@@ -757,6 +757,17 @@ async def upload(request: Request, share: str = Form(...), path: str = Form(""),
             with smb(u) as conn:
                 check_share(conn, share)
                 conn.storeFile(share, full(path, filename), tmp, timeout=600)
+                if filename.lower().endswith(gallery_index.IMAGE_EXTS):
+                    try:
+                        parent = path_ok(path)
+                        item = entry_in_folder(conn, share, parent, filename)
+                        if item is not None and not item.isDirectory:
+                            gallery_index.record_upload(
+                                gallery_index.key(u["name"]), share,
+                                "/".join(x for x in (parent, filename) if x),
+                                item.file_size, item.last_write_time)
+                    except Exception:
+                        logger.exception("Unable to update gallery after upload")
         except Exception:
             fail(403, "Нет доступа на запись")
     return {"ok": True, "size": size}
