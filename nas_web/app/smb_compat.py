@@ -89,7 +89,7 @@ class SMBConnection:
             remaining = length
             offset = start
             while remaining > 0:
-                block = self.conn.readFile(tid, fid, offset, min(128 * 1024, remaining))
+                block = self.conn.readFile(tid, fid, offset, min(512 * 1024, remaining))
                 if not block:
                     break
                 yield block
