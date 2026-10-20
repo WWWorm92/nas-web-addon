@@ -307,13 +307,10 @@ function gallerySettingsOpen(open){
   }
   panel.classList.toggle('hidden',!open);
 }
-const orderSelect=document.createElement('select');orderSelect.id='galleryOrderSelect';
-orderSelect.setAttribute('aria-label','Сортировка фотографий');
-orderSelect.innerHTML='<option value="taken">По дате съёмки (EXIF)</option><option value="modified">По дате изменения файла</option>';
+const orderSelect=el('galleryOrderSelect');
 orderSelect.value=globalGalleryOrder;el('galleryOrderDesktop').value=globalGalleryOrder;
 el('galleryOrderDesktop').onchange=()=>setGlobalGalleryOrder(el('galleryOrderDesktop').value);
 orderSelect.onchange=()=>setGlobalGalleryOrder(orderSelect.value);
-el('gallerySettingsContent').prepend(orderSelect);
 el('gallerySettingsToggle').onclick=()=>gallerySettingsOpen(el('gallerySettingsPanel').classList.contains('hidden'));
 el('gallerySettingsClose').onclick=()=>gallerySettingsOpen(false);
 el('gallerySearchToggle').onclick=()=>{
