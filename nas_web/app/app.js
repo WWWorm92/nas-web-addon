@@ -23,7 +23,7 @@ const size=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?(n/
 const fpath=name=>[dir,name].filter(Boolean).join('/');
 const fileUrl=(name,inline=false)=>'/api/file?'+qs({share:selected,path:fpath(name),inline:String(inline)});
 async function api(url,options={}){const r=await fetch(url,{credentials:'same-origin',...options,headers:{...(options.headers||{}),'X-CSRF-Token':csrf}});if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).detail||m}catch{}if(r.status===401&&url!=='/api/login')showLogin();throw Error(m)}return r.json()}
-function showLogin(){closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
+function showLogin(){leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
 function showApp(user){closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
 function renderShares(){el('shares').replaceChildren();for(const share of shares){const b=document.createElement('button');b.className='share'+(share===selected?' selected':'');b.append(icon('disk'),document.createTextNode(' '+share));b.onclick=()=>choose(share);el('shares').append(b)}}
 const selectedFiles=new Set();
@@ -61,8 +61,8 @@ function renderBreadcrumb(){
   add(selected,'',parts.length===0);
   parts.forEach((part,i)=>{const sep=document.createElement('span');sep.className='crumbSep';sep.textContent='›';crumb.append(sep);add(part,parts.slice(0,i+1).join('/'),i===parts.length-1)});
 }
-function choose(share){clearSelection();photoCacheClear();hideMenu();selected=share;dir='';el('search').value='';renderShares();refresh()}
-function enterFolder(name){clearSelection();photoCacheClear();hideMenu();dir=fpath(name);el('search').value='';refresh()}
+function choose(share){leaveGlobalGallery();clearSelection();photoCacheClear();hideMenu();selected=share;dir='';el('search').value='';renderShares();refresh()}
+function enterFolder(name){leaveGlobalGallery();clearSelection();photoCacheClear();hideMenu();dir=fpath(name);el('search').value='';refresh()}
 function download(f){const a=document.createElement('a');a.href=fileUrl(f.name);a.download=f.name;a.click()}
 const isPhoto=f=>!f.directory&&imageExt.includes(ext(f.name));
 let allPhotosMode=false,allPhotos=[],allPhotoTotal=0,allPhotoStatus=null,allPhotoPageBusy=false,allPhotoScanToken=0,previousFileView='grid';
@@ -216,23 +216,24 @@ function openMobileSheet(title,actions){
 }
 el('mobileSheetClose').onclick=closeMobileSheet;
 el('mobileSheetOverlay').addEventListener('click',e=>{if(e.target===el('mobileSheetOverlay'))closeMobileSheet()});
-el('mobileHome').onclick=()=>{closeMobileSheet();clearSelection();photoCacheClear();dir='';el('search').value='';refresh();window.scrollTo({top:0,behavior:'smooth'})};
+el('mobileHome').onclick=()=>{closeMobileSheet();leaveGlobalGallery();clearSelection();photoCacheClear();dir='';el('search').value='';refresh();window.scrollTo({top:0,behavior:'smooth'})};
 el('mobileSearch').onclick=()=>{closeMobileSheet();el('search').focus();el('search').scrollIntoView({block:'center',behavior:'smooth'})};
 el('mobileAdd').onclick=()=>openMobileSheet('Добавить',[
   {label:'＋ Создать папку',run:()=>el('folder').click()},
   {label:'↑ Загрузить файлы',run:()=>el('upload').click()}
 ]);
-el('mobileSelect').onclick=()=>{closeMobileSheet();el('selectionModeButton').click()};
+el('mobilePhotos').onclick=()=>{closeMobileSheet();enterGlobalGallery()};
 el('mobileMore').onclick=()=>openMobileSheet('Дополнительно',[
-  {label:'▧ Режим фотогалереи',run:()=>el('galleryView').click()},
-  {label:'▦ Режим файлов',run:()=>el('gridView').click()},
+  {label:'▧ Все фотографии на NAS',run:()=>enterGlobalGallery()},
+  {label:'▦ Вернуться к файлам',run:()=>{leaveGlobalGallery();el('gridView').click()}},
   {label:'⟳ Обновить список',run:()=>refresh()},
   {label:'◐ Сменить тему',run:()=>el('theme').click()},
   {label:'⇥ Выйти из NAS Web',danger:true,run:()=>el('logout').click()}
 ]);
 function updateMobileNav(){
-  const select=el('mobileSelect');if(!select)return;
-  select.classList.toggle('navSelected',selectionMode||selectedFiles.size>0);
+  const photos=el('mobilePhotos');
+  photos.classList.toggle('navSelected',allPhotosMode);
+  el('mobileHome').classList.toggle('navSelected',!allPhotosMode);
 }
 function hideMenu(){el('fileMenu').classList.add('hidden');el('fileMenu').replaceChildren()}
 function menuButton(text,fn,danger=false){const btn=document.createElement('button');btn.textContent=text;if(danger)btn.classList.add('danger');btn.onclick=()=>{hideMenu();fn()};return btn}
@@ -498,9 +499,9 @@ el('selectionDelete').onclick=async()=>{
   if(failed)message('Удалено: '+removed+'. Не удалось удалить: '+failed+'. Проверьте права и содержимое папок.');
 };
 el('refresh').onclick=refresh;el('search').oninput=render;el('sort').onchange=render;
-el('gridView').onclick=()=>{galleryDateGeneration++;view='grid';localStorage.setItem('nas_view',view);render()};
-el('listView').onclick=()=>{galleryDateGeneration++;view='list';localStorage.setItem('nas_view',view);render()};
-el('galleryView').onclick=()=>{view='gallery';localStorage.setItem('nas_view',view);clearSelection();render();scanGalleryDates()};
+el('gridView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='grid';localStorage.setItem('nas_view',view);render()};
+el('listView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='list';localStorage.setItem('nas_view',view);render()};
+el('galleryView').onclick=()=>enterGlobalGallery();
 el('upload').onchange=e=>{uploadFiles([...e.target.files]);e.target.value=''};
 el('closePreview').onclick=closePreview;
 el('previewInfo').onclick=()=>{
