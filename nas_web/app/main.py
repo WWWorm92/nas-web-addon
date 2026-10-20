@@ -245,7 +245,7 @@ def me(request: Request):
 @app.post("/api/logout")
 def logout(request: Request, x_csrf_token: str = Header(default="")):
     check_origin(request)
-    protected(request, x_csrf_token)
+    u = protected(request, x_csrf_token)
     with LOCK:
         SESSIONS.pop(request.cookies.get("nas_session"), None)
     smb_pool.revoke(u["csrf"])
