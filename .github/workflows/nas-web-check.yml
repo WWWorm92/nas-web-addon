@@ -64,6 +64,39 @@ jobs:
               assert photo_dates.lookup("other", "disk", "photo.jpg", 1, 100) == (True, "2019-06-21T12:34:56")
           print("EXIF and metadata cache OK")
           PY
+      - name: Shared metadata and resumable index tests
+        run: |
+          PYTHONPATH=nas_web python - <<'PY'
+          import tempfile
+          from pathlib import Path
+          from types import SimpleNamespace
+          from app import gallery_index as g
+          def photo(name, mtime=100):
+              return SimpleNamespace(filename=name,isDirectory=False,file_size=120,last_write_time=mtime)
+          with tempfile.TemporaryDirectory() as tmp:
+              g.DB=Path(tmp)/"gallery.sqlite3"
+              a,b=g.key("alice"),g.key("bob")
+              with g.connect() as db:
+                  g.begin(db,a,["Disk"])
+                  g.add_folder_contents(db,a,"Disk","",[photo("same.jpg")])
+                  g.save_date(db,a,"Disk","same.jpg","2020-01-01T12:00:00")
+                  assert g.pending_folder(db,a) is None
+                  db.execute("UPDATE jobs SET complete=1 WHERE owner=?",(a,))
+                  g.begin(db,b,["Disk"])
+                  assert g.page(b,["Disk"],0,10)==[]
+                  g.add_folder_contents(db,b,"Disk","",[photo("same.jpg")])
+                  assert g.next_unchecked(db,b,["Disk"]) is None
+                  assert g.page(b,["Disk"],0,10)[0]["taken"]=="2020-01-01T12:00:00"
+                  g.begin(db,a,["Disk"])
+                  assert g.pending_folder(db,a) is None
+                  db.execute("UPDATE jobs SET started=0 WHERE owner=?",(a,))
+                  g.begin(db,a,["Disk"])
+                  assert g.pending_folder(db,a) is not None
+                  g.add_folder_contents(db,a,"Disk","",[photo("same.jpg")])
+                  assert g.page(a,["Disk"],0,10)[0]["taken"]=="2020-01-01T12:00:00"
+                  assert g.page(b,["Secret"],0,10)==[]
+          print("Shared metadata, ACL isolation and resume OK")
+          PY
       - name: Unified gallery index tests
         run: |
           PYTHONPATH=nas_web python - <<'PY'
