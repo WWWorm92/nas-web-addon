@@ -67,6 +67,49 @@
  #mobileNav{box-shadow:0 -5px 22px #00000018}
  #mobileNav .mobileAdd{transform:scale(.94)}
 }
+
+/* 0.16.0: full workspace refresh */
+:root{--nas-radius:12px}
+#app .top{min-height:64px;border-bottom:1px solid var(--border)}
+#app .brand{font-size:17px;letter-spacing:-.35px}
+#app .sidebar{width:232px;background:var(--bg);padding:22px 12px}
+#app .share{border-radius:10px;padding:11px 12px}
+#app .workspace{padding:22px 26px}
+#app .eyebrow{display:none}
+#app .head .path{font-size:20px}
+#app .controls{gap:7px;margin:14px 0 12px}
+#app .controls button,#app .controls select{border-radius:10px}
+#app .items:not(.galleryMode){gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+#app .items:not(.galleryMode) .item{border-radius:12px}
+#app .items:not(.galleryMode) .thumb{height:112px}
+#app .items:not(.galleryMode) .details{padding:10px 12px}
+#app .items:not(.galleryMode).list{display:flex;flex-direction:column;gap:4px}
+#app .items:not(.galleryMode).list .item{width:100%;border-radius:9px;box-shadow:none}
+#app .items:not(.galleryMode).list .thumb{height:44px;width:56px;flex-shrink:0}
+.mobileFilesHeader,.mobileFilesBreadcrumb{display:none}
+@media(max-width:700px){
+ #app:not(.globalGalleryOpen) .top{display:none}
+ #app:not(.globalGalleryOpen) .workspace{padding:10px 14px 90px}
+ #app:not(.globalGalleryOpen) .head{display:none}
+ #app:not(.globalGalleryOpen) .mobileFilesHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0 8px;position:sticky;top:0;background:var(--bg);z-index:20}
+ .mobileFilesHeader strong{font-size:22px;letter-spacing:-.5px}
+ .mobileFilesHeader>div{display:flex;gap:4px}
+ .mobileFilesHeader button{border:0;background:transparent;font-size:24px;padding:8px;min-height:42px;min-width:42px}
+ #app:not(.globalGalleryOpen) .mobileFilesBreadcrumb{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 0 12px}
+ #app:not(.globalGalleryOpen) .controls{display:none}
+ #app:not(.globalGalleryOpen).filesSearching .controls{display:flex;margin:0 0 12px}
+ #app:not(.globalGalleryOpen).filesSearching .controls>*:not(#search){display:none!important}
+ #app:not(.globalGalleryOpen).filesSearching .controls #search{display:block;width:100%;max-width:none}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode){display:flex;flex-direction:column;gap:5px}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .item{display:flex;align-items:center;min-height:62px;background:transparent;border:0;border-radius:10px;box-shadow:none}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .thumb{width:56px;height:54px;flex:0 0 56px;background:var(--panel2);font-size:26px;border-radius:10px}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .details{flex:1;min-width:0;padding:8px 9px}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .filename{font-size:14px}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .more{position:static;flex:0 0 40px;background:transparent;border:0;margin-left:auto}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .item:hover{background:var(--panel2)}
+ #app:not(.globalGalleryOpen) #uploadCenterButton{display:none}
+ #app:not(.globalGalleryOpen) .status:empty{display:none}
+}
 </style><style>
 #login{background:radial-gradient(ellipse 55% 50% at 50% 0%,#21395555,transparent 85%),var(--bg)}.authShell{width:min(430px,100%)}.authLogo{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:32px;font-size:23px;font-weight:780;letter-spacing:-.8px}.authAccent{color:var(--accent)}.loginCard{width:100%;border-radius:20px;padding:36px;background:var(--panel);box-shadow:0 25px 100px #0002}.authHeading h1{margin:10px 0;font-size:28px;font-weight:750;letter-spacing:-.7px}.authEyebrow{letter-spacing:2px;font-size:10px;color:var(--accent);font-weight:750}.authHeading .sub{margin:0;line-height:1.65}.loginCard form{gap:10px;margin-top:28px}.loginCard form label{font-size:12px;font-weight:650;color:var(--muted);margin-top:7px}.loginCard form input{min-height:48px;background:var(--bg);border-radius:10px}.passwordBox{display:flex;position:relative}.passwordBox input{padding-right:98px}.passwordBox button{position:absolute;right:5px;top:5px;min-height:38px;border:0;background:transparent;font-size:12px;color:var(--accent);padding:7px 10px}.loginCard form button.primary{margin-top:13px;min-height:49px;display:flex;align-items:center;justify-content:center;gap:12px}.authFooter{text-align:center;margin-top:24px;color:var(--muted);font-size:11px}.loginCard #loginError{margin:12px 0 0}#dialogOverlay{position:fixed;inset:0;z-index:70;background:#0009;display:flex;align-items:center;justify-content:center;padding:16px}.dialogBox{width:min(420px,100%);border:1px solid var(--border);border-radius:20px;background:var(--panel);padding:25px;box-shadow:0 24px 90px #0005}.dialogIcon{background:var(--accentbg);color:var(--accent);width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:23px}.dialogBox h2{font-size:19px;margin:18px 0 8px}.dialogBox p{font-size:13px;line-height:1.6;color:var(--muted);margin:0 0 18px;overflow-wrap:anywhere}.dialogBox input{width:100%;margin:0 0 18px;min-height:46px}.dialogActions{display:flex;justify-content:flex-end;gap:9px}.dialogActions button{min-width:105px}.dialogActions .dangerConfirm{background:#a53b43;color:white;border-color:#a53b43}@media(max-width:650px){.authShell{max-width:430px}.loginCard{padding:27px 22px}.authLogo{margin-bottom:24px}.dialogBox{border-radius:18px}.dialogActions button{min-height:46px;flex:1}}
 </style><style>
@@ -329,6 +372,7 @@ body{background:var(--bg);-webkit-font-smoothing:antialiased}
 <div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div></div>
 <div id="mobileGalleryHeader" class="mobileGalleryHeader"><strong>Фото</strong><div><button id="gallerySearchToggle" type="button" aria-label="Поиск фотографий">⌕</button><button id="gallerySettingsToggle" type="button" aria-label="Настройки галереи">☷</button></div></div>
 <div id="gallerySettingsPanel" class="gallerySettingsPanel hidden"><div class="gallerySettingsTitle">Настройки галереи <button id="gallerySettingsClose" type="button" aria-label="Закрыть настройки">✕</button></div><div id="gallerySettingsContent"></div></div>
+<div id="mobileFilesHeader" class="mobileFilesHeader"><strong>Файлы</strong><div><button id="filesSearchToggle" type="button" aria-label="Поиск файлов">⌕</button><button id="filesSortToggle" type="button" aria-label="Сортировка файлов">↕</button><button id="filesSettingsToggle" type="button" aria-label="Действия с файлами">⋮</button></div></div><div id="mobileFilesBreadcrumb" class="mobileFilesBreadcrumb"></div>
 <div class="controls"><input class="search" id="search" type="search" placeholder="Поиск файлов и папок…" aria-label="Поиск файлов"><button id="up" title="На уровень выше">← Назад</button><button id="folder">＋ Папка</button><label class="primary uploadLabel">↑ Загрузить<input id="upload" type="file" multiple hidden></label><button id="selectionModeButton" type="button" title="Выделить несколько файлов">☑ Выбрать</button><button id="refresh" title="Обновить список" aria-label="Обновить список">⟳</button><select id="sort" aria-label="Сортировка"><option value="name">По имени</option><option value="new">Сначала новые</option><option value="size">По размеру</option></select><div class="viewButtons" role="group" aria-label="Режим отображения"><button id="gridView" class="active" title="Плитки" aria-label="Плитки">▦</button><button id="listView" title="Список" aria-label="Список">☰</button><button id="galleryView" title="Фотогалерея" aria-label="Фотогалерея">▧</button></div></div><div id="selectionBar" class="selectionBar hidden" role="toolbar" aria-label="Выделенные файлы"><span id="selectionCount">0 выбрано</span><button id="selectAll" type="button">Выбрать все</button><button id="selectionDownload" type="button">Скачать файл</button><button id="selectionCopy" type="button">Копировать</button><button id="selectionMove" type="button">Переместить</button><button id="selectionZip" type="button">Скачать ZIP</button><button id="selectionDelete" type="button" class="selectionDanger">Удалить</button><button id="selectionCancel" type="button">Отмена</button></div><div id="globalGallerySummary" class="globalGallerySummary hidden"><button id="galleryStatusToggle" class="galleryStatusToggle" type="button" aria-label="Показать состояние индексации">ⓘ Индексация</button><span id="globalGalleryProgress" role="status">Индексация фототеки…</span><div class="globalGalleryActions"><button type="button" id="globalGalleryRescan">Обновить фототеку</button><button type="button" id="globalGalleryBack">← К файлам</button></div></div><div id="galleryControls" class="galleryControls"><select id="galleryMonthJump" aria-label="Перейти к месяцу"><option value="">Перейти к месяцу</option></select><div class="galleryZoomControls"><button id="galleryZoomOut" type="button" aria-label="Меньше фото в строке">−</button><span id="galleryZoomLabel">3 в ряд</span><button id="galleryZoomIn" type="button" aria-label="Больше фото в строке">+</button></div></div><div id="galleryPickBar" class="galleryPickBar hidden"><span id="galleryPickCount">0 выбрано</span><button id="galleryPickDownload" type="button">Скачать ZIP</button><button id="galleryPickDone" type="button">Готово</button></div><div id="galleryYears" class="galleryYears hidden" aria-label="Быстрый переход по годам"></div><div class="status" id="status" role="status"></div><button type="button" id="uploadCenterButton" class="uploadCenterButton">⇧ Центр загрузок</button><div id="uploadProgress" class="hidden"><div id="progressFill"></div></div><div class="items" id="entries"></div><div id="galleryPageFooter" class="galleryPageFooter hidden"><button id="galleryLoadMore" type="button">Показать ещё</button></div></section></div>
 <nav id="mobileNav" class="mobileNav" aria-label="Основная навигация">
   <button type="button" id="mobileHome" aria-label="Перейти к файлам"><span aria-hidden="true">⌂</span><small>Файлы</small></button>
