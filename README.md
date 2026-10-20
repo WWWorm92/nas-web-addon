@@ -119,3 +119,8 @@ This repository is an early prototype, **not a production-ready cloud drive**.
 - If the directory is unwritable the add-on fails explicitly instead of discarding thumbnails on the next update.
 - The first launch may have an empty cache because a previous version could have used ephemeral storage. After warming a photo folder, the next add-on upgrade should log a nonzero cache file count.
 - Existing SMB data is unaffected. Only NAS Web's own preview files are stored in `/data`.
+
+
+## 0.7.2 — Home Assistant OS /data permission fix
+
+Fixes the crash on import of thumb_cache.py: `PermissionError: [Errno 13] Permission denied: '/data/nasweb-thumbs'` after upgrading to 0.7.1. At container start, a small entrypoint runs as root to create/chown only `/data/nasweb-thumbs` and `/data/nasweb-video` to uid 10001 with mode 0700, then execs Uvicorn through `gosu nasweb` (non-root). Do not recursively chown `/data` or touch Simple NAS SMB contents. Cache data is retained across add-on upgrades. Startup log reports cache path, writability, files and MiB. The Docker image must be rebuilt when installing this update.
