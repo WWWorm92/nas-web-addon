@@ -75,16 +75,16 @@ def put(key, content):
         finally:
             temp.unlink(missing_ok=True)
 
-def render_image(source):
+def render_image(source, large=False):
     # The bounding upload buffer is enforced by the caller.
     source.seek(0)
     with Image.open(source) as img:
         if img.width * img.height > 30_000_000:
             raise ValueError("Image dimensions too large")
         if img.format == "JPEG":
-            img.draft("RGB", (480, 360))
+            img.draft("RGB", (1600, 1200) if large else (480, 360))
         img = ImageOps.exif_transpose(img)
-        img.thumbnail((256, 192), Image.Resampling.BILINEAR)
+        img.thumbnail((1600, 1200) if large else (256, 192), Image.Resampling.BILINEAR)
         out = io.BytesIO()
-        img.convert("RGB").save(out, format="WEBP", quality=68, method=0)
+        img.convert("RGB").save(out, format="WEBP", quality=78 if large else 68, method=0)
         return out.getvalue()
