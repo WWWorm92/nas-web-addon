@@ -44,3 +44,14 @@ This repository is an early prototype, **not a production-ready cloud drive**.
 - File type icons use a restrained monochrome/blue palette; mobile layout remains responsive.
 
 **NOT YET VERIFIED FOR PUBLIC EXPOSURE.** Keep `https_only: false` during local HTTP tests. When HTTPS proxy support is verified, `https_only: true` will prevent sending session cookies over plain HTTP; note this makes the HTTP LAN URL unable to maintain a logged-in session. Login limits are local to the add-on process and are not a substitute for IP-level reverse proxy controls. Credentials remain in application RAM for active sessions. The browser UI and SMB behavior still need testing on the actual hardware.
+
+
+## Performance improvements in 0.4.1
+
+- Miniatures are generated once per login session and cached under `/tmp/nasweb-thumbs`, instead of fetching the original photograph from SMB for every page view.
+- The thumbnail cache is limited to about 128 MiB and entries expire after 4 hours; it is discarded when the add-on container restarts.
+- On a cache miss the app downloads a source photograph through SMB, verifies that Samba allows reading it and builds a 256×192 WebP thumbnail; subsequent requests use its cached copy.
+- JPEG decoding uses Pillow draft mode when possible; WebP encoding uses the faster method 0.
+- Thumbnail generation is limited to two concurrent workers to reduce Raspberry Pi load. First opening a large photo folder still requires processing its originals.
+- Cached thumbnails remain visible to that same authenticated session until expiry even if source SMB rights change meanwhile. Revoke the NAS Web session or restart the add-on if permissions need to take effect immediately for cached thumbnails.
+- This is still **LAN testing only**; do not expose via KeenDNS yet.
