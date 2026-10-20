@@ -1,6 +1,6 @@
 name: NAS Web
 slug: nas_web
-version: "0.1.2"
+version: "0.1.3"
 description: SMB browser for Simple NAS (local testing only)
 startup: services
 boot: auto
@@ -15,8 +15,10 @@ ports_description:
 options:
   smb_host: 192.168.1.35
   smb_port: 445
+  smb_server_name: NAS
   max_upload_mb: 1024
 schema:
   smb_host: str
   smb_port: port
+  smb_server_name: str
   max_upload_mb: int(1,10240)
