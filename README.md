@@ -154,3 +154,14 @@ Fixes the crash on import of thumb_cache.py: `PermissionError: [Errno 13] Permis
 - Transfers are limited to 512 MiB per file to bound local spool usage. ZIP download supports up to 100 selected **files**, total uncompressed size at most 512 MiB; folders are excluded. ZIP uses temporary storage and the browser downloads the result.
 - Each operation uses existing session authentication, CSRF and the Simple NAS SMB ACLs.
 - Real Raspberry Pi device testing is pending.
+
+
+## NAS Web 0.9.5 — общая фотогалерея
+
+- Нижняя кнопка **Фото** вместо **Выбрать** открывает общую ленту фотографий из всех SMB-шар и вложенных папок, доступных пользователю.
+- В файловом менеджере выделение по-прежнему доступно долгим нажатием или через **Ещё → Выбрать файлы**.
+- Лента группирует снимки по месяцам, поддерживает переход по годам, ленивую загрузку миниатюр и подгрузку фотографий по 90 штук.
+- NAS Web постепенно обходит папки (не более трёх за запрос) и затем считывает EXIF даты небольшими партиями; прогресс виден в интерфейсе. SQLite-индекс сохраняется в `/data/nasweb-auth/gallery.sqlite3` при обновлениях и перезапусках.
+- **Обновить фототеку** полностью перестраивает индекс после изменений на NAS. Просмотр фотографий не изменяет исходные файлы.
+- Защитные лимиты индексатора: до 100 000 фотографий и 20 000 папок на пользователя. Фотографии показываются только из шар текущей сессии; доступ к каждому оригиналу и превью дополнительно проверяется SMB.
+- Первое сканирование больших хранилищ может занять продолжительное время. Папки, в которые SMB не позволяет войти, пропускаются.
