@@ -447,7 +447,7 @@ def _gallery_scan_step(u, owner, shares):
                     cached, taken = photo_dates.lookup(
                         u["name"], row["share"], row["path"],
                         row["modified"], row["size"])
-                    if not cached and row["size"]:
+                    if (not cached or taken is None) and row["size"]:
                         taken = photo_dates.from_jpeg_header(
                             conn, row["share"], row["path"], row["size"])
                         photo_dates.save(u["name"], row["share"], row["path"],
@@ -463,7 +463,7 @@ def _gallery_scan_step(u, owner, shares):
 
 def _gallery_background(u, owner, shares):
     # Keep credentials only in RAM, and never run indefinitely after logout.
-    deadline = time.monotonic() + 1800
+    deadline = time.monotonic() + 8 * 3600
     try:
         while time.monotonic() < deadline:
             # Credentials come from a successful authenticated /api/gallery/scan
@@ -500,6 +500,31 @@ def scan_unified_gallery(request: Request, x_csrf_token: str = Header(default=""
             GALLERY_BACKGROUND[owner] = worker
             worker.start()
     return {"busy": True, **gallery_index.state(owner, shares)}
+
+
+@app.post("/api/gallery/retry-dates")
+def retry_gallery_dates(request: Request, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    shares = list(u.get("shares", []))
+    owner = gallery_index.key(u["name"])
+    with GALLERY_BACKGROUND_LOCK:
+        active = GALLERY_BACKGROUND.get(owner)
+        if active is not None and active.is_alive():
+            fail(409, "Дождитесь завершения текущей индексации")
+        if not GALLERY_SCAN_LOCK.acquire(blocking=False):
+            fail(409, "Индексация уже выполняется")
+        try:
+            with gallery_index.LOCK, gallery_index.connect() as db:
+                queued = gallery_index.retry_missing_dates(db, owner, shares)
+            worker = threading.Thread(target=_gallery_background,
+                                      args=(dict(u), owner, tuple(shares)),
+                                      daemon=True, name="nas-gallery-date-retry")
+            GALLERY_BACKGROUND[owner] = worker
+            worker.start()
+        finally:
+            GALLERY_SCAN_LOCK.release()
+    return {"ok": True, "queued": queued, **gallery_index.state(owner, shares)}
 
 
 @app.post("/api/gallery/reindex")
