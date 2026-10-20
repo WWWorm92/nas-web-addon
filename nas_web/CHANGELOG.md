@@ -1,3 +1,9 @@
+## 0.17.1
+
+- Do not mark JPEG EXIF extraction as completed after SMB read failures; failed items can be retried on later scans.
+- Gallery status API now reports dated (valid EXIF dates) and checked_no_date (checked but no EXIF date) counts for diagnostics.
+- Existing photo index and shared metadata are preserved; this release does not automatically reprocess previously checked photos.
+
 ## 0.17.0
 
 - Deleting a file or nonempty directory moves the entire object into the share-root .recycle folder using SMB rename, preserving its contents.
