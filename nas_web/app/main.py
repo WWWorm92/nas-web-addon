@@ -403,47 +403,47 @@ def scan_unified_gallery(request: Request, x_csrf_token: str = Header(default=""
     if not GALLERY_SCAN_LOCK.acquire(blocking=False):
         return {"busy": True, **gallery_index.state(owner, shares)}
     try:
-        with gallery_index.LOCK, gallery_index.connect() as db:
-            gallery_index.begin(db, owner, shares)
-            with smb(u) as conn:
-                for _ in range(3):
+        with smb(u) as conn:
+            for _ in range(3):
+                with gallery_index.LOCK, gallery_index.connect() as db:
+                    gallery_index.begin(db, owner, shares)
                     folder = gallery_index.pending_folder(db, owner)
-                    if folder is None:
-                        break
-                    share, path = folder["share"], folder["path"]
-                    if share not in shares:
-                        db.execute("UPDATE folders SET done=1 WHERE owner=? AND share=? AND path=?",
-                                   (owner, share, path))
-                        continue
+                if folder is None:
+                    break
+                share, path = folder["share"], folder["path"]
+                entries = ()
+                if share in shares:
                     try:
                         check_share(conn, share)
                         entries = conn.listPath(share, full(path), timeout=20)
                     except Exception as exc:
                         logger.info("Gallery folder skipped: %s", type(exc).__name__)
-                        entries = ()
+                with gallery_index.LOCK, gallery_index.connect() as db:
                     gallery_index.add_folder_contents(db, owner, share, path, entries)
-                if gallery_index.pending_folder(db, owner) is None:
+            with gallery_index.LOCK, gallery_index.connect() as db:
+                complete = gallery_index.pending_folder(db, owner) is None
+                if complete:
                     db.execute("UPDATE jobs SET complete=1 WHERE owner=?", (owner,))
-                    # EXIF reads are limited to 3 JPEG headers per request.
-                    for _ in range(3):
+            if complete:
+                for _ in range(3):
+                    with gallery_index.LOCK, gallery_index.connect() as db:
                         row = gallery_index.next_unchecked(db, owner, shares)
-                        if row is None:
-                            break
-                        taken = None
-                        try:
-                            # Read permission is checked by SMB for each image.
-                            # Always defer if a foreground photo is loading.
-                            wait_for_photo_transfer()
-                            cached, taken = photo_dates.lookup(
-                                u["name"], row["share"], row["path"],
-                                row["modified"], row["size"])
-                            if not cached and row["size"]:
-                                taken = photo_dates.from_jpeg_header(
-                                    conn, row["share"], row["path"], row["size"])
-                                photo_dates.save(u["name"], row["share"], row["path"],
-                                                 row["modified"], row["size"], taken)
-                        except Exception as exc:
-                            logger.info("Gallery EXIF skipped: %s", type(exc).__name__)
+                    if row is None:
+                        break
+                    taken = None
+                    try:
+                        wait_for_photo_transfer()
+                        cached, taken = photo_dates.lookup(
+                            u["name"], row["share"], row["path"],
+                            row["modified"], row["size"])
+                        if not cached and row["size"]:
+                            taken = photo_dates.from_jpeg_header(
+                                conn, row["share"], row["path"], row["size"])
+                            photo_dates.save(u["name"], row["share"], row["path"],
+                                             row["modified"], row["size"], taken)
+                    except Exception as exc:
+                        logger.info("Gallery EXIF skipped: %s", type(exc).__name__)
+                    with gallery_index.LOCK, gallery_index.connect() as db:
                         gallery_index.save_date(db, owner, row["share"], row["path"], taken)
         return {"busy": False, **gallery_index.state(owner, shares)}
     finally:
