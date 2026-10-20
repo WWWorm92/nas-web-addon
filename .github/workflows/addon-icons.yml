@@ -1,0 +1,52 @@
+name: Build NAS Web icons
+on:
+  push:
+    paths:
+      - 'nas_web/app/icon.svg'
+      - '.github/workflows/addon-icons.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  generate-icons:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Pillow
+        run: pip install Pillow==11.3.0
+      - name: Generate matching PNG icons
+        run: |
+          python - <<'PY'
+          from PIL import Image, ImageDraw
+          from pathlib import Path
+          for size, filename in [
+              (128, "nas_web/icon.png"),
+              (256, "nas_web/logo.png"),
+              (192, "nas_web/app/icon-192.png"),
+          ]:
+              im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+              d = ImageDraw.Draw(im)
+              d.rounded_rectangle((2, 2, size-3, size-3), radius=size//4, fill="#17263b")
+              d.rounded_rectangle((size*.18,size*.27,size*.82,size*.71), radius=size*.075, fill="#87b3ff")
+              d.rounded_rectangle((size*.18,size*.21,size*.48,size*.34), radius=size*.045, fill="#87b3ff")
+              d.rounded_rectangle((size*.235,size*.36,size*.765,size*.64),radius=size*.05,fill="#253d5b")
+              for x in (.35, .49, .63):
+                  d.ellipse((size*(x-.027),size*.473,size*(x+.027),size*.527), fill="#9bc5ff")
+              path=Path(filename)
+              path.parent.mkdir(parents=True,exist_ok=True)
+              im.save(path,format="PNG",optimize=True)
+          PY
+      - name: Commit binary icons
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add nas_web/icon.png nas_web/logo.png nas_web/app/icon-192.png
+          if ! git diff --cached --quiet; then
+            git commit -m "Build binary Home Assistant and mobile icons"
+            git push
+          fi
