@@ -417,8 +417,71 @@ function askDialog({title,text,initial='',input=false,confirm='Продолжи�
 }
 async function renameItem(f){const name=await askDialog({title:'Переименовать',text:'Введите новое имя файла или папки.',initial:f.name,input:true,confirm:'Сохранить'});if(name&&name!==f.name)await mutate('rename',{path:fpath(f.name),name})}
 async function deleteItem(f){const approved=await askDialog({title:'Удалить '+(f.directory?'папку':'файл')+'?',text:'«'+f.name+'» будет удалён без возможности восстановления.'+(f.directory?' Папка должна быть пустой.':''),confirm:'Удалить',danger:true});if(approved)await mutate('delete',{path:fpath(f.name),directory:f.directory})}
-function uploadOne(file){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();const data=new FormData();data.set('share',selected);data.set('path',dir);data.set('file',file);xhr.open('POST','/api/upload');xhr.withCredentials=true;xhr.setRequestHeader('X-CSRF-Token',csrf);xhr.upload.onprogress=e=>{if(e.lengthComputable)el('progressFill').style.width=(e.loaded/e.total*100).toFixed(0)+'%'};xhr.onload=()=>xhr.status>=200&&xhr.status<300?resolve():reject(Error('HTTP '+xhr.status));xhr.onerror=()=>reject(Error('Сетевая ошибка'));xhr.send(data)})}
-async function uploadFiles(files){if(!selected||!files.length)return;const bar=el('uploadProgress');bar.classList.remove('hidden');for(const file of files){message('Загрузка: '+file.name);el('progressFill').style.width='0';try{await uploadOne(file)}catch(e){alert('Ошибка загрузки '+file.name+': '+e.message)}}bar.classList.add('hidden');refresh()}
+function chooseUploadDestination(files){
+  return new Promise(resolve=>{
+    let share=shares.includes(selected)?selected:shares[0],folder=dir||'';
+    const overlay=document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:16px';
+    const panel=document.createElement('div');
+    panel.style.cssText='width:min(480px,100%);max-height:85vh;overflow:auto;background:var(--panel,#20242c);color:var(--text,#fff);border:1px solid var(--border,#555);border-radius:18px;padding:20px;display:grid;gap:12px;box-shadow:0 20px 70px #0008';
+    const heading=document.createElement('strong');heading.textContent='Куда загрузить '+files.length+' файл(ов)?';
+    const select=document.createElement('select');select.style.cssText='width:100%;padding:12px;border-radius:10px;background:var(--panel2,#303642);color:inherit';
+    for(const name of shares){const option=document.createElement('option');option.value=name;option.textContent=name;select.append(option)}
+    select.value=share;
+    const location=document.createElement('div');location.style.cssText='font-size:13px;overflow-wrap:anywhere;opacity:.85';
+    const listing=document.createElement('div');listing.style.cssText='display:grid;gap:5px;max-height:38vh;overflow:auto';
+    const status=document.createElement('small');
+    const actions=document.createElement('div');actions.style.cssText='display:flex;gap:10px;justify-content:flex-end';
+    const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Отмена';
+    const confirm=document.createElement('button');confirm.type='button';confirm.textContent='Загрузить сюда';confirm.className='primary';
+    const close=value=>{overlay.remove();resolve(value)};
+    cancel.onclick=()=>close(null);
+    confirm.onclick=()=>close({share,path:folder});
+    overlay.onclick=e=>{if(e.target===overlay)close(null)};
+    const addFolder=(name,path)=>{
+      const btn=document.createElement('button');btn.type='button';btn.textContent='📁 '+name;
+      btn.style.cssText='text-align:left;padding:10px;border-radius:9px;overflow-wrap:anywhere';
+      btn.onclick=()=>{folder=path;load()};listing.append(btn);
+    };
+    let generation=0;
+    async function load(){
+      const current=++generation;
+      location.textContent='Папка назначения: '+share+'/'+folder;
+      listing.replaceChildren();status.textContent='Загрузка папок…';confirm.disabled=true;
+      if(folder)addFolder('.. На уровень выше',folder.split('/').slice(0,-1).join('/'));
+      try{
+        const data=await api('/api/list?'+qs({share,path:folder}));
+        if(current!==generation)return;
+        for(const item of data.items||[]){
+          if(item.directory&&item.name!=='.'&&item.name!=='..'&& !item.name.includes('/')&&!item.name.includes('\\')){
+            addFolder(item.name,[folder,item.name].filter(Boolean).join('/'));
+          }
+        }
+        status.textContent='Выберите папку или загрузите файлы сюда';
+        confirm.disabled=false;
+      }catch(err){if(current===generation)status.textContent='Нет доступа к папке: '+err.message}
+    }
+    select.onchange=()=>{share=select.value;folder='';load()};
+    actions.append(cancel,confirm);panel.append(heading,select,location,listing,status,actions);overlay.append(panel);document.body.append(overlay);
+    load();
+  });
+}
+function uploadOne(file,target){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();const data=new FormData();data.set('share',target.share);data.set('path',target.path);data.set('file',file);xhr.open('POST','/api/upload');xhr.withCredentials=true;xhr.setRequestHeader('X-CSRF-Token',csrf);xhr.upload.onprogress=e=>{if(e.lengthComputable)el('progressFill').style.width=(e.loaded/e.total*100).toFixed(0)+'%'};xhr.onload=()=>xhr.status>=200&&xhr.status<300?resolve():reject(Error('HTTP '+xhr.status));xhr.onerror=()=>reject(Error('Сетевая ошибка'));xhr.send(data)})}
+async function uploadFiles(files){
+  if(!shares.length||!files.length)return;
+  const target=await chooseUploadDestination(files);
+  if(!target)return;
+  const bar=el('uploadProgress');bar.classList.remove('hidden');
+  let success=0;
+  for(const file of files){
+    message('Загрузка в '+target.share+'/'+target.path+': '+file.name);
+    el('progressFill').style.width='0';
+    try{await uploadOne(file,target);success++}catch(e){alert('Ошибка загрузки '+file.name+': '+e.message)}
+  }
+  bar.classList.add('hidden');
+  message('Загружено '+success+' из '+files.length+' в '+target.share+'/'+target.path);
+  if(target.share===selected&&target.path===dir)await refresh();
+}
 el('togglePassword').onclick=()=>{const password=el('password'),visible=password.type==='password';password.type=visible?'text':'password';el('togglePassword').textContent=visible?'Скрыть':'Показать';password.focus()};
 el('loginForm').onsubmit=async e=>{e.preventDefault();el('loginError').textContent='';const submit=el('submitLogin');submit.disabled=true;submit.textContent='Проверяем доступ…';try{const form=new FormData();form.set('username',el('username').value);form.set('password',el('password').value);form.set('remember',el('remember').checked?'true':'false');const user=await api('/api/login',{method:'POST',body:form});el('password').value='';showApp(user)}catch(e){el('loginError').textContent=e.message}finally{submit.disabled=false;submit.innerHTML='Войти в NAS Web <span aria-hidden="true">→</span>'}};
 el('logout').onclick=async()=>{try{await api('/api/logout',{method:'POST'})}catch{}showLogin()};
