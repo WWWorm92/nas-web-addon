@@ -473,13 +473,12 @@ function chooseUploadDestination(files){
   });
 }
 const uploadQueue=[];
-let uploadActive=null;
 function showUploadCenter(){
   const overlay=document.createElement('div');overlay.className='transferOverlay';
   const panel=document.createElement('div');panel.className='transferPanel';
   const title=document.createElement('h3');title.textContent='Центр загрузок';
   const list=document.createElement('div');list.className='transferList';
-  const close=document.createElement('button');close.textContent='Закрыть';close.onclick=()=>overlay.remove();
+  const close=document.createElement('button');close.textContent='Закрыть';close.onclick=()=>dismiss();
   function paint(){
     list.replaceChildren();
     for(const job of uploadQueue.slice(-30).reverse()){
@@ -490,11 +489,11 @@ function showUploadCenter(){
       row.append(name,state,meter);list.append(row);
     }
   }
-  panel.append(title,list,close);overlay.append(panel);overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  const dismiss=()=>{document.removeEventListener('nas-upload-progress',refresh);overlay.remove()};
+  panel.append(title,list,close);overlay.append(panel);overlay.onclick=e=>{if(e.target===overlay)dismiss()};
   document.body.append(overlay);paint();
   const refresh=()=>{if(overlay.isConnected)paint()};
   document.addEventListener('nas-upload-progress',refresh);
-  overlay.addEventListener('click',()=>{if(!overlay.isConnected)document.removeEventListener('nas-upload-progress',refresh)});
 }
 function updateUploadJob(job,status,progress){
   job.status=status;job.progress=progress;
@@ -507,8 +506,11 @@ async function uploadFiles(files){
   if(!target)return;
   const bar=el('uploadProgress');bar.classList.remove('hidden');
   let success=0;
-  for(const file of files){
-    const job={name:file.name,status:'Ожидание',progress:0};uploadQueue.push(job);updateUploadJob(job,'Подготовка',0);
+  const jobs=files.map(file=>({name:file.name,status:'Ожидание',progress:0}));
+  uploadQueue.push(...jobs);
+  document.dispatchEvent(new Event('nas-upload-progress'));
+  for(let i=0;i<files.length;i++){
+    const file=files[i],job=jobs[i];updateUploadJob(job,'Подготовка',0);
     message('Загрузка в '+target.share+'/'+target.path+': '+file.name);
     el('progressFill').style.width='0';
     try{await uploadOne(file,target,job);success++;updateUploadJob(job,'Готово',100)}catch(e){updateUploadJob(job,'Ошибка: '+e.message,job.progress);alert('Ошибка загрузки '+file.name+': '+e.message)}
