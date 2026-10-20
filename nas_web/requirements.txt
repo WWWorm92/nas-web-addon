@@ -1,4 +1,4 @@
 fastapi==0.115.12
 uvicorn==0.34.2
-pysmb==1.2.13
+impacket==0.13.0
 python-multipart==0.0.20
