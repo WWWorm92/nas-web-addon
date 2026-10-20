@@ -59,6 +59,7 @@ def begin(db, owner, shares):
     exists = db.execute("SELECT 1 FROM jobs WHERE owner=?", (owner,)).fetchone()
     if not exists:
         db.execute("INSERT INTO jobs(owner,started) VALUES (?,?)", (owner, time.time()))
+    reuse_shared(db, owner, shares)
     for share in shares:
         present = db.execute("SELECT 1 FROM folders WHERE owner=? AND share=? AND path=''",
                              (owner, share)).fetchone()
@@ -123,9 +124,16 @@ def add_folder_contents(db, owner, share, folder, entries):
                 continue
             modified = float(entry.last_write_time or 0)
             sort_key = datetime.fromtimestamp(max(0, min(modified, 4102444800)), timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-            db.execute("INSERT OR REPLACE INTO photos(owner,share,path,folder,name,size,modified,sort_key) "
-                       "VALUES (?,?,?,?,?,?,?,?)",
-                       (owner, share, path, folder, name, int(entry.file_size), modified, sort_key))
+            old = db.execute("SELECT size,modified,taken,exif_checked,sort_key FROM photos WHERE owner=? AND share=? AND path=?", (owner,share,path)).fetchone()
+            if old and old["size"] == int(entry.file_size) and old["modified"] == modified:
+                continue
+            shared = db.execute("SELECT taken,exif_checked FROM shared_metadata WHERE share=? AND path=? AND size=? AND modified=?",
+                                (share,path,int(entry.file_size),modified)).fetchone()
+            taken = shared["taken"] if shared else None
+            checked = shared["exif_checked"] if shared else 0
+            db.execute("INSERT OR REPLACE INTO photos(owner,share,path,folder,name,size,modified,taken,exif_checked,sort_key) "
+                       "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                       (owner,share,path,folder,name,int(entry.file_size),modified,taken,checked,taken or sort_key))
             photos_count += 1
     db.execute("UPDATE folders SET done=1 WHERE owner=? AND share=? AND path=?", (owner, share, folder))
 
@@ -169,3 +177,30 @@ def reuse_shared(db, owner, shares):
                   WHERE owner=? AND exif_checked=0 AND EXISTS
                   (SELECT 1 FROM shared_metadata m WHERE m.share=photos.share AND m.path=photos.path
                    AND m.size=photos.size AND m.modified=photos.modified AND m.exif_checked=1)""", (owner,))
+
+def refresh_due(db, owner, shares, interval=6*3600):
+    """Refresh completed scans periodically, never restarting unfinished jobs."""
+    job = db.execute("SELECT started,complete FROM jobs WHERE owner=?", (owner,)).fetchone()
+    if not job or not job["complete"] or time.time()-job["started"] < interval:
+        return
+    if shares:
+        db.execute("UPDATE folders SET done=0 WHERE owner=? AND share IN (" +
+                   ",".join("?" for _ in shares) + ")", (owner,*shares))
+    db.execute("UPDATE jobs SET complete=0,started=? WHERE owner=?", (time.time(),owner))
+
+
+def prune_missing(db, owner, share, folder, entries):
+    """Only remove stale records after an authorized successful folder listing."""
+    present = {e.filename for e in entries}
+    for row in db.execute("SELECT path,name FROM photos WHERE owner=? AND share=? AND folder=?",
+                          (owner,share,folder)).fetchall():
+        if row["name"] not in present:
+            db.execute("DELETE FROM photos WHERE owner=? AND share=? AND path=?", (owner,share,row["path"]))
+    for row in db.execute("SELECT path FROM folders WHERE owner=? AND share=? AND path!=?",
+                          (owner,share,folder)).fetchall():
+        path = row["path"]
+        if path.rsplit("/",1)[0] == folder and path.rsplit("/",1)[-1] not in present:
+            db.execute("DELETE FROM photos WHERE owner=? AND share=? AND (path=? OR path LIKE ?)",
+                       (owner,share,path,path+"/%"))
+            db.execute("DELETE FROM folders WHERE owner=? AND share=? AND (path=? OR path LIKE ?)",
+                       (owner,share,path,path+"/%"))
