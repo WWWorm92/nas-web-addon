@@ -23,11 +23,11 @@ const size=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?(n/
 const fpath=name=>[dir,name].filter(Boolean).join('/');
 const fileUrl=(name,inline=false)=>'/api/file?'+qs({share:selected,path:fpath(name),inline:String(inline)});
 async function api(url,options={}){const r=await fetch(url,{credentials:'same-origin',...options,headers:{...(options.headers||{}),'X-CSRF-Token':csrf}});if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).detail||m}catch{}if(r.status===401&&url!=='/api/login')showLogin();throw Error(m)}return r.json()}
-function showLogin(){hideMenu();closePreview();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
-function showApp(user){csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
+function showLogin(){hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
+function showApp(user){photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
 function renderShares(){el('shares').replaceChildren();for(const share of shares){const b=document.createElement('button');b.className='share'+(share===selected?' selected':'');b.append(icon('disk'),document.createTextNode(' '+share));b.onclick=()=>choose(share);el('shares').append(b)}}
-function choose(share){hideMenu();selected=share;dir='';el('search').value='';renderShares();refresh()}
-function enterFolder(name){hideMenu();dir=fpath(name);el('search').value='';refresh()}
+function choose(share){photoCacheClear();hideMenu();selected=share;dir='';el('search').value='';renderShares();refresh()}
+function enterFolder(name){photoCacheClear();hideMenu();dir=fpath(name);el('search').value='';refresh()}
 function download(f){const a=document.createElement('a');a.href=fileUrl(f.name);a.download=f.name;a.click()}
 const isPhoto=f=>!f.directory&&imageExt.includes(ext(f.name));
 let gallery=[],zoom=1,panX=0,panY=0,preloadTimer=null,viewerSerial=0,shownShare='',shownDir='',filmNodes=new Map();
@@ -40,7 +40,7 @@ let photoFetches=new Map();
 function photoKey(f){return [csrf,shownShare,shownDir,f.name,f.modified||0,f.size||0].join('|')}
 function photoCacheGet(key){const entry=originalCache.get(key);if(!entry)return null;originalCache.delete(key);originalCache.set(key,entry);return entry.url}
 function photoCachePut(key,blob){
-  if(blob.size>ORIGINAL_CACHE_LIMIT)return URL.createObjectURL(blob);
+  if(blob.size>ORIGINAL_CACHE_LIMIT){originalObjectUrl=URL.createObjectURL(blob);return originalObjectUrl}
   const existing=originalCache.get(key);
   if(existing){originalCacheBytes-=existing.size;URL.revokeObjectURL(existing.url);originalCache.delete(key)}
   const url=URL.createObjectURL(blob);
@@ -87,7 +87,7 @@ function resetZoom(){zoom=1;panX=0;panY=0}
 function setZoom(scale,cx=0,cy=0){const img=el('previewBody').querySelector('img');if(!img)return;const prev=zoom;zoom=Math.max(1,Math.min(5,scale));if(zoom===1){panX=panY=0}else if(prev!==zoom){panX+=(cx-panX)*(1-prev/zoom);panY+=(cy-panY)*(1-prev/zoom)}drawZoom()}
 function drawZoom(){const img=el('previewBody').querySelector('img');if(!img)return;const bound=el('photoStage').getBoundingClientRect(),w=(img.naturalWidth||bound.width),h=(img.naturalHeight||bound.height),fit=Math.min(bound.width/w,bound.height/h),cw=w*fit,ch=h*fit;panX=Math.max(-Math.max(0,(cw*zoom-bound.width)/2),Math.min(Math.max(0,(cw*zoom-bound.width)/2),panX));panY=Math.max(-Math.max(0,(ch*zoom-bound.height)/2),Math.min(Math.max(0,(ch*zoom-bound.height)/2),panY));img.style.transform='translate('+panX+'px,'+panY+'px) scale('+zoom+')'}
 function openPreview(f){if(f.directory)return enterFolder(f.name);filmNodes.clear();if(!canPreview(f))return download(f);shownShare=selected;shownDir=dir;const photos=isPhoto(f);gallery=photos?items.filter(isPhoto):[f];previewIndex=Math.max(0,gallery.findIndex(x=>x.name===f.name));el('preview').style.display='flex';document.body.style.overflow='hidden';showPreview(0)}
-function closePreview(){viewerSerial++;clearOriginal();clearTimeout(preloadTimer);el('previewBody').replaceChildren();el('preview').style.display='none';el('filmstrip').replaceChildren();previewIndex=-1;gallery=[];filmNodes.clear();resetZoom();document.body.style.overflow=''}
+function closePreview(){viewerSerial++;clearOriginal();for(const job of photoFetches.values())job.controller.abort();photoFetches.clear();clearTimeout(preloadTimer);el('previewBody').replaceChildren();el('preview').style.display='none';el('filmstrip').replaceChildren();previewIndex=-1;gallery=[];filmNodes.clear();resetZoom();document.body.style.overflow=''}
 function showPreview(direction=0){if(previewIndex<0||!gallery.length)return;const serial=++viewerSerial,f=gallery[previewIndex],box=el('previewBody');clearOriginal();clearTimeout(preloadTimer);resetZoom();box.replaceChildren();el('viewerSpinner').textContent='Загрузка…';el('previewCounter').textContent=(previewIndex+1)+' / '+gallery.length;el('previewTitle').textContent=f.name;el('viewerSpinner').classList.toggle('hidden',!isPhoto(f));el('photoStage').style.touchAction=isPhoto(f)?'none':'auto';let node;if(isPhoto(f)){node=document.createElement('img');node.alt=f.name;node.draggable=false;node.className='arriving';node.style.setProperty('--slide',direction>0?'30px':direction<0?'-30px':'0px');node.onload=()=>{if(serial!==viewerSerial)return;el('viewerSpinner').classList.add('hidden');drawZoom()};node.onerror=()=>{if(serial===viewerSerial)el('viewerSpinner').textContent='Изображение недоступно'};node.src=imageURL(f,false);
 const photoId=photoKey(f),cachedPhoto=photoCacheGet(photoId);
 for(const [key,job] of photoFetches){if(key!==photoId){job.controller.abort();photoFetches.delete(key)}}
