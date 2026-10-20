@@ -873,29 +873,15 @@ const galleryNextObserver=new IntersectionObserver(entries=>{
 },{rootMargin:'450px 0px'});
 galleryNextObserver.observe(el('galleryLoadMore'));
 
-el('galleryRetryDates').onclick=async()=>{
- const approved=await askDialog({title:'Повторная проверка дат?',text:'Проверим только фотографии без найденной даты. Существующий индекс и уже найденные даты сохранятся. Проверка может идти всю ночь.',confirm:'Начать'});
- if(!approved)return;
- const button=el('galleryRetryDates');button.disabled=true;
- try{
-   const result=await api('/api/gallery/retry-dates',{method:'POST'});
-   button.textContent='В очереди: '+result.queued+' фото';
-   allPhotoStatus=result;
-   if(allPhotosMode){const token=++allPhotoScanToken;scanAllPhotos(token)}
- }catch(e){message(e.message)}
- finally{button.disabled=false}
-};
+// User-facing refresh never resets the SQLite photo index or EXIF progress.
+el('galleryRetryDates').onclick=()=>message('Проверка дат доступна в администрировании');
 el('globalGalleryRescan').onclick=async()=>{
-  const approved=await askDialog({title:'Обновить фототеку?',text:'NAS Web заново найдёт фотографии во всех доступных папках. Существующие файлы не изменятся.',confirm:'Обновить'});
-  if(!approved||!allPhotosMode)return;
-  allPhotoScanToken++;
-  try{
-    await api('/api/gallery/reindex',{method:'POST'});
-    allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;render();
-    const token=++allPhotoScanToken;
-    await loadGlobalPage(true);
-    if(allPhotosMode&&token===allPhotoScanToken)scanAllPhotos(token);
-  }catch(e){message(e.message)}
+  if(!allPhotosMode)return;
+  const token=++allPhotoScanToken;
+  allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryRenderSignature='';
+  render();
+  await loadGlobalPage(true);
+  if(allPhotosMode&&token===allPhotoScanToken)scanAllPhotos(token);
 };
 el('refresh').onclick=()=>allPhotosMode?el('globalGalleryRescan').click():refresh();el('search').oninput=render;el('sort').onchange=render;
 el('gridView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='grid';localStorage.setItem('nas_view',view);render()};
