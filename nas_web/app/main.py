@@ -240,7 +240,7 @@ def list_files(request: Request, share: str, path: str = ""):
 
 @app.get("/api/thumb")
 def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool = False):
-    """Fast persistent user-scoped preview, checked against live SMB permissions."""
+    """Serve small images quickly, with cache hit and stage latency diagnostics."""
     u = user_for(request)
     p = path_ok(path)
     name_ok(share)
@@ -249,6 +249,23 @@ def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool 
     if p.rsplit(".", 1)[-1].lower() not in {"jpg", "jpeg", "png", "webp", "gif"}:
         fail(404, "Unsupported image")
     key = thumb_cache.key_for(u["name"], share, p, v[:80] + (":large" if large else ":small"))
+    start = time.perf_counter()
+    timings = {"queue": 0, "smb": 0, "decode": 0, "cache": 0}
+    def ms(since):
+        return int((time.perf_counter() - since) * 1000)
+    def finish(data, cache_status):
+        elapsed = ms(start)
+        if elapsed > 1200:
+            logger.warning(
+                "Thumbnail performance: state=%s size=%s total=%dms queue=%dms smb=%dms decode=%dms cache=%dms storage=%s",
+                cache_status, "large" if large else "small", elapsed,
+                timings["queue"], timings["smb"], timings["decode"], timings["cache"],
+                thumb_cache.CACHE_ROOT
+            )
+        return Response(data, media_type="image/webp", headers={
+            "X-Thumbnail-Cache": cache_status,
+            "Server-Timing": "thumb;dur=" + str(elapsed),
+        })
     class LimitedBuffer(io.BytesIO):
         def write(self, data):
             if self.tell() + len(data) > 25 * 1024 * 1024:
@@ -257,23 +274,33 @@ def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool 
     try:
         cached = thumb_cache.get(key)
         if cached is not None:
-            # Do not allow access to cached bytes after SMB rights were revoked.
+            tick = time.perf_counter()
             with smb(u) as conn:
                 conn.can_read(share, "/" + p)
-            return Response(cached, media_type="image/webp")
+            timings["smb"] += ms(tick)
+            return finish(cached, "HIT")
+        tick = time.perf_counter()
         with thumb_cache.WORKERS:
+            timings["queue"] = ms(tick)
             cached = thumb_cache.get(key)
-            with smb(u) as conn:
-                if cached is not None:
+            if cached is not None:
+                tick = time.perf_counter()
+                with smb(u) as conn:
                     conn.can_read(share, "/" + p)
-                    return Response(cached, media_type="image/webp")
+                timings["smb"] += ms(tick)
+                return finish(cached, "HIT-WAIT")
+            tick = time.perf_counter()
+            with smb(u) as conn:
                 buffer = LimitedBuffer()
                 conn.retrieveFile(share, "/" + p, buffer, timeout=40)
-            # Fast path: never resize/encode a 1600px preview while generating
-            # a 256px folder thumbnail. Large renditions are demand-driven.
+            timings["smb"] += ms(tick)
+            tick = time.perf_counter()
             result = thumb_cache.render_image(buffer, large=large)
+            timings["decode"] = ms(tick)
+            tick = time.perf_counter()
             thumb_cache.put(key, result)
-        return Response(result, media_type="image/webp")
+            timings["cache"] = ms(tick)
+        return finish(result, "MISS")
     except HTTPException:
         raise
     except (ValueError, UnidentifiedImageError, OSError):
