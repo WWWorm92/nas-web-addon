@@ -15,6 +15,31 @@ jobs:
           node-version: '22'
       - name: Python syntax
         run: python -m compileall -q nas_web/app
+      - name: Remember-me login tests
+        run: |
+          pip install cryptography==46.0.3
+          PYTHONPATH=nas_web python - <<'PY'
+          import tempfile
+          from pathlib import Path
+          from app import remember_auth
+          with tempfile.TemporaryDirectory() as tmp:
+              remember_auth.ROOT = Path(tmp) / "private"
+              remember_auth.KEY = remember_auth.ROOT / "secret.key"
+              remember_auth.DB = remember_auth.ROOT / "revoked.sqlite3"
+              user = {"name": "tester", "password": "secret", "csrf": "token", "shares": ["HDD"]}
+              cookie = remember_auth.issue(user)
+              assert remember_auth.restore(cookie)["name"] == "tester"
+              assert remember_auth.restore(cookie)["password"] == "secret"
+              # Simulate application restart (the Fernet key must survive).
+              remember_auth._cipher = None
+              assert remember_auth.restore(cookie)["csrf"] == "token"
+              remember_auth.revoke(cookie)
+              remember_auth._cipher = None
+              assert remember_auth.restore(cookie) is None
+              assert remember_auth.restore("bad-cookie") is None
+              assert remember_auth.KEY.stat().st_mode & 0o077 == 0
+          print("Persistent remember-me recovery and revocation OK")
+          PY
       - name: JavaScript syntax
         run: node --check nas_web/app/app.js
       - name: Basic UI DOM contracts
