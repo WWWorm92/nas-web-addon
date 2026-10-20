@@ -183,7 +183,10 @@ jobs:
           print("Unified gallery index and access scoping OK")
           PY
       - name: JavaScript syntax
-        run: node --check nas_web/app/app.js
+        run: |
+          node --check nas_web/app/app.js
+          node --check nas_web/app/admin.js
+          sh -n nas_web/entrypoint.sh
       - name: Basic UI DOM contracts
         run: |
           python - <<'PY'
