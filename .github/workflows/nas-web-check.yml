@@ -40,6 +40,30 @@ jobs:
               assert remember_auth.KEY.stat().st_mode & 0o077 == 0
           print("Persistent remember-me recovery and revocation OK")
           PY
+      - name: EXIF date index tests
+        run: |
+          pip install Pillow==11.3.0
+          PYTHONPATH=nas_web python - <<'PY'
+          import io
+          import tempfile
+          from pathlib import Path
+          from PIL import Image
+          from app import photo_dates
+
+          with tempfile.TemporaryDirectory() as work:
+              photo_dates.DB = Path(work) / "photo-dates.sqlite3"
+              exif = Image.Exif()
+              exif[36867] = "2019:06:21 12:34:56"
+              source = io.BytesIO()
+              Image.new("RGB", (10, 10)).save(source, format="JPEG", exif=exif)
+              source.seek(0)
+              assert photo_dates.parse_exif(source) == "2019-06-21T12:34:56"
+              assert photo_dates.lookup("user", "disk", "photo.jpg", 1, 100) == (False, None)
+              photo_dates.save("user", "disk", "photo.jpg", 1, 100, "2019-06-21T12:34:56")
+              assert photo_dates.lookup("user", "disk", "photo.jpg", 1, 100) == (True, "2019-06-21T12:34:56")
+              assert photo_dates.lookup("other", "disk", "photo.jpg", 1, 100) == (False, None)
+          print("EXIF and metadata cache OK")
+          PY
       - name: JavaScript syntax
         run: node --check nas_web/app/app.js
       - name: Basic UI DOM contracts
