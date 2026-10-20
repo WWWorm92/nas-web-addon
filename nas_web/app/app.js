@@ -817,6 +817,18 @@ const galleryNextObserver=new IntersectionObserver(entries=>{
 },{rootMargin:'450px 0px'});
 galleryNextObserver.observe(el('galleryLoadMore'));
 
+el('galleryRetryDates').onclick=async()=>{
+ const approved=await askDialog({title:'Повторная проверка дат?',text:'Проверим только фотографии без найденной даты. Существующий индекс и уже найденные даты сохранятся. Проверка может идти всю ночь.',confirm:'Начать'});
+ if(!approved)return;
+ const button=el('galleryRetryDates');button.disabled=true;
+ try{
+   const result=await api('/api/gallery/retry-dates',{method:'POST'});
+   button.textContent='В очереди: '+result.queued+' фото';
+   allPhotoStatus=result;
+   if(allPhotosMode){const token=++allPhotoScanToken;scanAllPhotos(token)}
+ }catch(e){message(e.message)}
+ finally{button.disabled=false}
+};
 el('globalGalleryRescan').onclick=async()=>{
   const approved=await askDialog({title:'Обновить фототеку?',text:'NAS Web заново найдёт фотографии во всех доступных папках. Существующие файлы не изменятся.',confirm:'Обновить'});
   if(!approved||!allPhotosMode)return;
