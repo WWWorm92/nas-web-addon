@@ -39,6 +39,13 @@ def connect():
       );
       CREATE INDEX IF NOT EXISTS photo_order ON photos(owner, sort_key DESC, share, path);
       CREATE INDEX IF NOT EXISTS photo_identity ON photos(share,path,size,modified,exif_checked);
+      CREATE TABLE IF NOT EXISTS exif_denied (
+        owner TEXT NOT NULL, share TEXT NOT NULL, path TEXT NOT NULL,
+        size INTEGER NOT NULL, modified REAL NOT NULL,
+        retry_after REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY(owner,share,path)
+      );
+      CREATE INDEX IF NOT EXISTS exif_denied_retry ON exif_denied(owner,retry_after);
       CREATE TABLE IF NOT EXISTS folders (
         owner TEXT NOT NULL, share TEXT NOT NULL, path TEXT NOT NULL,
         done INTEGER NOT NULL DEFAULT 0,
@@ -206,18 +213,42 @@ def retry_missing_dates(db, owner, shares):
     return count
 
 
+def mark_exif_denied(db, owner, row):
+    """Record ACL failure without changing photo or EXIF state."""
+    db.execute("""INSERT INTO exif_denied(owner,share,path,size,modified,retry_after,attempts)
+                  VALUES (?,?,?,?,?,?,1)
+                  ON CONFLICT(owner,share,path) DO UPDATE SET
+                    size=excluded.size,modified=excluded.modified,
+                    retry_after=excluded.retry_after,attempts=exif_denied.attempts+1""",
+               (owner,row["share"],row["path"],row["size"],row["modified"],time.time()+86400))
+
+
+def clear_exif_denied(db, owner, share, path):
+    db.execute("DELETE FROM exif_denied WHERE owner=? AND share=? AND path=?",(owner,share,path))
+
+
+def denied_count(db, owner):
+    return db.execute("""SELECT COUNT(*) FROM exif_denied d JOIN photos p
+                          ON p.owner=d.owner AND p.share=d.share AND p.path=d.path
+                          WHERE d.owner=? AND p.exif_checked=0 AND p.size=d.size
+                          AND p.modified=d.modified AND d.retry_after>?""",
+                      (owner,time.time())).fetchone()[0]
+
+
 def next_unchecked(db, owner, shares, excluded=()):
-    """Get next pending photo, excluding files denied during this worker run."""
     if not shares:
         return None
     excluded=tuple(excluded)
-    sql=("SELECT share,path,name,size,modified FROM photos WHERE owner=? "
-         "AND share IN (" + ",".join("?" for _ in shares) + ") "
-         "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' "
-         "OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')")
-    args=[owner,*shares]
+    sql=("SELECT p.share,p.path,p.name,p.size,p.modified FROM photos p WHERE p.owner=? "
+         "AND p.share IN (" + ",".join("?" for _ in shares) + ") "
+         "AND p.exif_checked=0 AND (lower(p.name) LIKE '%.jpg' OR lower(p.name) LIKE '%.jpeg' "
+         "OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp') "
+         "AND NOT EXISTS (SELECT 1 FROM exif_denied d WHERE d.owner=p.owner "
+         "AND d.share=p.share AND d.path=p.path AND d.size=p.size "
+         "AND d.modified=p.modified AND d.retry_after>?)")
+    args=[owner,*shares,time.time()]
     if excluded:
-        sql+=" AND (share || char(31) || path) NOT IN ("+",".join("?" for _ in excluded)+")"
+        sql+=" AND (p.share || char(31) || p.path) NOT IN ("+",".join("?" for _ in excluded)+")"
         args.extend(share+"\\x1f"+path for share,path in excluded)
     return db.execute(sql+" LIMIT 1",args).fetchone()
 
