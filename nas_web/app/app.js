@@ -22,8 +22,8 @@ const canPreview=f=>!f.directory&&(imageExt.includes(ext(f.name))||videoExt.incl
 const size=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?(n/1048576).toFixed(1)+' MB':(n/1073741824).toFixed(2)+' GB';
 const fpath=name=>[dir,name].filter(Boolean).join('/');
 const fileUrl=(name,inline=false)=>'/api/file?'+qs({share:selected,path:fpath(name),inline:String(inline)});
-async let loginGeneration=0;
-function api(url,options={}){const r=await fetch(url,{credentials:'same-origin',...options,headers:{...(options.headers||{}),'X-CSRF-Token':csrf}});if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).detail||m}catch{}if(r.status===401&&url!=='/api/login'&&url!=='/api/me')showLogin();throw Error(m)}return r.json()}
+let loginGeneration=0;
+async function api(url,options={}){const r=await fetch(url,{credentials:'same-origin',...options,headers:{...(options.headers||{}),'X-CSRF-Token':csrf}});if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).detail||m}catch{}if(r.status===401&&url!=='/api/login'&&url!=='/api/me')showLogin();throw Error(m)}return r.json()}
 function showLogin(){leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
 function showApp(user){closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
 function renderShares(){el('shares').replaceChildren();for(const share of shares){const b=document.createElement('button');b.className='share'+(share===selected?' selected':'');b.append(icon('disk'),document.createTextNode(' '+share));b.onclick=()=>choose(share);el('shares').append(b)}}
