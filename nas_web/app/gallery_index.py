@@ -236,7 +236,7 @@ def reuse_shared(db, owner, shares):
         return
     db.execute("""INSERT OR IGNORE INTO shared_metadata(share,path,size,modified,taken,exif_checked)
                   SELECT share,path,size,modified,taken,exif_checked FROM photos
-                  WHERE exif_checked=1 AND share IN (""" + ",".join("?" for _ in shares) + ")", tuple(shares))
+                  WHERE exif_checked=1 AND taken IS NOT NULL AND share IN (""" + ",".join("?" for _ in shares) + ")", tuple(shares))
     db.execute("""UPDATE photos SET
                   taken=(SELECT m.taken FROM shared_metadata m WHERE m.share=photos.share
                          AND m.path=photos.path AND m.size=photos.size AND m.modified=photos.modified),
@@ -245,7 +245,7 @@ def reuse_shared(db, owner, shares):
                          AND m.path=photos.path AND m.size=photos.size AND m.modified=photos.modified),sort_key)
                   WHERE owner=? AND exif_checked=0 AND EXISTS
                   (SELECT 1 FROM shared_metadata m WHERE m.share=photos.share AND m.path=photos.path
-                   AND m.size=photos.size AND m.modified=photos.modified AND m.exif_checked=1)""", (owner,))
+                   AND m.size=photos.size AND m.modified=photos.modified AND m.exif_checked=1 AND m.taken IS NOT NULL)""", (owner,))
 
 def refresh_due(db, owner, shares, interval=6*3600):
     """Refresh completed scans periodically, never restarting unfinished jobs."""
