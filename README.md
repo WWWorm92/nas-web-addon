@@ -55,3 +55,12 @@ This repository is an early prototype, **not a production-ready cloud drive**.
 - Thumbnail generation is limited to two concurrent workers to reduce Raspberry Pi load. First opening a large photo folder still requires processing its originals.
 - Cached thumbnails remain visible to that same authenticated session until expiry even if source SMB rights change meanwhile. Revoke the NAS Web session or restart the add-on if permissions need to take effect immediately for cached thumbnails.
 - This is still **LAN testing only**; do not expose via KeenDNS yet.
+
+
+## 0.5.0 — mobile media improvements
+
+- Touch-swipe left/right in the photo viewer on phones; arrows remain available.
+- Full-screen photo preview uses a cached 1600x1200 WebP instead of fetching the original photo. Download still returns the original.
+- HTML5 video/audio playback is now provided by `/api/video` with standard HTTP byte-range requests (`206 Partial Content`), backed by SMB random reads. It no longer stages the entire media file in a temporary download before playing.
+- Supported container/extension recognition: MP4, WebM, M4V, MOV, MP3 and OGG. Actual playback also depends on browser video/audio codec support. In particular, browsers may not play every MOV/HEVC recording.
+- These changes are not yet tested against real smartphone browsers or the user's NAS. **LAN-only testing remains mandatory; do not publish through KeenDNS yet.**
