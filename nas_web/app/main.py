@@ -8,7 +8,7 @@ import secrets
 import tempfile
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
@@ -38,6 +38,29 @@ ATTEMPTS = {}
 RATE_WINDOW = 600
 RATE_LIMIT = 10
 COOKIE_SECURE = bool(opts.get('https_only', False))
+
+# Prioritize foreground photo transfers over new thumbnail SMB reads.
+PHOTO_TRANSFER_CONDITION = threading.Condition()
+ACTIVE_PHOTO_TRANSFERS = 0
+
+@contextmanager
+def foreground_photo_transfer():
+    global ACTIVE_PHOTO_TRANSFERS
+    with PHOTO_TRANSFER_CONDITION:
+        ACTIVE_PHOTO_TRANSFERS += 1
+    try:
+        yield
+    finally:
+        with PHOTO_TRANSFER_CONDITION:
+            ACTIVE_PHOTO_TRANSFERS -= 1
+            PHOTO_TRANSFER_CONDITION.notify_all()
+
+def wait_for_photo_transfer():
+    # Bounded waiting avoids starving thumbnails during extended viewing.
+    with PHOTO_TRANSFER_CONDITION:
+        PHOTO_TRANSFER_CONDITION.wait_for(lambda: ACTIVE_PHOTO_TRANSFERS == 0, timeout=4)
+
+
 
 @app.on_event("startup")
 def report_cache_state():
@@ -322,6 +345,8 @@ def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool 
                     conn.can_read(share, "/" + p)
                 timings["smb"] += ms(tick)
                 return finish(cached, "HIT-WAIT")
+            if not large:
+                wait_for_photo_transfer()
             tick = time.perf_counter()
             with smb(u) as conn:
                 timings["connect"] = ms(tick)
@@ -472,13 +497,14 @@ def get_file(request: Request, share: str, path: str, inline: bool = False):
         chunks = 0
         finished = False
         try:
-            with smb(u) as conn:
-                for block in conn.iter_range(share, "/" + p, first, size):
-                    if first_byte_ms is None:
-                        first_byte_ms = round((time.perf_counter() - stream_started) * 1000)
-                    bytes_sent += len(block)
-                    chunks += 1
-                    yield block
+            with (foreground_photo_transfer() if inline and suffix in {"jpg", "jpeg", "png", "webp", "gif"} else nullcontext()):
+                with smb(u) as conn:
+                    for block in conn.iter_range(share, "/" + p, first, size):
+                        if first_byte_ms is None:
+                            first_byte_ms = round((time.perf_counter() - stream_started) * 1000)
+                        bytes_sent += len(block)
+                        chunks += 1
+                        yield block
             finished = True
         finally:
             elapsed_ms = round((time.perf_counter() - stream_started) * 1000)
