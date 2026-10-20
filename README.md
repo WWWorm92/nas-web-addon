@@ -73,3 +73,17 @@ This repository is an early prototype, **not a production-ready cloud drive**.
 - Backend now interprets common SMB errors (access denied, file exists, folder not empty, path missing), returning actionable messages and writing the SMB error to add-on logs.
 - **Note:** backend code has not yet been tested against Simple NAS for folder creation/deletion. Successful browsing or uploading does not imply permission to delete or create directories. If actions still fail, send the specific UI error and corresponding NAS Web log line.
 - Keep this add-on LAN-only while external HTTPS deployment and security testing are pending.
+
+
+## Version 0.6.0 — mobile photo viewer and performance
+
+- Full-screen viewer with **photo index/total** at the top (e.g. 2 / 234).
+- Bottom **thumbnail carousel** replaces the previous arrow buttons, with the selected photo centered.
+- Native touch **horizontal swipes**, **pinch zoom** (1–5×), dragging when zoomed and **double-tap to zoom/reset**.
+- Smooth image transition and adjacent photo prefetch.
+- On opening a photo, the small cached thumbnail is displayed first while a higher-resolution preview loads.
+- Folder grids now fetch thumbnails **only when visible or near the viewport** with IntersectionObserver.
+- Thumbnail cache is shared between a user's separate browser sessions and devices (same SMB username), stored under /tmp/nasweb-thumbs, capped around 192 MiB and expires after 24 hours. The cache is lost on add-on restart.
+- Before cached bytes are sent, NAS Web authenticates the user and checks file-read access via Samba. The original files are not copied or modified.
+- This is an unverified upgrade: please test on both the Pi 4 and a physical phone. First-time processing of uncached photos still has to download the original from the HDD and may be slow.
+- Continue **LAN-only**; do not expose the app via KeenDNS yet.
