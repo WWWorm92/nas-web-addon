@@ -42,8 +42,9 @@ def parse_exif(buffer):
         with Image.open(buffer) as image:
             data = image.getexif()
             # DateTimeOriginal (36867), DateTimeDigitized, DateTime
+            nested = data.get_ifd(34665) if 34665 in data else {}
             for tag in (36867, 36868, 306):
-                value = data.get(tag)
+                value = nested.get(tag) or data.get(tag)
                 if not isinstance(value, str):
                     continue
                 text = value.strip()[:19]
