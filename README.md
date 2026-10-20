@@ -87,3 +87,15 @@ This repository is an early prototype, **not a production-ready cloud drive**.
 - Before cached bytes are sent, NAS Web authenticates the user and checks file-read access via Samba. The original files are not copied or modified.
 - This is an unverified upgrade: please test on both the Pi 4 and a physical phone. First-time processing of uncached photos still has to download the original from the HDD and may be slow.
 - Continue **LAN-only**; do not expose the app via KeenDNS yet.
+
+
+## 0.6.1 Performance pass (experimental)
+
+- **SMB round trips:** stop listing every share before each directory read, upload, download or file operation. The sign-in share allowlist still gates requests, and Samba performs the actual filesystem permission checks.
+- **Photos:** each uncached original is read once and produces both small (256×192) and viewer (1600×1200) WebP renditions. Viewer opens no longer require another complete read of the same source after thumbnail generation.
+- **Cache:** thumbnails and previews use the add-on's writable `/data/nasweb-thumbs` volume where available (falls back to `/tmp`); bounded at 384 MiB and aged out after seven days. Never cache originals.
+- **User separation:** cache keys include the SMB username, share, path, and client-supplied modification metadata; every cache hit checks current SMB file-read rights. Passwords are not written to cache.
+- **Mobile:** limit gallery thumbnail HTTP requests to three concurrent in-flight images, and only schedule images near the viewport.
+- **Diagnostics:** requests exceeding 1.5 seconds on `/api/thumb`, `/api/list`, or `/api/video` generate `Slow request` log lines with elapsed milliseconds. Responses include `Server-Timing`.
+- This code has **not** been benchmarked on a real Raspberry Pi / Simple NAS. The first read of an unseen photo still downloads the source over SMB; HDD throughput, CPU, Wi-Fi and browser behavior remain hardware-dependent.
+- Test LAN-only; external KeenDNS publication is not cleared for this build.
