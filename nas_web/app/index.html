@@ -39,6 +39,33 @@
 @media(prefers-reduced-motion:reduce){
   #preview.dismissClosing .photoHeader,#preview.dismissClosing .filmstrip{transition:none}
 }
+
+/* 0.8.3: distraction-free photo viewer */
+#preview .photoHeader,#preview .filmstrip{transition:opacity .22s ease,transform .22s ease,visibility .22s}
+#preview.controlsHidden .photoHeader{opacity:0;visibility:hidden;transform:translateY(-16px);pointer-events:none}
+#preview.controlsHidden .filmstrip{opacity:0;visibility:hidden;transform:translateY(16px);pointer-events:none}
+#preview.controlsHidden .photoStage{top:0;bottom:0}
+#preview .photoStage{transition:top .22s ease,bottom .22s ease}
+@media(max-width:650px){
+  .photoHeader{padding-top:max(10px,env(safe-area-inset-top))}
+  .filmstrip{height:calc(74px + env(safe-area-inset-bottom));gap:5px;padding:7px 10px calc(8px + env(safe-area-inset-bottom));background:linear-gradient(transparent,#0b101bdc 34%)}
+  .filmstrip button{flex:0 0 51px;width:51px;height:54px;border-radius:11px;border-width:2px;opacity:.62}
+  .filmstrip button.active{opacity:1;transform:scale(1.04);box-shadow:0 0 0 1px #82acff45}
+  .photoStage{bottom:calc(76px + env(safe-area-inset-bottom))}
+  .items:not(.list){gap:9px}
+  .items:not(.list) .item{border-radius:15px;box-shadow:0 3px 13px #0000000a}
+  .items:not(.list) .thumb{height:clamp(112px,33vw,170px);position:relative}
+  .items:not(.list) .thumb img{animation:galleryImageAppear .3s ease both}
+  .items:not(.list) .details{padding:9px 10px 11px}
+  .items:not(.list) .filename{font-size:12px;font-weight:600}
+  .items:not(.list) .more{min-height:32px;min-width:32px;padding:3px 8px;background:var(--panel);border-radius:10px}
+}
+@keyframes galleryImageAppear{from{opacity:.4}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){
+  #preview .photoHeader,#preview .filmstrip,#preview .photoStage{transition:none}
+  .items:not(.list) .thumb img{animation:none}
+}
+
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
 <div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">ФАЙЛЫ И ПАПКИ</p><div class="path" id="crumb">Выберите хранилище</div></div></div>
