@@ -19,8 +19,8 @@ WORKERS = threading.BoundedSemaphore(2)
 FILES_LOCK = threading.RLock()
 OPS = 0
 
-def key_for(token, share, path, version):
-    text = "\0".join((token, share, path, version))
+def key_for(username, share, path, version):
+    text = "\0".join((username.casefold(), share, path, version))
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 def get(key):
