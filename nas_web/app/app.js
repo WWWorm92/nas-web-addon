@@ -308,6 +308,7 @@ function gallerySettingsOpen(open){
   }
   panel.classList.toggle('hidden',!open);
 }
+let globalGalleryOrder=localStorage.getItem('nasweb-gallery-order')==='modified'?'modified':'taken';
 const orderSelect=el('galleryOrderSelect');
 orderSelect.value=globalGalleryOrder;el('galleryOrderDesktop').value=globalGalleryOrder;
 el('galleryOrderDesktop').onchange=()=>setGlobalGalleryOrder(el('galleryOrderDesktop').value);
@@ -427,7 +428,7 @@ function leaveGlobalGallery(){
   el('search').value='';el('search').placeholder='Поиск файлов и папок…';
   renderBreadcrumb();render();updateMobileNav();
 }
-let globalGalleryOrder=localStorage.getItem('nasweb-gallery-order')==='modified'?'modified':'taken';
+
 function setGlobalGalleryOrder(order){
  if(!['taken','modified'].includes(order)||order===globalGalleryOrder)return;
  globalGalleryOrder=order;localStorage.setItem('nasweb-gallery-order',order);
