@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates
+from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -378,6 +378,91 @@ def photo_capture_dates(request: Request, payload: dict, x_csrf_token: str = Hea
                     photo_dates.save(u["name"], share, p, file["modified"], file["size"], taken)
                     results[name] = {"taken": taken, "cached": True}
     return {"dates": results}
+
+# The unified photo library is indexed incrementally and scoped to each
+# authenticated SMB user. A single worker prevents NAS traversal storms.
+GALLERY_SCAN_LOCK = threading.Lock()
+
+@app.get("/api/gallery")
+def unified_gallery(request: Request, offset: int = 0, limit: int = 90):
+    u = user_for(request)
+    if offset < 0 or limit < 1 or limit > 120:
+        fail(400, "Некорректная страница галереи")
+    shares = list(u.get("shares", []))
+    owner = gallery_index.key(u["name"])
+    status = gallery_index.state(owner, shares)
+    return {"items": gallery_index.page(owner, shares, offset, limit), **status}
+
+
+@app.post("/api/gallery/scan")
+def scan_unified_gallery(request: Request, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    shares = list(u.get("shares", []))
+    owner = gallery_index.key(u["name"])
+    if not GALLERY_SCAN_LOCK.acquire(blocking=False):
+        return {"busy": True, **gallery_index.state(owner, shares)}
+    try:
+        with gallery_index.LOCK, gallery_index.connect() as db:
+            gallery_index.begin(db, owner, shares)
+            with smb(u) as conn:
+                for _ in range(3):
+                    folder = gallery_index.pending_folder(db, owner)
+                    if folder is None:
+                        break
+                    share, path = folder["share"], folder["path"]
+                    if share not in shares:
+                        db.execute("UPDATE folders SET done=1 WHERE owner=? AND share=? AND path=?",
+                                   (owner, share, path))
+                        continue
+                    try:
+                        check_share(conn, share)
+                        entries = conn.listPath(share, full(path), timeout=20)
+                    except Exception as exc:
+                        logger.info("Gallery folder skipped: %s", type(exc).__name__)
+                        entries = ()
+                    gallery_index.add_folder_contents(db, owner, share, path, entries)
+                if gallery_index.pending_folder(db, owner) is None:
+                    db.execute("UPDATE jobs SET complete=1 WHERE owner=?", (owner,))
+                    # EXIF reads are limited to 3 JPEG headers per request.
+                    for _ in range(3):
+                        row = gallery_index.next_unchecked(db, owner, shares)
+                        if row is None:
+                            break
+                        taken = None
+                        try:
+                            # Read permission is checked by SMB for each image.
+                            # Always defer if a foreground photo is loading.
+                            wait_for_photo_transfer()
+                            cached, taken = photo_dates.lookup(
+                                u["name"], row["share"], row["path"],
+                                row["modified"], row["size"])
+                            if not cached and row["size"]:
+                                taken = photo_dates.from_jpeg_header(
+                                    conn, row["share"], row["path"], row["size"])
+                                photo_dates.save(u["name"], row["share"], row["path"],
+                                                 row["modified"], row["size"], taken)
+                        except Exception as exc:
+                            logger.info("Gallery EXIF skipped: %s", type(exc).__name__)
+                        gallery_index.save_date(db, owner, row["share"], row["path"], taken)
+        return {"busy": False, **gallery_index.state(owner, shares)}
+    finally:
+        GALLERY_SCAN_LOCK.release()
+
+
+@app.post("/api/gallery/reindex")
+def reindex_unified_gallery(request: Request, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    owner = gallery_index.key(u["name"])
+    if not GALLERY_SCAN_LOCK.acquire(blocking=False):
+        fail(409, "Индексация уже выполняется")
+    try:
+        gallery_index.reset(owner, list(u.get("shares", [])))
+    finally:
+        GALLERY_SCAN_LOCK.release()
+    return {"ok": True}
+
 
 @app.get("/api/thumb")
 def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool = False):
