@@ -1,3 +1,11 @@
+## 0.16.1
+
+- Restore one-tap navigation to parent folders on mobile with a visible back arrow.
+- Make every breadcrumb segment clickable to jump directly to its folder.
+- Tap the SMB share name in the breadcrumb to switch between authorized shares.
+- Compact file rows and preserve accessible 40–44px touch targets.
+- No change to photo indexing, EXIF metadata, SMB permissions, authentication or file operations.
+
 ## 0.16.0
 
 - Extend the content-first redesign from photos to the file manager on mobile and desktop.
