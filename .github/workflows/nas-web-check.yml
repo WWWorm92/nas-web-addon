@@ -1,0 +1,40 @@
+name: NAS Web checks
+on:
+  push:
+  pull_request:
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Python syntax
+        run: python -m compileall -q nas_web/app
+      - name: JavaScript syntax
+        run: node --check nas_web/app/app.js
+      - name: Basic UI DOM contracts
+        run: |
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          import re
+          class IDs(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.ids = set()
+              def handle_starttag(self, name, attributes):
+                  a = dict(attributes)
+                  if 'id' in a:
+                      self.ids.add(a['id'])
+          html = IDs()
+          html.feed(Path("nas_web/app/index.html").read_text())
+          js = Path("nas_web/app/app.js").read_text()
+          missing = sorted(set(re.findall(r"el\('([^']+)'\)", js)) - html.ids)
+          assert not missing, f"Missing DOM element IDs: {missing}"
+          print("UI DOM IDs OK")
+          PY
