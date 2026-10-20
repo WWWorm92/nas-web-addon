@@ -1,5 +1,6 @@
 """NAS Web: simple browser access to existing SMB shares."""
 import json
+import io
 import logging
 import mimetypes
 import os
@@ -12,6 +13,7 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from PIL import Image, ImageOps, UnidentifiedImageError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -203,6 +205,39 @@ def list_files(request: Request, share: str, path: str = ""):
             fail(403, "Не удалось прочитать папку")
     return {"items": [{"name": f.filename, "directory": f.isDirectory, "size": f.file_size,
                        "modified": f.last_write_time} for f in files if f.filename not in (".", "..")]}
+
+@app.get("/api/thumb")
+def thumbnail(request: Request, share: str, path: str):
+    """Generate a small thumbnail, never send original full-size images to grid view."""
+    p = path_ok(path)
+    if not p or p.rsplit(".", 1)[-1].lower() not in {"jpg", "jpeg", "png", "webp", "gif"}:
+        fail(404, "Недоступный формат")
+    class LimitedBuffer(io.BytesIO):
+        def write(self, data):
+            if self.tell() + len(data) > 25 * 1024 * 1024:
+                raise ValueError("Image too large")
+            return super().write(data)
+    try:
+        with smb(user_for(request)) as conn:
+            check_share(conn, share)
+            buf = LimitedBuffer()
+            conn.retrieveFile(share, "/" + p, buf, timeout=40)
+        buf.seek(0)
+        with Image.open(buf) as im:
+            if im.width * im.height > 30_000_000:
+                fail(413, "Слишком большое изображение")
+            im = ImageOps.exif_transpose(im)
+            im.thumbnail((320, 240), Image.Resampling.LANCZOS)
+            im = im.convert("RGB")
+            out = io.BytesIO()
+            im.save(out, format="WEBP", quality=72, method=3)
+        return Response(out.getvalue(), media_type="image/webp")
+    except HTTPException:
+        raise
+    except (ValueError, UnidentifiedImageError, OSError):
+        fail(415, "Миниатюра недоступна")
+    except Exception:
+        fail(403, "Недоступно")
 
 @app.get("/api/file")
 def get_file(request: Request, share: str, path: str, inline: bool = False):
