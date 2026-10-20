@@ -1,0 +1,22 @@
+name: NAS Web
+slug: nas_web
+version: "0.1.0"
+description: SMB browser for Simple NAS (local testing only)
+startup: services
+boot: auto
+init: false
+arch:
+  - aarch64
+  - amd64
+ports:
+  8085/tcp: 8085
+ports_description:
+  8085/tcp: NAS Web - HTTP (LAN only during testing)
+options:
+  smb_host: 192.168.1.35
+  smb_port: 445
+  max_upload_mb: 1024
+schema:
+  smb_host: str
+  smb_port: port
+  max_upload_mb: int(1,10240)
