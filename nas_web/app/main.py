@@ -15,7 +15,7 @@ from urllib.parse import quote, urlsplit
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
 from . import thumb_cache
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
 
@@ -245,6 +245,54 @@ def thumbnail(request: Request, share: str, path: str, v: str = ""):
         fail(415, "Миниатюра недоступна")
     except Exception:
         fail(403, "Недоступно")
+
+@app.get("/api/video")
+def video_stream(request: Request, share: str, path: str):
+    """HTTP byte ranges backed by SMB random reads, without staging full videos."""
+    u = user_for(request)
+    p = path_ok(path)
+    name_ok(share)
+    if not p or p.rsplit(".", 1)[-1].lower() not in {"mp4", "webm", "m4v", "mov", "mp3", "ogg"}:
+        fail(404, "Unsupported media")
+    try:
+        with smb(u) as conn:
+            check_share(conn, share)
+            total = conn.file_size(share, "/" + p)
+    except HTTPException:
+        raise
+    except Exception:
+        fail(403, "Media unavailable")
+    if total == 0:
+        return Response(b"", media_type=mimetypes.guess_type(p)[0] or "application/octet-stream",
+                        headers={"Accept-Ranges": "bytes"})
+    range_header = request.headers.get("range")
+    first, last = 0, total - 1
+    if range_header:
+        import re
+        match = re.fullmatch(r"bytes=(\\d*)-(\\d*)", range_header.strip())
+        if not match or not any(match.groups()):
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{total}"})
+        low, high = match.groups()
+        if low:
+            first = int(low)
+            last = min(int(high), last) if high else last
+        else:
+            suffix = int(high)
+            first = max(0, total - suffix)
+        if first > last or first >= total:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{total}"})
+    status = 206 if range_header else 200
+    length = last - first + 1
+    def stream():
+        with smb(u) as conn:
+            yield from conn.iter_range(share, "/" + p, first, length)
+    headers = {"Accept-Ranges": "bytes", "Content-Length": str(length),
+               "Cache-Control": "private, no-store"}
+    if status == 206:
+        headers["Content-Range"] = f"bytes {first}-{last}/{total}"
+    return StreamingResponse(stream(), status_code=status,
+        media_type=mimetypes.guess_type(p)[0] or "application/octet-stream",
+        headers=headers)
 
 @app.get("/api/file")
 def get_file(request: Request, share: str, path: str, inline: bool = False):
