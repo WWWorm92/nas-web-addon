@@ -282,6 +282,23 @@ el('mobileMore').onclick=()=>openMobileSheet('Дополнительно',[
   {label:'◐ Сменить тему',run:()=>el('theme').click()},
   {label:'⇥ Выйти из NAS Web',danger:true,run:()=>el('logout').click()}
 ]);
+function gallerySettingsOpen(open){
+  const panel=el('gallerySettingsPanel');
+  if(!panel)return;
+  panel.classList.toggle('hidden',!open);
+  if(open){
+    const holder=el('gallerySettingsContent');
+    for(const id of ['globalGallerySummary','galleryControls','galleryYears','status']){
+      const node=el(id);if(node&&node.parentElement!==holder)holder.append(node);
+    }
+  }
+}
+el('gallerySettingsToggle').onclick=()=>gallerySettingsOpen(el('gallerySettingsPanel').classList.contains('hidden'));
+el('gallerySettingsClose').onclick=()=>gallerySettingsOpen(false);
+el('gallerySearchToggle').onclick=()=>{
+  const active=el('app').classList.toggle('gallerySearching');
+  if(active)el('search').focus();else{el('search').value='';renderAllGallery()}
+};
 function updateMobileNav(){
   const photos=el('mobilePhotos');
   photos.classList.toggle('navSelected',allPhotosMode);
@@ -332,6 +349,7 @@ function leaveGlobalGallery(){
   galleryRenderSignature='';clearGalleryPick();
   if(!allPhotosMode)return;
   if(previewIndex>=0)closePreview();
+  gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
   allPhotosMode=false;allPhotoScanToken++;view=previousFileView;
   el('app').classList.remove('globalGalleryOpen');
   el('globalGallerySummary').classList.add('hidden');
@@ -391,6 +409,7 @@ async function enterGlobalGallery(){
   if(allPhotosMode)return;
   galleryDateGeneration++;clearSelection();
   previousFileView=view==='gallery'?'grid':view;
+  gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
   allPhotosMode=true;view='gallery';allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;
   const token=++allPhotoScanToken;
   el('app').classList.add('globalGalleryOpen');
