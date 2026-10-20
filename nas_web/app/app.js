@@ -276,6 +276,7 @@ const photoObserver=new IntersectionObserver(records=>{
 },{root:null,rootMargin:'350px 0px',threshold:0});
 function leaveGlobalGallery(){
   if(!allPhotosMode)return;
+  if(previewIndex>=0)closePreview();
   allPhotosMode=false;allPhotoScanToken++;view=previousFileView;
   el('app').classList.remove('globalGalleryOpen');
   el('globalGallerySummary').classList.add('hidden');
@@ -502,6 +503,13 @@ el('selectionDelete').onclick=async()=>{
   if(failed)message('Удалено: '+removed+'. Не удалось удалить: '+failed+'. Проверьте права и содержимое папок.');
 };
 el('galleryLoadMore').onclick=()=>loadGlobalPage(false);
+el('globalGalleryBack').onclick=leaveGlobalGallery;
+const galleryNextObserver=new IntersectionObserver(entries=>{
+  if(entries.some(e=>e.isIntersecting)&&allPhotosMode&&allPhotoStatus?.complete&&
+     !allPhotoPageBusy&&allPhotos.length<allPhotoTotal)loadGlobalPage(false);
+},{rootMargin:'450px 0px'});
+galleryNextObserver.observe(el('galleryLoadMore'));
+
 el('globalGalleryRescan').onclick=async()=>{
   const approved=await askDialog({title:'Обновить фототеку?',text:'NAS Web заново найдёт фотографии во всех доступных папках. Существующие файлы не изменятся.',confirm:'Обновить'});
   if(!approved||!allPhotosMode)return;
