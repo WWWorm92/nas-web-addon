@@ -155,7 +155,12 @@ def check_share(conn, share):
 
 @app.middleware("http")
 async def headers(request, call_next):
+    started = time.perf_counter()
     r = await call_next(request)
+    elapsed_ms = round((time.perf_counter() - started) * 1000)
+    if elapsed_ms >= 1500 and request.url.path in ("/api/thumb", "/api/list", "/api/video"):
+        logger.warning("Slow request: route=%s ms=%s status=%s", request.url.path, elapsed_ms, r.status_code)
+    r.headers["Server-Timing"] = f"app;dur={elapsed_ms}"
     r.headers["X-Content-Type-Options"] = "nosniff"
     r.headers["Referrer-Policy"] = "no-referrer"
     r.headers["X-Frame-Options"] = "DENY"
