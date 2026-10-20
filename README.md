@@ -124,3 +124,11 @@ This repository is an early prototype, **not a production-ready cloud drive**.
 ## 0.7.2 — Home Assistant OS /data permission fix
 
 Fixes the crash on import of thumb_cache.py: `PermissionError: [Errno 13] Permission denied: '/data/nasweb-thumbs'` after upgrading to 0.7.1. At container start, a small entrypoint runs as root to create/chown only `/data/nasweb-thumbs` and `/data/nasweb-video` to uid 10001 with mode 0700, then execs Uvicorn through `gosu nasweb` (non-root). Do not recursively chown `/data` or touch Simple NAS SMB contents. Cache data is retained across add-on upgrades. Startup log reports cache path, writability, files and MiB. The Docker image must be rebuilt when installing this update.
+
+
+## 0.7.3 — faster cold gallery SMB access
+
+- Timings from Raspberry Pi: new photo thumbnails spend roughly 0.75–1.17s in SMB (connection plus file read), 0.17–0.37s decoding, and sometimes more than 1s waiting for the two image workers.
+- Authenticated requests now reuse short-lived idle SMB connections within the **same signed-in session**, never across accounts or concurrently. Pool is capped at three idle connections per session and 12 globally, with 35-second idle expiration. Connections are dropped after an operation error, after logout, and on application shutdown.
+- Login credentials are still verified with a fresh SMB connection. Samba enforces normal file/share permissions. No change to files or thumbnails.
+- Slow thumbnail logs now additionally show `connect=...ms read=...ms reused=true|false` to separate authentication/transport overhead from HDD transfer. Check new lines after upgrade to confirm whether pooling improved first-load times. Hardware benchmarks have not yet been run.
