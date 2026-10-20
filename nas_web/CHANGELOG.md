@@ -1,3 +1,10 @@
+## 0.16.2
+
+- Prevent login from silently succeeding with zero readable SMB shares.
+- On session restoration, report SMB share discovery failures instead of opening an empty file manager and gallery.
+- Keep the session's original authorized-share allowlist; do not expand permissions during refresh.
+- Preserve the existing gallery database, EXIF metadata, indexing progress, and stored files.
+
 ## 0.16.1
 
 - Restore one-tap navigation to parent folders on mobile with a visible back arrow.
