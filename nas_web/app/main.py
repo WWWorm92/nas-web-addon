@@ -449,6 +449,58 @@ def video_stream(request: Request, share: str, path: str):
         media_type=mimetypes.guess_type(p)[0] or "application/octet-stream",
         headers=headers)
 
+# Bounded in-memory path for ordinary camera JPEGs. Impacket getFile can
+# transfer these in one operation, avoiding StreamingResponse per-block yields.
+PHOTO_FAST_LIMIT = 16 * 1024 * 1024
+PHOTO_FAST_WORKERS = threading.BoundedSemaphore(2)
+
+@app.get("/api/photo")
+def fast_photo(request: Request, share: str, path: str):
+    u = user_for(request)
+    p = path_ok(path)
+    name_ok(share)
+    if not p or p.rsplit(".", 1)[-1].lower() not in {"jpg", "jpeg"}:
+        fail(404, "Unsupported image")
+    started = time.perf_counter()
+    with foreground_photo_transfer():
+        with PHOTO_FAST_WORKERS:
+            try:
+                with smb(u) as conn:
+                    check_share(conn, share)
+                    metadata_start = time.perf_counter()
+                    size = conn.file_size(share, "/" + p)
+                    metadata_ms = round((time.perf_counter() - metadata_start) * 1000)
+                    if size > PHOTO_FAST_LIMIT:
+                        logger.info("Fast photo oversized: size_kb=%s; falling back to streaming", round(size/1024))
+                    else:
+                        class BoundedJPEG(io.BytesIO):
+                            def write(self, chunk):
+                                if self.tell() + len(chunk) > PHOTO_FAST_LIMIT:
+                                    raise ValueError("Photo exceeds memory limit")
+                                return super().write(chunk)
+                        output = BoundedJPEG()
+                        read_start = time.perf_counter()
+                        conn.retrieveFile(share, "/" + p, output, timeout=40)
+                        read_ms = round((time.perf_counter() - read_start) * 1000)
+                        image_bytes = output.getvalue()
+                        if len(image_bytes) != size:
+                            raise IOError("Photo transfer incomplete")
+                        logger.warning(
+                            "Fast photo: size_kb=%d metadata=%dms read=%dms total=%dms",
+                            round(size / 1024), metadata_ms, read_ms,
+                            round((time.perf_counter() - started) * 1000)
+                        )
+                        return Response(image_bytes, media_type="image/jpeg",
+                                        headers={"Cache-Control": "private, no-store",
+                                                 "Content-Disposition": "inline"})
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.warning("Fast photo failed: %s", type(exc).__name__)
+                fail(502, "Не удалось загрузить фотографию")
+    # Very large originals retain existing bounded-memory streaming behavior.
+    return get_file(request, share, p, inline=True)
+
 @app.get("/api/file")
 def get_file(request: Request, share: str, path: str, inline: bool = False):
     """Stream SMB directly to the browser; never stage multi-GB files in /tmp."""
