@@ -264,23 +264,40 @@ def admin_protected(request: Request,csrf: str):
 def admin_page():
     return FileResponse(ROOT/"admin.html",media_type="text/html")
 
-def admin_setup_secret():
-    """Read Supervisor add-on options at request time, never cache setup secrets."""
-    options_path=Path("/data/options.json")
+def admin_options_diagnostic():
+    """Safe diagnostics: expose option names, never option values."""
+    path=Path("/data/options.json")
     try:
-        current=json.loads(options_path.read_text(encoding="utf-8"))
+        data=json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data,dict):
+            return {"state":"invalid_format","keys":[],"setup_key_ready":False}
+        key=data.get("admin_setup_key")
+        return {"state":"readable","keys":sorted(str(k) for k in data.keys()),
+                "setup_key_ready":isinstance(key,str) and len(key)>=24,
+                "key_present":"admin_setup_key" in data,
+                "key_type":type(key).__name__ if key is not None else "missing",
+                "key_length":len(key) if isinstance(key,str) else 0}
+    except PermissionError:
+        return {"state":"permission_denied","keys":[],"setup_key_ready":False}
+    except FileNotFoundError:
+        return {"state":"missing_file","keys":[],"setup_key_ready":False}
+    except (OSError,ValueError,TypeError):
+        return {"state":"invalid_or_unreadable","keys":[],"setup_key_ready":False}
+
+def admin_setup_secret():
+    try:
+        data=json.loads(Path("/data/options.json").read_text(encoding="utf-8"))
+        value=data.get("admin_setup_key","") if isinstance(data,dict) else ""
+        return value if isinstance(value,str) else ""
     except (OSError,ValueError,TypeError):
         return ""
-    if not isinstance(current,dict):
-        return ""
-    value=current.get("admin_setup_key","")
-    return value if isinstance(value,str) else ""
 
 @app.get("/api/admin/status")
 def admin_status(request: Request):
     return {"configured":admin_auth.configured(),"authenticated":bool(admin_auth.session(request.cookies.get("nas_admin",""))),
             "setup_key_ready":len(admin_setup_secret())>=24,
-            "options_file_present":Path("/data/options.json").is_file()}
+            "options_file_present":Path("/data/options.json").is_file(),
+            "options_diagnostic":admin_options_diagnostic()}
 
 @app.post("/api/admin/setup")
 def admin_setup(request: Request,payload: dict):
