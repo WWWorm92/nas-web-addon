@@ -312,7 +312,8 @@ def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool 
             timings["smb"] += ms(tick)
             return finish(cached, "HIT")
         tick = time.perf_counter()
-        with thumb_cache.WORKERS:
+        # The viewer has a dedicated slot; thumbnail backlogs cannot block it.
+        with (thumb_cache.LARGE_WORKERS if large else thumb_cache.WORKERS):
             timings["queue"] = ms(tick)
             cached = thumb_cache.get(key)
             if cached is not None:
