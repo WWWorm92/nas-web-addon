@@ -697,6 +697,34 @@ def retry_gallery_dates(request: Request, x_csrf_token: str = Header(default="")
     return {"ok": True, "queued": queued, **gallery_index.state(owner, shares)}
 
 
+@app.post("/api/admin/retry-dates")
+def admin_retry_dates(request: Request, x_csrf_token: str=Header(default="")):
+    check_origin(request)
+    admin_protected(request,x_csrf_token)
+    # The admin never gets SMB credentials. An explicitly logged-in SMB user
+    # supplies their own access; only their existing photo index is affected.
+    u=user_for(request)
+    shares=list(u.get("shares",[]))
+    owner=gallery_index.key(u["name"])
+    with GALLERY_BACKGROUND_LOCK:
+        active=GALLERY_BACKGROUND.get(owner)
+        if active is not None and active.is_alive():
+            fail(409,"Индексация уже выполняется")
+        if not GALLERY_SCAN_LOCK.acquire(blocking=False):
+            fail(409,"Индексация уже выполняется")
+        try:
+            with gallery_index.LOCK,gallery_index.connect() as db:
+                queued=gallery_index.retry_missing_dates(db,owner,shares)
+            worker=threading.Thread(target=_gallery_background,
+                         args=(dict(u),owner,tuple(shares)),daemon=True,name="nas-admin-exif-retry")
+            GALLERY_BACKGROUND[owner]=worker
+            worker.start()
+        finally:
+            GALLERY_SCAN_LOCK.release()
+    admin_log_event("info","EXIF metadata retry queued for authenticated SMB user")
+    return {"ok":True,"queued":queued}
+
+
 @app.post("/api/gallery/reindex")
 def reindex_unified_gallery(request: Request, x_csrf_token: str = Header(default="")):
     # Legacy route intentionally disabled: never destroy a live photo index.
