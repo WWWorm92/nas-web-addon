@@ -254,6 +254,19 @@ body{background:var(--bg);-webkit-font-smoothing:antialiased}
 #app .galleryYears .galleryYearCurrent{background:var(--accentbg);color:var(--accent);border-color:var(--accent)}
 #app .galleryMode .galleryMonth{scroll-margin-top:70px}
 @media(max-width:760px){#app .galleryYears{padding-top:4px;padding-bottom:10px;gap:6px}#app .galleryYears button{min-height:38px}}
+
+#app.globalGalleryOpen .sidebar{display:none}
+#app.globalGalleryOpen .controls #up,#app.globalGalleryOpen .controls #folder,#app.globalGalleryOpen .controls .uploadLabel,#app.globalGalleryOpen .controls #selectionModeButton,#app.globalGalleryOpen .controls #sort,#app.globalGalleryOpen .controls .viewButtons{display:none}
+#app.globalGalleryOpen .controls .search{max-width:none}
+#app.globalGalleryOpen .workspace{max-width:1500px}
+#app.globalGalleryOpen .crumbNav{font-size:clamp(23px,2.8vw,34px)}
+.globalGallerySummary{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);padding:6px 2px 12px}
+.globalGallerySummary button{font-size:12px;min-height:37px;padding:7px 13px}
+.galleryPageFooter{display:flex;justify-content:center;padding:24px 0 35px}
+.galleryPageFooter button{min-height:46px;border-radius:14px;color:var(--accent);background:var(--panel)}
+#app .galleryMode .galleryPhoto .originHint{position:absolute;bottom:5px;left:5px;right:5px;font-size:10px;color:white;text-shadow:0 1px 3px #000a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;pointer-events:none}
+@media(hover:hover) and (pointer:fine){#app .galleryMode .galleryPhoto:hover .originHint{opacity:1}}
+@media(max-width:760px){#app.globalGalleryOpen .workspace{padding-top:16px}#app.globalGalleryOpen .controls #refresh{display:none}.globalGallerySummary{font-size:11px}.globalGallerySummary button{font-size:11px;min-height:38px}}
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><label class="rememberRow" for="remember"><input id="remember" type="checkbox"><span>Запомнить меня <small>на 90 дней</small></span></label><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
 <div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div></div>
