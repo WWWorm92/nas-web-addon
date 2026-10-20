@@ -265,6 +265,8 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         record_failure(key)
         logger.warning("SMB login failed: stage=%s exception=%s", stage, type(exc).__name__)
         fail(401, "Неверные данные входа или SMB недоступен")
+    # Revoke any previous remembered token when logging into the same browser.
+    remember_auth.revoke(request.cookies.get("nas_remember", ""))
     token, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
     with LOCK:
         for session_id in list(SESSIONS):
