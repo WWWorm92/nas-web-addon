@@ -1,3 +1,9 @@
+## 0.18.6
+
+- Fix JavaScript startup ReferenceError: initialize globalGalleryOrder before binding the gallery sorting controls.
+- Restore execution of login form handlers on page load.
+- Preserve photo index, EXIF metadata and SMB permissions.
+
 ## 0.18.5
 
 - Fix mobile login password field blocked by the full-width password visibility button due to conflicting CSS rules.
