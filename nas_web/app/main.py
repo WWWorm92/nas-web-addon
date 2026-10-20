@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert, smb_pool
+from . import thumb_cache, media_convert, smb_pool, remember_auth
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -144,10 +144,15 @@ def user_for(request):
     token = request.cookies.get("nas_session", "")
     with LOCK:
         u = SESSIONS.get(token)
-        if not u or u["expires"] < time.time():
-            SESSIONS.pop(token, None)
-            fail(401, "Необходимо войти")
-        return dict(u)
+        if u and u["expires"] >= time.time():
+            return dict(u)
+        SESSIONS.pop(token, None)
+    # A remembered login can survive add-on restarts without storing plaintext
+    # SMB credentials in either localStorage or an unencrypted disk database.
+    remembered = remember_auth.restore(request.cookies.get("nas_remember", ""))
+    if remembered is None:
+        fail(401, "Необходимо войти")
+    return remembered
 
 def protected(request, csrf):
     u = user_for(request)
@@ -231,7 +236,7 @@ def js():
     return Response((ROOT / "app.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 @app.post("/api/login")
-def login(request: Request, username: str = Form(...), password: str = Form(...)):
+def login(request: Request, username: str = Form(...), password: str = Form(...), remember: bool = Form(False)):
     if not username or not password or len(username) > 128 or len(password) > 1024:
         fail(400, "Проверьте логин и пароль")
     check_origin(request)
@@ -261,8 +266,17 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
             del SESSIONS[oldest]
         SESSIONS[token] = {**u, "shares": shares, "expires": time.time() + LIFETIME, "csrf": csrf}
     r = JSONResponse({"username": username, "shares": shares, "csrf": csrf})
+    secure_cookie = COOKIE_SECURE or request.url.scheme == "https"
     r.set_cookie("nas_session", token, max_age=LIFETIME, httponly=True,
-                 secure=COOKIE_SECURE or request.url.scheme == "https", samesite="strict", path="/")
+                 secure=secure_cookie, samesite="strict", path="/")
+    if remember:
+        # Fernet encrypts credentials/auth metadata; the key is private and
+        # persisted in HA /data. HttpOnly prevents JavaScript reading it.
+        remembered = remember_auth.issue({**u, "shares": shares, "csrf": csrf})
+        r.set_cookie("nas_remember", remembered, max_age=remember_auth.LIFETIME,
+                     httponly=True, secure=secure_cookie, samesite="strict", path="/")
+    else:
+        r.delete_cookie("nas_remember", path="/")
     return r
 
 @app.get("/api/me")
@@ -278,8 +292,10 @@ def logout(request: Request, x_csrf_token: str = Header(default="")):
     with LOCK:
         SESSIONS.pop(request.cookies.get("nas_session"), None)
     smb_pool.revoke(u["csrf"])
+    remember_auth.revoke(request.cookies.get("nas_remember", ""))
     r = JSONResponse({"ok": True})
-    r.delete_cookie("nas_session")
+    r.delete_cookie("nas_session", path="/")
+    r.delete_cookie("nas_remember", path="/")
     return r
 
 @app.get("/api/list")
