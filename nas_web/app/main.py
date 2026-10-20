@@ -114,14 +114,18 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     if not username or not password or len(username) > 128 or len(password) > 1024:
         fail(400, "Проверьте логин и пароль")
     u = {"name": username, "password": password}
+    stage = "SMB connection/authentication"
     try:
         with smb(u) as conn:
+            stage = "share enumeration"
             shares = visible_shares(conn)
     except HTTPException:
+        logger.warning("SMB login failed at stage: %s (authentication rejected or transport unavailable)", stage)
         raise
     except Exception as exc:
-        logger.error("SMB connection or share discovery failed: %s", type(exc).__name__)
-        fail(401, "SMB error; check NAS Web add-on logs")
+        # Never log user names, passwords or exception bodies that may contain protocol packets.
+        logger.error("SMB error: stage=%s exception=%s", stage, type(exc).__name__)
+        fail(401, "SMB failure during " + stage + "; see add-on logs")
     token, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
     with LOCK:
         for key in list(SESSIONS):
