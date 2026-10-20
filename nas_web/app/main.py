@@ -39,6 +39,26 @@ RATE_WINDOW = 600
 RATE_LIMIT = 10
 COOKIE_SECURE = bool(opts.get('https_only', False))
 
+def smb_action_error(action, exc):
+    """Log server status while keeping internal paths and credentials out of responses."""
+    status = ""
+    try:
+        status = str(exc.getErrorString()) if hasattr(exc, "getErrorString") else ""
+    except Exception:
+        pass
+    if not status:
+        status = str(exc)[:160]
+    logger.warning("SMB %s failed: %s: %s", action, type(exc).__name__, status)
+    if "STATUS_ACCESS_DENIED" in status:
+        fail(403, "Нет прав для операции в Simple NAS (SMB: доступ запрещён)")
+    if "STATUS_OBJECT_NAME_COLLISION" in status or "STATUS_OBJECT_NAME_EXISTS" in status:
+        fail(409, "Файл или папка с таким именем уже существует")
+    if "STATUS_DIRECTORY_NOT_EMPTY" in status:
+        fail(409, "Папка не пуста. Сначала удалите её содержимое")
+    if "STATUS_OBJECT_NAME_NOT_FOUND" in status or "STATUS_OBJECT_PATH_NOT_FOUND" in status:
+        fail(404, "Файл или папка не найдены")
+    fail(502, "Ошибка SMB при операции: " + action + ". Проверьте журнал NAS Web")
+
 def fail(status, reason):
     raise HTTPException(status_code=status, detail=reason)
 
@@ -348,8 +368,8 @@ def mkdir(request: Request, payload: dict, x_csrf_token: str = Header(default=""
         check_share(conn, share)
         try:
             conn.createDirectory(share, full(payload.get("path", ""), payload.get("name", "")))
-        except Exception:
-            fail(403, "Не удалось создать папку")
+        except Exception as exc:
+            smb_action_error("mkdir", exc)
     return {"ok": True}
 
 @app.post("/api/rename")
@@ -364,8 +384,8 @@ def rename(request: Request, payload: dict, x_csrf_token: str = Header(default="
         check_share(conn, share)
         try:
             conn.rename(share, "/" + old, new)
-        except Exception:
-            fail(403, "Нет доступа к переименованию")
+        except Exception as exc:
+            smb_action_error("rename", exc)
     return {"ok": True}
 
 @app.post("/api/delete")
@@ -382,6 +402,6 @@ def delete(request: Request, payload: dict, x_csrf_token: str = Header(default="
                 conn.deleteDirectory(share, "/" + path)
             else:
                 conn.deleteFiles(share, "/" + path)
-        except Exception:
-            fail(403, "Удаление запрещено или папка не пустая")
+        except Exception as exc:
+            smb_action_error("delete", exc)
     return {"ok": True}
