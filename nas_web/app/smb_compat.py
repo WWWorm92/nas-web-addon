@@ -85,7 +85,11 @@ class SMBConnection:
         tid = self.conn.connectTree(share)
         fid = None
         try:
-            fid = self.conn.openFile(tid, remote)
+            # Impacket's default requests FILE_READ_DATA | FILE_WRITE_DATA.
+            # EXIF extraction and HTTP range streaming only need read access:
+            # requesting write rejects read-only SMB shares with ACCESS_DENIED.
+            fid = self.conn.openFile(tid, remote, desiredAccess=0x00000001,
+                                     shareMode=0x00000007)
             remaining = length
             offset = start
             while remaining > 0:
