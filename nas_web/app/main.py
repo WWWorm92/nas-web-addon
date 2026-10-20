@@ -266,7 +266,7 @@ def admin_page():
 
 def admin_options_diagnostic():
     """Safe diagnostics: expose option names, never option values."""
-    path=Path("/data/options.json")
+    path=Path("/data/nasweb-auth/options.json")
     try:
         data=json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data,dict):
@@ -286,7 +286,7 @@ def admin_options_diagnostic():
 
 def admin_setup_secret():
     try:
-        data=json.loads(Path("/data/options.json").read_text(encoding="utf-8"))
+        data=json.loads(Path("/data/nasweb-auth/options.json").read_text(encoding="utf-8"))
         value=data.get("admin_setup_key","") if isinstance(data,dict) else ""
         return value if isinstance(value,str) else ""
     except (OSError,ValueError,TypeError):
@@ -296,7 +296,7 @@ def admin_setup_secret():
 def admin_status(request: Request):
     return {"configured":admin_auth.configured(),"authenticated":bool(admin_auth.session(request.cookies.get("nas_admin",""))),
             "setup_key_ready":len(admin_setup_secret())>=24,
-            "options_file_present":Path("/data/options.json").is_file(),
+            "options_file_present":Path("/data/nasweb-auth/options.json").is_file(),
             "options_diagnostic":admin_options_diagnostic()}
 
 @app.post("/api/admin/setup")
