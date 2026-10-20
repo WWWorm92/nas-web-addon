@@ -1,0 +1,132 @@
+"""Persistent, bounded, per-user SMB photo index for the unified gallery."""
+import hashlib
+import sqlite3
+import threading
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+DB = Path("/data/nasweb-auth/gallery.sqlite3")
+LOCK = threading.RLock()
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+MAX_PHOTOS = 100000
+MAX_FOLDERS = 20000
+
+
+def key(username):
+    return hashlib.sha256(username.casefold().encode("utf-8")).hexdigest()
+
+
+def connect():
+    DB.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    db = sqlite3.connect(DB, timeout=20)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA busy_timeout=20000")
+    db.executescript("""
+      CREATE TABLE IF NOT EXISTS photos (
+        owner TEXT NOT NULL, share TEXT NOT NULL, path TEXT NOT NULL,
+        folder TEXT NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL,
+        modified REAL NOT NULL, taken TEXT, exif_checked INTEGER NOT NULL DEFAULT 0,
+        sort_key TEXT NOT NULL,
+        PRIMARY KEY (owner, share, path)
+      );
+      CREATE INDEX IF NOT EXISTS photo_order ON photos(owner, sort_key DESC, share, path);
+      CREATE TABLE IF NOT EXISTS folders (
+        owner TEXT NOT NULL, share TEXT NOT NULL, path TEXT NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (owner, share, path)
+      );
+      CREATE TABLE IF NOT EXISTS jobs (
+        owner TEXT PRIMARY KEY, started REAL NOT NULL,
+        complete INTEGER NOT NULL DEFAULT 0, limited INTEGER NOT NULL DEFAULT 0
+      );
+    """)
+    return db
+
+
+def begin(db, owner, shares):
+    if db.execute("SELECT 1 FROM jobs WHERE owner=?", (owner,)).fetchone():
+        return
+    db.execute("INSERT INTO jobs(owner,started) VALUES (?,?)", (owner, time.time()))
+    db.executemany("INSERT OR IGNORE INTO folders(owner,share,path) VALUES (?,?,?)",
+                   [(owner, share, "") for share in shares])
+
+
+def reset(owner, shares):
+    with LOCK, connect() as db:
+        for table in ("photos", "folders", "jobs"):
+            db.execute("DELETE FROM " + table + " WHERE owner=?", (owner,))
+        begin(db, owner, shares)
+
+
+def state(owner, shares):
+    with LOCK, connect() as db:
+        begin(db, owner, shares)
+        job = db.execute("SELECT complete,limited FROM jobs WHERE owner=?", (owner,)).fetchone()
+        scanned = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=1", (owner,)).fetchone()[0]
+        pending = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=0", (owner,)).fetchone()[0]
+        total = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ")", (owner, *shares)).fetchone()[0] if shares else 0
+        dates_pending = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND exif_checked=0 AND (name LIKE '%.jpg' OR name LIKE '%.jpeg')", (owner,)).fetchone()[0]
+        return {"complete": bool(job["complete"]), "limited": bool(job["limited"]),
+                "scanned": scanned, "pending": pending, "total": total,
+                "dates_pending": dates_pending}
+
+
+def page(owner, shares, offset, limit):
+    if not shares:
+        return []
+    with LOCK, connect() as db:
+        rows = db.execute(
+            "SELECT share,path,folder,name,size,modified,taken FROM photos "
+            "WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") "
+            "ORDER BY sort_key DESC, share, path LIMIT ? OFFSET ?",
+            (owner, *shares, limit, offset)).fetchall()
+        return [dict(row) for row in rows]
+
+
+def pending_folder(db, owner):
+    return db.execute("SELECT share,path FROM folders WHERE owner=? AND done=0 ORDER BY LENGTH(path),path LIMIT 1", (owner,)).fetchone()
+
+
+def add_folder_contents(db, owner, share, folder, entries):
+    for entry in entries:
+        name = entry.filename
+        if name in (".", "..") or "/" in name or "\\" in name or not name:
+            continue
+        path = "/".join(x for x in (folder, name) if x)
+        if entry.isDirectory:
+            count = db.execute("SELECT COUNT(*) FROM folders WHERE owner=?", (owner,)).fetchone()[0]
+            if count >= MAX_FOLDERS:
+                db.execute("UPDATE jobs SET limited=1 WHERE owner=?", (owner,))
+                continue
+            db.execute("INSERT OR IGNORE INTO folders(owner,share,path) VALUES (?,?,?)", (owner, share, path))
+        elif name.lower().endswith(IMAGE_EXTS):
+            count = db.execute("SELECT COUNT(*) FROM photos WHERE owner=?", (owner,)).fetchone()[0]
+            if count >= MAX_PHOTOS:
+                db.execute("UPDATE jobs SET limited=1 WHERE owner=?", (owner,))
+                continue
+            modified = float(entry.last_write_time or 0)
+            sort_key = datetime.fromtimestamp(max(0, min(modified, 4102444800)), timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            db.execute("INSERT OR REPLACE INTO photos(owner,share,path,folder,name,size,modified,sort_key) "
+                       "VALUES (?,?,?,?,?,?,?,?)",
+                       (owner, share, path, folder, name, int(entry.file_size), modified, sort_key))
+    db.execute("UPDATE folders SET done=1 WHERE owner=? AND share=? AND path=?", (owner, share, folder))
+
+
+def next_unchecked(db, owner, shares):
+    if not shares:
+        return None
+    return db.execute("SELECT share,path,name,size,modified FROM photos WHERE owner=? "
+                      "AND share IN (" + ",".join("?" for _ in shares) + ") "
+                      "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg') LIMIT 1",
+                      (owner, *shares)).fetchone()
+
+
+def save_date(db, owner, share, path, taken):
+    sort_key = taken if taken else None
+    if sort_key:
+        db.execute("UPDATE photos SET taken=?,sort_key=?,exif_checked=1 WHERE owner=? AND share=? AND path=?",
+                   (taken, sort_key, owner, share, path))
+    else:
+        db.execute("UPDATE photos SET exif_checked=1 WHERE owner=? AND share=? AND path=?",
+                   (owner, share, path))
