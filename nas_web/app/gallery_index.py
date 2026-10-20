@@ -3,6 +3,7 @@ import hashlib
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,6 +18,7 @@ def key(username):
     return hashlib.sha256(username.casefold().encode("utf-8")).hexdigest()
 
 
+@contextmanager
 def connect():
     DB.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     db = sqlite3.connect(DB, timeout=20)
@@ -41,7 +43,11 @@ def connect():
         complete INTEGER NOT NULL DEFAULT 0, limited INTEGER NOT NULL DEFAULT 0
       );
     """)
-    return db
+    try:
+        with db:
+            yield db
+    finally:
+        db.close()
 
 
 def begin(db, owner, shares):
