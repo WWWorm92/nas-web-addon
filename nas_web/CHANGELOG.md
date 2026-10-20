@@ -1,3 +1,11 @@
+## 0.16.0
+
+- Extend the content-first redesign from photos to the file manager on mobile and desktop.
+- Mobile files: compact "Файлы" header, on-demand search, sorting menu, actions sheet, and path breadcrumb.
+- Mobile file rows: clearer icons, filenames, metadata and contextual actions without a permanent toolbar.
+- Desktop: refined sidebar, denser file grid and list, smaller headings and consistent spacing.
+- Existing file actions, SMB permissions, gallery index, EXIF processing, and authentication remain unchanged. No database migration or index reset.
+
 ## 0.15.0
 
 - Mobile unified gallery redesigned around the photos: compact sticky "Фото" header with search and settings actions.
