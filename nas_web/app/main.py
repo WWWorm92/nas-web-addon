@@ -400,14 +400,16 @@ def photo_capture_dates(request: Request, payload: dict, x_csrf_token: str = Hea
 GALLERY_SCAN_LOCK = threading.Lock()
 
 @app.get("/api/gallery")
-def unified_gallery(request: Request, offset: int = 0, limit: int = 90):
+def unified_gallery(request: Request, offset: int = 0, limit: int = 90, order: str = "taken"):
     u = user_for(request)
+    if order not in ("taken", "modified"):
+        fail(400, "Некорректная сортировка")
     if offset < 0 or limit < 1 or limit > 120:
         fail(400, "Некорректная страница галереи")
     shares = list(u.get("shares", []))
     owner = gallery_index.key(u["name"])
     status = gallery_index.state(owner, shares)
-    return {"items": gallery_index.page(owner, shares, offset, limit), **status}
+    return {"items": gallery_index.page(owner, shares, offset, limit, order), **status}
 
 
 def _gallery_scan_step(u, owner, shares):
