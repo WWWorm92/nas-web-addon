@@ -27,7 +27,7 @@ def admin_log_event(level,message):
 app = FastAPI(title="NAS Web", docs_url=None, redoc_url=None, openapi_url=None)
 ROOT = Path(__file__).parent
 try:
-    opts = json.loads(Path("/data/options.json").read_text())
+    opts = json.loads(Path("/data/nasweb-auth/options.json").read_text())
 except (OSError, ValueError):
     opts = {}
 HOST = opts.get("smb_host", "192.168.1.35")
