@@ -53,6 +53,26 @@ function photoCachePut(key,blob){
   }
   return url;
 }
+function photoSource(f){return ['jpg','jpeg'].includes(ext(f.name))?'/api/file?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/'),inline:'true'}):imageURL(f,true)}
+function photoLoad(f){
+  const key=photoKey(f),hit=photoCacheGet(key);
+  if(hit)return Promise.resolve(hit);
+  if(photoFetches.has(key))return photoFetches.get(key).promise;
+  const controller=new AbortController(),job={controller};
+  job.promise=fetch(photoSource(f),{credentials:'same-origin',signal:controller.signal})
+    .then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.blob()})
+    .then(blob=>photoCachePut(key,blob))
+    .finally(()=>{if(photoFetches.get(key)===job)photoFetches.delete(key)});
+  photoFetches.set(key,job);return job.promise;
+}
+function photoPrefetch(serial){
+  if(serial!==viewerSerial||previewIndex<0)return;
+  const f=gallery[previewIndex+1];
+  if(!f||!isPhoto(f)||Number(f.size)>ORIGINAL_CACHE_LIMIT)return;
+  if(photoCacheGet(photoKey(f)))return;
+  clearTimeout(preloadTimer);
+  preloadTimer=setTimeout(()=>{if(serial===viewerSerial)photoLoad(f).catch(()=>{})},250);
+}
 function photoCacheClear(){
   for(const job of photoFetches.values())job.controller.abort();
   photoFetches.clear();
