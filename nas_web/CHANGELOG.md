@@ -1,3 +1,8 @@
+## 0.18.3
+
+- Prevent an outdated initial /api/me session check from replacing a successful login with the login screen.
+- Keep 401 handling on protected API calls; do not reset the photo index or SMB access rules.
+
 ## 0.18.2
 
 - Fix GitHub Actions UI DOM contract: declare galleryOrderSelect in HTML rather than creating it dynamically.
