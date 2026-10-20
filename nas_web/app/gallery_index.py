@@ -249,7 +249,7 @@ def next_unchecked(db, owner, shares, excluded=()):
     args=[owner,*shares,time.time()]
     if excluded:
         sql+=" AND (p.share || char(31) || p.path) NOT IN ("+",".join("?" for _ in excluded)+")"
-        args.extend(share+"\\x1f"+path for share,path in excluded)
+        args.extend(share+chr(31)+path for share,path in excluded)
     return db.execute(sql+" LIMIT 1",args).fetchone()
 
 
