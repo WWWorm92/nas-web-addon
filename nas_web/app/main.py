@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert
+from . import thumb_cache, media_convert, smb_pool
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -134,14 +134,27 @@ def protected(request, csrf):
 
 @contextmanager
 def smb(u):
-    conn = SMBConnection(u["name"], u["password"], "NASWEB", REMOTE_NAME, use_ntlm_v2=True, is_direct_tcp=True)
+    # Sign-in uses a fresh connection; authenticated operations reuse short-
+    # lived connections only inside the same login session.
+    session_key = u.get("csrf")
+    if not session_key:
+        conn = SMBConnection(u["name"], u["password"], "NASWEB", REMOTE_NAME, use_ntlm_v2=True, is_direct_tcp=True)
+        try:
+            if not conn.connect(HOST, PORT, timeout=12):
+                fail(401, "Не удалось войти в SMB")
+            conn.authorized_shares = u.get("shares", ())
+            yield conn
+        finally:
+            conn.close()
+        return
+    conn, reused = smb_pool.acquire(session_key, u["name"], u["password"], HOST, PORT, REMOTE_NAME)
+    healthy = False
     try:
-        if not conn.connect(HOST, PORT, timeout=12):
-            fail(401, "Не удалось войти в SMB")
         conn.authorized_shares = u.get("shares", ())
         yield conn
+        healthy = True
     finally:
-        conn.close()
+        smb_pool.release(session_key, conn, healthy)
 
 def visible_shares(conn):
     result = []
@@ -235,6 +248,7 @@ def logout(request: Request, x_csrf_token: str = Header(default="")):
     protected(request, x_csrf_token)
     with LOCK:
         SESSIONS.pop(request.cookies.get("nas_session"), None)
+    smb_pool.revoke(u["csrf"])
     r = JSONResponse({"ok": True})
     r.delete_cookie("nas_session")
     return r
