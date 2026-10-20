@@ -208,7 +208,7 @@ def list_files(request: Request, share: str, path: str = ""):
                        "modified": f.last_write_time} for f in files if f.filename not in (".", "..")]}
 
 @app.get("/api/thumb")
-def thumbnail(request: Request, share: str, path: str, v: str = ""):
+def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool = False):
     """Cache resized images per active user session; avoid repeated HDD reads."""
     u = user_for(request)
     p = path_ok(path)
@@ -218,7 +218,7 @@ def thumbnail(request: Request, share: str, path: str, v: str = ""):
     if not p or p.rsplit(".", 1)[-1].lower() not in {"jpg", "jpeg", "png", "webp", "gif"}:
         fail(404, "Недоступный формат")
     token = request.cookies.get("nas_session", "")
-    key = thumb_cache.key_for(token, share, p, v[:80])
+    key = thumb_cache.key_for(token, share, p, v[:80] + (":large" if large else ":small"))
     cached = thumb_cache.get(key)
     if cached is not None:
         return Response(cached, media_type="image/webp")
@@ -236,7 +236,7 @@ def thumbnail(request: Request, share: str, path: str, v: str = ""):
                 # On a cache miss, Samba verifies file-level access.
                 buffer = LimitedBuffer()
                 conn.retrieveFile(share, "/" + p, buffer, timeout=40)
-            result = thumb_cache.render_image(buffer)
+            result = thumb_cache.render_image(buffer, large=large)
             thumb_cache.put(key, result)
         return Response(result, media_type="image/webp")
     except HTTPException:
