@@ -235,6 +235,16 @@ def home():
 def js():
     return Response((ROOT / "app.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
+@app.get("/static/icon.svg")
+def favicon_svg():
+    return FileResponse(ROOT / "icon.svg", media_type="image/svg+xml")
+
+
+@app.get("/static/icon-192.png")
+def mobile_icon():
+    return FileResponse(ROOT / "icon-192.png", media_type="image/png")
+
+
 @app.post("/api/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...), remember: bool = Form(False)):
     if not username or not password or len(username) > 128 or len(password) > 1024:
