@@ -25,6 +25,7 @@ except (OSError, ValueError):
     opts = {}
 HOST = opts.get("smb_host", "192.168.1.35")
 PORT = int(opts.get("smb_port", 445))
+REMOTE_NAME = opts.get("smb_server_name", "NAS")
 LIMIT = int(opts.get("max_upload_mb", 1024)) * 1024 * 1024
 SESSIONS = {}
 LOCK = threading.RLock()
@@ -66,7 +67,7 @@ def protected(request, csrf):
 
 @contextmanager
 def smb(u):
-    conn = SMBConnection(u["name"], u["password"], "NASWEB", "NAS", use_ntlm_v2=True, is_direct_tcp=True)
+    conn = SMBConnection(u["name"], u["password"], "NASWEB", REMOTE_NAME, use_ntlm_v2=True, is_direct_tcp=True)
     try:
         if not conn.connect(HOST, PORT, timeout=12):
             fail(401, "Не удалось войти в SMB")
@@ -124,7 +125,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         raise
     except Exception as exc:
         # Never log user names, passwords or exception bodies that may contain protocol packets.
-        logger.error("SMB error: stage=%s exception=%s", stage, type(exc).__name__)
+        logger.error("SMB error: stage=%s exception=%s detail=%s", stage, type(exc).__name__, str(getattr(exc, "message", ""))[:180].replace("\\n", " "))
         fail(401, "SMB failure during " + stage + "; see add-on logs")
     token, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
     with LOCK:
