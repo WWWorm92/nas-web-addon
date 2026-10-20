@@ -445,11 +445,10 @@ def _gallery_background(u, owner, shares):
     deadline = time.monotonic() + 1800
     try:
         while time.monotonic() < deadline:
-            with LOCK:
-                active = any(session.get("csrf") == u.get("csrf") and session.get("expires", 0) > time.time()
-                             for session in SESSIONS.values())
-            if not active:
-                break
+            # Credentials come from a successful authenticated /api/gallery/scan
+            # request. Remember-me sessions are restored from a signed cookie and
+            # are not present in SESSIONS, so checking only SESSIONS would stop
+            # their worker immediately. Keep each worker bounded by deadline.
             with GALLERY_SCAN_LOCK:
                 _gallery_scan_step(u, owner, shares)
             state = gallery_index.state(owner, shares)
