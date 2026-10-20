@@ -9,7 +9,7 @@ import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
@@ -29,7 +29,12 @@ REMOTE_NAME = opts.get("smb_server_name", "NAS")
 LIMIT = int(opts.get("max_upload_mb", 1024)) * 1024 * 1024
 SESSIONS = {}
 LOCK = threading.RLock()
-LIFETIME = 8 * 3600
+LIFETIME = 4 * 3600
+MAX_SESSIONS = 64
+ATTEMPTS = {}
+RATE_WINDOW = 600
+RATE_LIMIT = 10
+COOKIE_SECURE = bool(opts.get('https_only', False))
 
 def fail(status, reason):
     raise HTTPException(status_code=status, detail=reason)
@@ -49,6 +54,33 @@ def path_ok(path):
 
 def full(path, new=""):
     return "/" + "/".join(x for x in (path_ok(path), name_ok(new) if new else "") if x)
+
+def login_guard(request, username):
+    # IP is deliberately taken from the TCP peer, not spoofable X-Forwarded-For.
+    peer = request.client.host if request.client else 'unknown'
+    key = (peer, username.casefold())
+    now = time.monotonic()
+    with LOCK:
+        for k, values in list(ATTEMPTS.items()):
+            ATTEMPTS[k] = [t for t in values if now - t < RATE_WINDOW]
+            if not ATTEMPTS[k]:
+                del ATTEMPTS[k]
+        if len(ATTEMPTS.get(key, [])) >= RATE_LIMIT:
+            fail(429, "Слишком много попыток. Повторите вход через 10 минут.")
+    return key
+
+def record_failure(key):
+    with LOCK:
+        ATTEMPTS.setdefault(key, []).append(time.monotonic())
+
+def check_origin(request):
+    origin = request.headers.get("origin")
+    if origin:
+        parts = urlsplit(origin)
+        if parts.scheme not in ('http', 'https') or parts.netloc.lower() != request.headers.get('host', '').lower():
+            fail(403, "Недопустимый Origin")
+    elif request.headers.get('sec-fetch-site', '').lower() == 'cross-site':
+        fail(403, "Недопустимый источник запроса")
 
 def user_for(request):
     token = request.cookies.get("nas_session", "")
@@ -114,6 +146,8 @@ def js():
 def login(request: Request, username: str = Form(...), password: str = Form(...)):
     if not username or not password or len(username) > 128 or len(password) > 1024:
         fail(400, "Проверьте логин и пароль")
+    check_origin(request)
+    key = login_guard(request, username)
     u = {"name": username, "password": password}
     stage = "SMB connection/authentication"
     try:
@@ -121,21 +155,26 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
             stage = "share enumeration"
             shares = visible_shares(conn)
     except HTTPException:
-        logger.warning("SMB login failed at stage: %s (authentication rejected or transport unavailable)", stage)
-        raise
+        record_failure(key)
+        logger.warning("SMB login failed at stage: %s", stage)
+        fail(401, "Неверные данные входа или SMB недоступен")
     except Exception as exc:
-        # Never log user names, passwords or exception bodies that may contain protocol packets.
-        logger.error("SMB error: stage=%s exception=%s detail=%s", stage, type(exc).__name__, str(getattr(exc, "message", ""))[:180].replace("\\n", " "))
-        fail(401, "SMB failure during " + stage + "; see add-on logs")
+        record_failure(key)
+        logger.warning("SMB login failed: stage=%s exception=%s", stage, type(exc).__name__)
+        fail(401, "Неверные данные входа или SMB недоступен")
     token, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
     with LOCK:
         for key in list(SESSIONS):
             if SESSIONS[key]["expires"] < time.time():
                 del SESSIONS[key]
+        ATTEMPTS.pop(key, None)
+        if len(SESSIONS) >= MAX_SESSIONS:
+            oldest = min(SESSIONS, key=lambda k: SESSIONS[k]["expires"])
+            del SESSIONS[oldest]
         SESSIONS[token] = {**u, "expires": time.time() + LIFETIME, "csrf": csrf}
     r = JSONResponse({"username": username, "shares": shares, "csrf": csrf})
     r.set_cookie("nas_session", token, max_age=LIFETIME, httponly=True,
-                 secure=request.url.scheme == "https", samesite="strict", path="/")
+                 secure=COOKIE_SECURE or request.url.scheme == "https", samesite="strict", path="/")
     return r
 
 @app.get("/api/me")
@@ -146,6 +185,7 @@ def me(request: Request):
 
 @app.post("/api/logout")
 def logout(request: Request, x_csrf_token: str = Header(default="")):
+    check_origin(request)
     protected(request, x_csrf_token)
     with LOCK:
         SESSIONS.pop(request.cookies.get("nas_session"), None)
@@ -191,6 +231,7 @@ def get_file(request: Request, share: str, path: str, inline: bool = False):
 @app.post("/api/upload")
 async def upload(request: Request, share: str = Form(...), path: str = Form(""),
                  file: UploadFile = File(...), x_csrf_token: str = Header(default="")):
+    check_origin(request)
     u = protected(request, x_csrf_token)
     filename = name_ok(file.filename or "")
     size = 0
@@ -211,6 +252,7 @@ async def upload(request: Request, share: str = Form(...), path: str = Form(""),
 
 @app.post("/api/mkdir")
 def mkdir(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+    check_origin(request)
     with smb(protected(request, x_csrf_token)) as conn:
         share = payload.get("share", "")
         check_share(conn, share)
@@ -222,6 +264,7 @@ def mkdir(request: Request, payload: dict, x_csrf_token: str = Header(default=""
 
 @app.post("/api/rename")
 def rename(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+    check_origin(request)
     old = path_ok(payload.get("path", ""))
     if not old:
         fail(400, "Выберите файл")
@@ -237,6 +280,7 @@ def rename(request: Request, payload: dict, x_csrf_token: str = Header(default="
 
 @app.post("/api/delete")
 def delete(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+    check_origin(request)
     path = path_ok(payload.get("path", ""))
     if not path:
         fail(400, "Выберите файл")
