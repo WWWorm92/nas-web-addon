@@ -148,6 +148,7 @@ def smb(u):
             conn.close()
         return
     conn, reused = smb_pool.acquire(session_key, u["name"], u["password"], HOST, PORT, REMOTE_NAME)
+    conn._nasweb_reused = reused
     healthy = False
     try:
         conn.authorized_shares = u.get("shares", ())
@@ -281,16 +282,16 @@ def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool 
         fail(404, "Unsupported image")
     key = thumb_cache.key_for(u["name"], share, p, v[:80] + (":large" if large else ":small"))
     start = time.perf_counter()
-    timings = {"queue": 0, "smb": 0, "decode": 0, "cache": 0}
+    timings = {"queue": 0, "smb": 0, "connect": 0, "read": 0, "decode": 0, "cache": 0, "reused": False}
     def ms(since):
         return int((time.perf_counter() - since) * 1000)
     def finish(data, cache_status):
         elapsed = ms(start)
         if elapsed > 1200:
             logger.warning(
-                "Thumbnail performance: state=%s size=%s total=%dms queue=%dms smb=%dms decode=%dms cache=%dms storage=%s",
+                "Thumbnail performance: state=%s size=%s total=%dms queue=%dms smb=%dms connect=%dms read=%dms reused=%s decode=%dms cache=%dms storage=%s",
                 cache_status, "large" if large else "small", elapsed,
-                timings["queue"], timings["smb"], timings["decode"], timings["cache"],
+                timings["queue"], timings["smb"], timings["connect"], timings["read"], timings["reused"], timings["decode"], timings["cache"],
                 thumb_cache.CACHE_ROOT
             )
         return Response(data, media_type="image/webp", headers={
@@ -322,8 +323,12 @@ def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool 
                 return finish(cached, "HIT-WAIT")
             tick = time.perf_counter()
             with smb(u) as conn:
+                timings["connect"] = ms(tick)
+                timings["reused"] = bool(getattr(conn, "_nasweb_reused", False))
+                read_started = time.perf_counter()
                 buffer = LimitedBuffer()
                 conn.retrieveFile(share, "/" + p, buffer, timeout=40)
+                timings["read"] = ms(read_started)
             timings["smb"] += ms(tick)
             tick = time.perf_counter()
             result = thumb_cache.render_image(buffer, large=large)
