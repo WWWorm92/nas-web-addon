@@ -310,7 +310,9 @@ function gallerySettingsOpen(open){
 const orderSelect=document.createElement('select');orderSelect.id='galleryOrderSelect';
 orderSelect.setAttribute('aria-label','Сортировка фотографий');
 orderSelect.innerHTML='<option value="taken">По дате съёмки (EXIF)</option><option value="modified">По дате изменения файла</option>';
-orderSelect.value=globalGalleryOrder;orderSelect.onchange=()=>setGlobalGalleryOrder(orderSelect.value);
+orderSelect.value=globalGalleryOrder;el('galleryOrderDesktop').value=globalGalleryOrder;
+el('galleryOrderDesktop').onchange=()=>setGlobalGalleryOrder(el('galleryOrderDesktop').value);
+orderSelect.onchange=()=>setGlobalGalleryOrder(orderSelect.value);
 el('gallerySettingsContent').prepend(orderSelect);
 el('gallerySettingsToggle').onclick=()=>gallerySettingsOpen(el('gallerySettingsPanel').classList.contains('hidden'));
 el('gallerySettingsClose').onclick=()=>gallerySettingsOpen(false);
@@ -431,6 +433,7 @@ let globalGalleryOrder=localStorage.getItem('nasweb-gallery-order')==='modified'
 function setGlobalGalleryOrder(order){
  if(!['taken','modified'].includes(order)||order===globalGalleryOrder)return;
  globalGalleryOrder=order;localStorage.setItem('nasweb-gallery-order',order);
+ el('galleryOrderDesktop').value=order;el('galleryOrderSelect').value=order;
  allPhotoScanToken++;allPhotos=[];allPhotoTotal=0;galleryRenderSignature='';
  loadGlobalPage(true);
 }
