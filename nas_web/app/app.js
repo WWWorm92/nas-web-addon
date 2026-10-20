@@ -35,6 +35,31 @@ let originalController=null, originalObjectUrl=null;
 const originalCache=new Map();
 let originalCacheBytes=0;
 const ORIGINAL_CACHE_LIMIT=48*1024*1024;
+
+let photoFetches=new Map();
+function photoKey(f){return [csrf,shownShare,shownDir,f.name,f.modified||0,f.size||0].join('|')}
+function photoCacheGet(key){const entry=originalCache.get(key);if(!entry)return null;originalCache.delete(key);originalCache.set(key,entry);return entry.url}
+function photoCachePut(key,blob){
+  if(blob.size>ORIGINAL_CACHE_LIMIT)return URL.createObjectURL(blob);
+  const existing=originalCache.get(key);
+  if(existing){originalCacheBytes-=existing.size;URL.revokeObjectURL(existing.url);originalCache.delete(key)}
+  const url=URL.createObjectURL(blob);
+  originalCache.set(key,{url,size:blob.size});originalCacheBytes+=blob.size;
+  while(originalCacheBytes>ORIGINAL_CACHE_LIMIT){
+    const oldest=originalCache.keys().next().value;
+    if(oldest===key)break;
+    const entry=originalCache.get(oldest);originalCache.delete(oldest);
+    originalCacheBytes-=entry.size;URL.revokeObjectURL(entry.url);
+  }
+  return url;
+}
+function photoCacheClear(){
+  for(const job of photoFetches.values())job.controller.abort();
+  photoFetches.clear();
+  for(const entry of originalCache.values())URL.revokeObjectURL(entry.url);
+  originalCache.clear();originalCacheBytes=0;
+}
+
 function clearOriginal(){if(originalController){originalController.abort();originalController=null}if(originalObjectUrl){URL.revokeObjectURL(originalObjectUrl);originalObjectUrl=null}}
 const imageURL=(f,large=false,folder=shownDir,share=shownShare)=>'/api/thumb?'+qs({share,path:[folder,f.name].filter(Boolean).join('/'),v:String(f.modified||0)+'-'+String(f.size||0),large:String(large)});
 function previewable(){return items.filter(canPreview)}
