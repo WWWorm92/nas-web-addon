@@ -143,3 +143,14 @@ Fixes the crash on import of thumb_cache.py: `PermissionError: [Errno 13] Permis
 - Browser photo memory and object URLs are cleared on login changes, logout, share changes and folder changes. Closing the viewer keeps the bounded cache available for re-opening photos.
 - Server-side photo-stream priority from 0.7.8 remains in place.
 - On-demand performance depends on SMB/HDD throughput. Images not yet prefetched still require a full original transfer. Browser JS syntax checked; real device testing pending.
+
+
+## 0.8.5 — copy, move and ZIP
+
+- Select files with the **Выбрать** button or a long press. Use **Копировать** or **Переместить**, then browse the folder chooser (including other SMB shares).
+- Files can be copied/moved between shares. Directories can be moved **within the same share** but recursive directory copying or cross-share directory moves are not supported yet.
+- File names are never intentionally overwritten: if an item with the same name exists in the destination, the operation returns a conflict.
+- Cross-share moves copy first and delete the original only after a successful transfer. Interrupted transfers can leave a partial destination copy; verify the destination if interrupted.
+- Transfers are limited to 512 MiB per file to bound local spool usage. ZIP download supports up to 100 selected **files**, total uncompressed size at most 512 MiB; folders are excluded. ZIP uses temporary storage and the browser downloads the result.
+- Each operation uses existing session authentication, CSRF and the Simple NAS SMB ACLs.
+- Real Raspberry Pi device testing is pending.
