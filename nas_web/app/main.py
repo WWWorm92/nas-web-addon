@@ -13,7 +13,8 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import UnidentifiedImageError
+from . import thumb_cache
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -166,14 +167,14 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         fail(401, "Неверные данные входа или SMB недоступен")
     token, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
     with LOCK:
-        for key in list(SESSIONS):
-            if SESSIONS[key]["expires"] < time.time():
-                del SESSIONS[key]
+        for session_id in list(SESSIONS):
+            if SESSIONS[session_id]["expires"] < time.time():
+                del SESSIONS[session_id]
         ATTEMPTS.pop(key, None)
         if len(SESSIONS) >= MAX_SESSIONS:
             oldest = min(SESSIONS, key=lambda k: SESSIONS[k]["expires"])
             del SESSIONS[oldest]
-        SESSIONS[token] = {**u, "expires": time.time() + LIFETIME, "csrf": csrf}
+        SESSIONS[token] = {**u, "shares": shares, "expires": time.time() + LIFETIME, "csrf": csrf}
     r = JSONResponse({"username": username, "shares": shares, "csrf": csrf})
     r.set_cookie("nas_session", token, max_age=LIFETIME, httponly=True,
                  secure=COOKIE_SECURE or request.url.scheme == "https", samesite="strict", path="/")
@@ -207,31 +208,37 @@ def list_files(request: Request, share: str, path: str = ""):
                        "modified": f.last_write_time} for f in files if f.filename not in (".", "..")]}
 
 @app.get("/api/thumb")
-def thumbnail(request: Request, share: str, path: str):
-    """Generate a small thumbnail, never send original full-size images to grid view."""
+def thumbnail(request: Request, share: str, path: str, v: str = ""):
+    """Cache resized images per active user session; avoid repeated HDD reads."""
+    u = user_for(request)
     p = path_ok(path)
+    name_ok(share)
+    if share not in u.get("shares", []):
+        fail(403, "Нет доступа к шаре")
     if not p or p.rsplit(".", 1)[-1].lower() not in {"jpg", "jpeg", "png", "webp", "gif"}:
         fail(404, "Недоступный формат")
+    token = request.cookies.get("nas_session", "")
+    key = thumb_cache.key_for(token, share, p, v[:80])
+    cached = thumb_cache.get(key)
+    if cached is not None:
+        return Response(cached, media_type="image/webp")
     class LimitedBuffer(io.BytesIO):
         def write(self, data):
             if self.tell() + len(data) > 25 * 1024 * 1024:
                 raise ValueError("Image too large")
             return super().write(data)
     try:
-        with smb(user_for(request)) as conn:
-            check_share(conn, share)
-            buf = LimitedBuffer()
-            conn.retrieveFile(share, "/" + p, buf, timeout=40)
-        buf.seek(0)
-        with Image.open(buf) as im:
-            if im.width * im.height > 30_000_000:
-                fail(413, "Слишком большое изображение")
-            im = ImageOps.exif_transpose(im)
-            im.thumbnail((320, 240), Image.Resampling.LANCZOS)
-            im = im.convert("RGB")
-            out = io.BytesIO()
-            im.save(out, format="WEBP", quality=72, method=3)
-        return Response(out.getvalue(), media_type="image/webp")
+        with thumb_cache.WORKERS:
+            cached = thumb_cache.get(key)
+            if cached is not None:
+                return Response(cached, media_type="image/webp")
+            with smb(u) as conn:
+                # On a cache miss, Samba verifies file-level access.
+                buffer = LimitedBuffer()
+                conn.retrieveFile(share, "/" + p, buffer, timeout=40)
+            result = thumb_cache.render_image(buffer)
+            thumb_cache.put(key, result)
+        return Response(result, media_type="image/webp")
     except HTTPException:
         raise
     except (ValueError, UnidentifiedImageError, OSError):
