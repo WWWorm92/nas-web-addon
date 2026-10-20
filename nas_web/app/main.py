@@ -396,48 +396,48 @@ def unified_gallery(request: Request, offset: int = 0, limit: int = 90):
 
 def _gallery_scan_step(u, owner, shares):
     """One bounded SMB scan batch; existing SQLite index is never reset."""
-        with smb(u) as conn:
+    with smb(u) as conn:
+        for _ in range(3):
+            with gallery_index.LOCK, gallery_index.connect() as db:
+                gallery_index.begin(db, owner, shares)
+                folder = gallery_index.pending_folder(db, owner)
+            if folder is None:
+                break
+            share, path = folder["share"], folder["path"]
+            entries = ()
+            if share in shares:
+                try:
+                    check_share(conn, share)
+                    entries = conn.listPath(share, full(path), timeout=20)
+                except Exception as exc:
+                    logger.info("Gallery folder skipped: %s", type(exc).__name__)
+            with gallery_index.LOCK, gallery_index.connect() as db:
+                gallery_index.add_folder_contents(db, owner, share, path, entries)
+        with gallery_index.LOCK, gallery_index.connect() as db:
+            complete = gallery_index.pending_folder(db, owner) is None
+            if complete:
+                db.execute("UPDATE jobs SET complete=1 WHERE owner=?", (owner,))
+        if complete:
             for _ in range(3):
                 with gallery_index.LOCK, gallery_index.connect() as db:
-                    gallery_index.begin(db, owner, shares)
-                    folder = gallery_index.pending_folder(db, owner)
-                if folder is None:
+                    row = gallery_index.next_unchecked(db, owner, shares)
+                if row is None:
                     break
-                share, path = folder["share"], folder["path"]
-                entries = ()
-                if share in shares:
-                    try:
-                        check_share(conn, share)
-                        entries = conn.listPath(share, full(path), timeout=20)
-                    except Exception as exc:
-                        logger.info("Gallery folder skipped: %s", type(exc).__name__)
+                taken = None
+                try:
+                    wait_for_photo_transfer()
+                    cached, taken = photo_dates.lookup(
+                        u["name"], row["share"], row["path"],
+                        row["modified"], row["size"])
+                    if not cached and row["size"]:
+                        taken = photo_dates.from_jpeg_header(
+                            conn, row["share"], row["path"], row["size"])
+                        photo_dates.save(u["name"], row["share"], row["path"],
+                                         row["modified"], row["size"], taken)
+                except Exception as exc:
+                    logger.info("Gallery EXIF skipped: %s", type(exc).__name__)
                 with gallery_index.LOCK, gallery_index.connect() as db:
-                    gallery_index.add_folder_contents(db, owner, share, path, entries)
-            with gallery_index.LOCK, gallery_index.connect() as db:
-                complete = gallery_index.pending_folder(db, owner) is None
-                if complete:
-                    db.execute("UPDATE jobs SET complete=1 WHERE owner=?", (owner,))
-            if complete:
-                for _ in range(3):
-                    with gallery_index.LOCK, gallery_index.connect() as db:
-                        row = gallery_index.next_unchecked(db, owner, shares)
-                    if row is None:
-                        break
-                    taken = None
-                    try:
-                        wait_for_photo_transfer()
-                        cached, taken = photo_dates.lookup(
-                            u["name"], row["share"], row["path"],
-                            row["modified"], row["size"])
-                        if not cached and row["size"]:
-                            taken = photo_dates.from_jpeg_header(
-                                conn, row["share"], row["path"], row["size"])
-                            photo_dates.save(u["name"], row["share"], row["path"],
-                                             row["modified"], row["size"], taken)
-                    except Exception as exc:
-                        logger.info("Gallery EXIF skipped: %s", type(exc).__name__)
-                    with gallery_index.LOCK, gallery_index.connect() as db:
-                        gallery_index.save_date(db, owner, row["share"], row["path"], taken)
+                    gallery_index.save_date(db, owner, row["share"], row["path"], taken)
     
 
 def _gallery_background(u, owner, shares):
