@@ -121,7 +121,7 @@ jobs:
                   assert share == "Photos"
                   return 3
               def openFile(self, tid, path, **kwargs):
-                  assert tid == 3 and path == r"\\album\\image.jpg"
+                  assert tid == 3 and path == r"\album\image.jpg"
                   # Impacket defaults to READ | WRITE; this share permits READ only.
                   assert kwargs.get("desiredAccess") == 0x00000001
                   assert kwargs.get("shareMode") == 0x00000007
