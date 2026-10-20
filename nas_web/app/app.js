@@ -65,13 +65,23 @@ function photoLoad(f){
     .finally(()=>{if(photoFetches.get(key)===job)photoFetches.delete(key)});
   photoFetches.set(key,job);return job.promise;
 }
+let swipeDirection=1;
 function photoPrefetch(serial){
   if(serial!==viewerSerial||previewIndex<0)return;
-  const f=gallery[previewIndex+1];
-  if(!f||!isPhoto(f)||Number(f.size)>ORIGINAL_CACHE_LIMIT)return;
-  if(photoCacheGet(photoKey(f)))return;
   clearTimeout(preloadTimer);
-  preloadTimer=setTimeout(()=>{if(serial===viewerSerial)photoLoad(f).catch(()=>{})},250);
+  // At most one background SMB transfer. Prefetch two frames in the
+  // latest swipe direction, then one behind, without starving the viewer.
+  const offsets=swipeDirection>=0?[1,2,-1]:[-1,-2,1];
+  const candidates=offsets.map(offset=>gallery[previewIndex+offset]).filter(f=>f&&isPhoto(f)&&Number(f.size)<=ORIGINAL_CACHE_LIMIT);
+  const prepare=async()=>{
+    for(const f of candidates){
+      if(serial!==viewerSerial)return;
+      const key=photoKey(f);
+      if(photoCacheGet(key))continue;
+      try{await photoLoad(f)}catch(e){if(e.name==='AbortError')return}
+    }
+  };
+  preloadTimer=setTimeout(()=>{if(serial===viewerSerial)prepare()},180);
 }
 function photoCacheClear(){
   for(const job of photoFetches.values())job.controller.abort();
@@ -88,7 +98,7 @@ function setZoom(scale,cx=0,cy=0){const img=el('previewBody').querySelector('img
 function drawZoom(){const img=el('previewBody').querySelector('img');if(!img)return;const bound=el('photoStage').getBoundingClientRect(),w=(img.naturalWidth||bound.width),h=(img.naturalHeight||bound.height),fit=Math.min(bound.width/w,bound.height/h),cw=w*fit,ch=h*fit;panX=Math.max(-Math.max(0,(cw*zoom-bound.width)/2),Math.min(Math.max(0,(cw*zoom-bound.width)/2),panX));panY=Math.max(-Math.max(0,(ch*zoom-bound.height)/2),Math.min(Math.max(0,(ch*zoom-bound.height)/2),panY));img.style.transform='translate('+panX+'px,'+panY+'px) scale('+zoom+')'}
 function openPreview(f){if(f.directory)return enterFolder(f.name);filmNodes.clear();if(!canPreview(f))return download(f);shownShare=selected;shownDir=dir;const photos=isPhoto(f);gallery=photos?items.filter(isPhoto):[f];previewIndex=Math.max(0,gallery.findIndex(x=>x.name===f.name));el('preview').style.display='flex';document.body.style.overflow='hidden';showPreview(0)}
 function closePreview(){viewerSerial++;clearOriginal();for(const job of photoFetches.values())job.controller.abort();photoFetches.clear();clearTimeout(preloadTimer);el('previewBody').replaceChildren();el('preview').style.display='none';el('filmstrip').replaceChildren();previewIndex=-1;gallery=[];filmNodes.clear();resetZoom();document.body.style.overflow='';pumpThumbs()}
-function showPreview(direction=0){if(previewIndex<0||!gallery.length)return;const serial=++viewerSerial,f=gallery[previewIndex],box=el('previewBody');clearOriginal();clearTimeout(preloadTimer);resetZoom();box.replaceChildren();el('viewerSpinner').textContent='Загрузка…';el('previewCounter').textContent=(previewIndex+1)+' / '+gallery.length;el('previewTitle').textContent=f.name;el('viewerSpinner').classList.toggle('hidden',!isPhoto(f));el('photoStage').style.touchAction=isPhoto(f)?'none':'auto';let node;if(isPhoto(f)){node=document.createElement('img');node.alt=f.name;node.draggable=false;node.className='arriving';node.style.setProperty('--slide',direction>0?'30px':direction<0?'-30px':'0px');node.onload=()=>{if(serial!==viewerSerial)return;el('viewerSpinner').classList.add('hidden');drawZoom()};node.onerror=()=>{if(serial===viewerSerial)el('viewerSpinner').textContent='Изображение недоступно'};node.src=imageURL(f,false);
+function showPreview(direction=0){if(previewIndex<0||!gallery.length)return;if(direction)swipeDirection=Math.sign(direction);const serial=++viewerSerial,f=gallery[previewIndex],box=el('previewBody');clearOriginal();clearTimeout(preloadTimer);resetZoom();box.replaceChildren();el('viewerSpinner').textContent='Загрузка…';el('previewCounter').textContent=(previewIndex+1)+' / '+gallery.length;el('previewTitle').textContent=f.name;el('viewerSpinner').classList.toggle('hidden',!isPhoto(f));el('photoStage').style.touchAction=isPhoto(f)?'none':'auto';let node;if(isPhoto(f)){node=document.createElement('img');node.alt=f.name;node.draggable=false;node.className='arriving';node.style.setProperty('--slide',direction>0?'30px':direction<0?'-30px':'0px');node.onload=()=>{if(serial!==viewerSerial)return;el('viewerSpinner').classList.add('hidden');drawZoom()};node.onerror=()=>{if(serial===viewerSerial)el('viewerSpinner').textContent='Изображение недоступно'};node.src=imageURL(f,false);
 const photoId=photoKey(f),cachedPhoto=photoCacheGet(photoId);
 for(const [key,job] of photoFetches){if(key!==photoId){job.controller.abort();photoFetches.delete(key)}}
 if(cachedPhoto){node.src=cachedPhoto;photoPrefetch(serial)}
