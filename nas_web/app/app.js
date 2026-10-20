@@ -225,6 +225,7 @@ el('mobileAdd').onclick=()=>openMobileSheet('Добавить',[
 el('mobilePhotos').onclick=()=>{closeMobileSheet();enterGlobalGallery()};
 el('mobileMore').onclick=()=>openMobileSheet('Дополнительно',[
   {label:'▧ Все фотографии на NAS',run:()=>enterGlobalGallery()},
+  {label:'☑ Выбрать файлы',run:()=>{leaveGlobalGallery();el('selectionModeButton').click()}},
   {label:'▦ Вернуться к файлам',run:()=>{leaveGlobalGallery();el('gridView').click()}},
   {label:'⟳ Обновить список',run:()=>refresh()},
   {label:'◐ Сменить тему',run:()=>el('theme').click()},
