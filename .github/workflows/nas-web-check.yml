@@ -100,6 +100,46 @@ jobs:
                   assert g.page(b,["Secret"],0,10)==[]
           print("Shared metadata, ACL isolation and resume OK")
           PY
+      - name: Read-only SMB range access regression
+        run: |
+          PYTHONPATH=nas_web python - <<'PY'
+          import sys
+          from types import ModuleType
+          # Test the adapter against an SMB backend requiring explicit read-only access.
+          fake = ModuleType("impacket")
+          backend = ModuleType("impacket.smbconnection")
+          backend.SMBConnection = object
+          sys.modules["impacket"] = fake
+          sys.modules["impacket.smbconnection"] = backend
+          from app.smb_compat import SMBConnection
+
+          class ReadOnlyBackend:
+              def __init__(self):
+                  self.closed = False
+                  self.disconnected = False
+              def connectTree(self, share):
+                  assert share == "Photos"
+                  return 3
+              def openFile(self, tid, path, **kwargs):
+                  assert tid == 3 and path == r"\\album\\image.jpg"
+                  # Impacket defaults to READ | WRITE; this share permits READ only.
+                  assert kwargs.get("desiredAccess") == 0x00000001
+                  assert kwargs.get("shareMode") == 0x00000007
+                  return 5
+              def readFile(self, tid, fid, offset, count):
+                  assert tid == 3 and fid == 5 and offset == 0 and count == 5
+                  return b"hello"
+              def closeFile(self, tid, fid):
+                  self.closed = True
+              def disconnectTree(self, tid):
+                  self.disconnected = True
+
+          conn = SMBConnection("alice", "password", "test", "NAS")
+          conn.conn = ReadOnlyBackend()
+          assert b"".join(conn.iter_range("Photos", "/album/image.jpg", 0, 5)) == b"hello"
+          assert conn.conn.closed and conn.conn.disconnected
+          print("SMB range access requests read-only permission and cleans up handles")
+          PY
       - name: EXIF resume and denied-access safety tests
         run: |
           PYTHONPATH=nas_web python - <<'PY'
