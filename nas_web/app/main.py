@@ -618,6 +618,113 @@ def rename(request: Request, payload: dict, x_csrf_token: str = Header(default="
             smb_action_error("rename", exc)
     return {"ok": True}
 
+# File transfers are deliberately bounded to avoid exhausting HA OS memory/disk.
+TRANSFER_LIMIT = 512 * 1024 * 1024
+ZIP_LIMIT = 512 * 1024 * 1024
+ZIP_MAX_FILES = 100
+
+def entry_in_folder(conn, share, parent, name):
+    entries = conn.listPath(share, full(parent))
+    return next((x for x in entries if x.filename == name), None)
+
+@app.post("/api/transfer")
+def transfer_file(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    source_share = name_ok(payload.get("share", ""))
+    target_share = name_ok(payload.get("target_share", source_share))
+    source = path_ok(payload.get("path", ""))
+    destination_dir = path_ok(payload.get("target_dir", ""))
+    operation = payload.get("operation", "copy")
+    if not source or operation not in ("copy", "move"):
+        fail(400, "Некорректный файл или операция")
+    filename = source.split("/")[-1]
+    target = "/".join(x for x in (destination_dir, filename) if x)
+    if source_share == target_share and source == target:
+        fail(409, "Источник и назначение совпадают")
+    if target_share == source_share and target.startswith(source + "/"):
+        fail(409, "Нельзя переместить папку внутрь себя")
+    try:
+        with smb(u) as conn:
+            check_share(conn, source_share)
+            check_share(conn, target_share)
+            origin_dir = "/".join(source.split("/")[:-1])
+            source_entry = entry_in_folder(conn, source_share, origin_dir, filename)
+            if source_entry is None:
+                fail(404, "Исходный файл не найден")
+            if entry_in_folder(conn, target_share, destination_dir, filename) is not None:
+                fail(409, "В папке назначения уже есть элемент с таким именем")
+            if source_entry.isDirectory:
+                if operation != "move" or source_share != target_share:
+                    fail(422, "Копирование папок и перенос папок между шарами пока не поддерживаются")
+                conn.rename(source_share, "/" + source, "/" + target)
+                return {"ok": True, "operation": "move"}
+            if operation == "move" and source_share == target_share:
+                conn.rename(source_share, "/" + source, "/" + target)
+                return {"ok": True, "operation": "move"}
+            if source_entry.file_size > TRANSFER_LIMIT:
+                fail(413, "Максимальный размер файла для копирования — 512 МБ")
+            # Local temporary staging avoids simultaneous SMB reads and writes on
+            # pooled connections. Do not delete the source if upload fails.
+            with tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode="w+b") as temporary:
+                conn.retrieveFile(source_share, "/" + source, temporary)
+                if temporary.tell() != source_entry.file_size:
+                    fail(502, "SMB вернул неполный файл. Источник не изменён")
+                temporary.seek(0)
+                # putFile could overwrite on a concurrent conflicting write;
+                # serialise transfer operations within this add-on.
+                conn.storeFile(target_share, "/" + target, temporary)
+            if operation == "move":
+                conn.deleteFiles(source_share, "/" + source)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        smb_action_error("transfer", exc)
+    return {"ok": True, "operation": operation}
+
+@app.post("/api/zip")
+def download_zip(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+    import zipfile
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    share = name_ok(payload.get("share", ""))
+    folder = path_ok(payload.get("path", ""))
+    names = payload.get("files")
+    if not isinstance(names, list) or not 1 <= len(names) <= ZIP_MAX_FILES:
+        fail(400, "Выберите от 1 до 100 файлов")
+    names = [name_ok(x) for x in names]
+    if len(set(names)) != len(names):
+        fail(400, "Повторяющиеся имена файлов")
+    temporary = tempfile.TemporaryDirectory(prefix="nasweb-zip-")
+    archive = Path(temporary.name) / "selection.zip"
+    try:
+        with smb(u) as conn:
+            check_share(conn, share)
+            entries = {x.filename: x for x in conn.listPath(share, full(folder))}
+            total = 0
+            for name in names:
+                entry = entries.get(name)
+                if entry is None or entry.isDirectory:
+                    fail(422, "ZIP поддерживает только существующие файлы")
+                total += entry.file_size
+                if total > ZIP_LIMIT:
+                    fail(413, "ZIP ограничен суммарным размером 512 МБ")
+            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as zipout:
+                for name in names:
+                    # Stream each SMB file directly into ZIP without another in-memory copy.
+                    with zipout.open(name, "w", force_zip64=True) as member:
+                        conn.retrieveFile(share, full(folder, name), member)
+        return FileResponse(archive, filename="NAS-Web-files.zip",
+                            media_type="application/zip",
+                            background=BackgroundTask(temporary.cleanup),
+                            headers={"Cache-Control": "private, no-store"})
+    except HTTPException:
+        temporary.cleanup()
+        raise
+    except Exception as exc:
+        temporary.cleanup()
+        smb_action_error("zip", exc)
+
 @app.post("/api/delete")
 def delete(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
     check_origin(request)
