@@ -64,3 +64,12 @@ This repository is an early prototype, **not a production-ready cloud drive**.
 - HTML5 video/audio playback is now provided by `/api/video` with standard HTTP byte-range requests (`206 Partial Content`), backed by SMB random reads. It no longer stages the entire media file in a temporary download before playing.
 - Supported container/extension recognition: MP4, WebM, M4V, MOV, MP3 and OGG. Actual playback also depends on browser video/audio codec support. In particular, browsers may not play every MOV/HEVC recording.
 - These changes are not yet tested against real smartphone browsers or the user's NAS. **LAN-only testing remains mandatory; do not publish through KeenDNS yet.**
+
+
+## 0.5.1 — folder actions and sign-in
+
+- Replaced native JavaScript prompt/confirm with accessible, touch-friendly dialogs for creating, renaming and deleting files/folders.
+- Redesigned sign-in page with responsive layout, password visibility toggle and loading state.
+- Backend now interprets common SMB errors (access denied, file exists, folder not empty, path missing), returning actionable messages and writing the SMB error to add-on logs.
+- **Note:** backend code has not yet been tested against Simple NAS for folder creation/deletion. Successful browsing or uploading does not imply permission to delete or create directories. If actions still fail, send the specific UI error and corresponding NAS Web log line.
+- Keep this add-on LAN-only while external HTTPS deployment and security testing are pending.
