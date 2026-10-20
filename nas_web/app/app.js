@@ -307,6 +307,11 @@ function gallerySettingsOpen(open){
   }
   panel.classList.toggle('hidden',!open);
 }
+const orderSelect=document.createElement('select');orderSelect.id='galleryOrderSelect';
+orderSelect.setAttribute('aria-label','Сортировка фотографий');
+orderSelect.innerHTML='<option value="taken">По дате съёмки (EXIF)</option><option value="modified">По дате изменения файла</option>';
+orderSelect.value=globalGalleryOrder;orderSelect.onchange=()=>setGlobalGalleryOrder(orderSelect.value);
+el('gallerySettingsContent').prepend(orderSelect);
 el('gallerySettingsToggle').onclick=()=>gallerySettingsOpen(el('gallerySettingsPanel').classList.contains('hidden'));
 el('gallerySettingsClose').onclick=()=>gallerySettingsOpen(false);
 el('gallerySearchToggle').onclick=()=>{
@@ -422,13 +427,20 @@ function leaveGlobalGallery(){
   el('search').value='';el('search').placeholder='Поиск файлов и папок…';
   renderBreadcrumb();render();updateMobileNav();
 }
+let globalGalleryOrder=localStorage.getItem('nasweb-gallery-order')==='modified'?'modified':'taken';
+function setGlobalGalleryOrder(order){
+ if(!['taken','modified'].includes(order)||order===globalGalleryOrder)return;
+ globalGalleryOrder=order;localStorage.setItem('nasweb-gallery-order',order);
+ allPhotoScanToken++;allPhotos=[];allPhotoTotal=0;galleryRenderSignature='';
+ loadGlobalPage(true);
+}
 async function loadGlobalPage(reset=false){
   if(allPhotoPageBusy||!allPhotosMode)return;
   const token=allPhotoScanToken;
   allPhotoPageBusy=true;
   try{
     const start=reset?0:allPhotos.length;
-    const data=await api('/api/gallery?'+qs({offset:start,limit:90}));
+    const data=await api('/api/gallery?'+qs({offset:start,limit:90,order:globalGalleryOrder}));
     if(!allPhotosMode||token!==allPhotoScanToken)return;
     allPhotoStatus=data;allPhotoTotal=data.total;
     if(reset)allPhotos=data.items;else {
@@ -504,10 +516,10 @@ function renderAllGallery(){
   el('globalGallerySummary').classList.remove('hidden');
   let month='';
   for(const f of shown){
-    const label=photoDay(f);
+    const label=globalGalleryOrder==='taken'&&!f.taken?'Дата съёмки неизвестна':photoDay(globalGalleryOrder==='modified'?{...f,taken:null}:f);
     if(label!==month){
       const heading=document.createElement('h3');heading.className='galleryMonth';
-      heading.textContent=label;heading.dataset.year=photoYear(f);heading.dataset.month=String(photoDate(f).getMonth()+1).padStart(2,'0');grid.append(heading);month=label;
+      heading.textContent=label;heading.dataset.year=globalGalleryOrder==='taken'&&!f.taken?'Без даты':photoYear(globalGalleryOrder==='modified'?{...f,taken:null}:f);heading.dataset.month=globalGalleryOrder==='taken'&&!f.taken?'':String(photoDate(globalGalleryOrder==='modified'?{...f,taken:null}:f).getMonth()+1).padStart(2,'0');grid.append(heading);month=label;
     }
     const tile=document.createElement('article');tile.className='item galleryPhoto';tile.tabIndex=0;tile.role='button';tile.title=f.share+' / '+f.path;
     tile.setAttribute('aria-label','Открыть '+f.name+' — '+f.share+'/'+f.folder);
