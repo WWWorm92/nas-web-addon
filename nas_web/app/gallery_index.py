@@ -66,6 +66,7 @@ def begin(db, owner, shares):
         if not present:
             db.execute("INSERT INTO folders(owner,share,path) VALUES (?,?, '')", (owner, share))
             db.execute("UPDATE jobs SET complete=0 WHERE owner=?", (owner,))
+    refresh_due(db, owner, shares)
 
 
 def reset(owner, shares):
