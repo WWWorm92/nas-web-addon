@@ -60,7 +60,12 @@ def begin(db, owner, shares):
     exists = db.execute("SELECT 1 FROM jobs WHERE owner=?", (owner,)).fetchone()
     if not exists:
         db.execute("INSERT INTO jobs(owner,started) VALUES (?,?)", (owner, time.time()))
-    reuse_shared(db, owner, shares)
+    # Reuse shared EXIF only when this owner's rows still need it.
+    # Avoid costly whole-library UPDATEs on every gallery status poll.
+    needs_metadata = db.execute("SELECT 1 FROM photos WHERE owner=? AND exif_checked=0 LIMIT 1",
+                                (owner,)).fetchone()
+    if needs_metadata:
+        reuse_shared(db, owner, shares)
     for share in shares:
         present = db.execute("SELECT 1 FROM folders WHERE owner=? AND share=? AND path=''",
                              (owner, share)).fetchone()
