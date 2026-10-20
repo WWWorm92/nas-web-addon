@@ -86,6 +86,7 @@ async function scanGalleryDates(){
         body:JSON.stringify({share,path:folder,files:batch.map(f=>({name:f.name,size:f.size,modified:f.modified}))})});
       if(generation!==galleryDateGeneration||selected!==share||dir!==folder)return;
       for(const f of batch){const entry=data.dates?.[f.name];if(entry&&entry.cached)f.taken=entry.taken||null}
+      message('Проверяем даты съёмки: '+Math.min(i+batchSize,photos.length)+' / '+photos.length);
     }catch(e){if(generation===galleryDateGeneration)message('EXIF: '+e.message);return}
     if(i+batchSize<photos.length)await new Promise(resolve=>setTimeout(resolve,140));
   }
