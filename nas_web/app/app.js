@@ -282,16 +282,30 @@ el('mobileMore').onclick=()=>openMobileSheet('Дополнительно',[
   {label:'◐ Сменить тему',run:()=>el('theme').click()},
   {label:'⇥ Выйти из NAS Web',danger:true,run:()=>el('logout').click()}
 ]);
+const gallerySettingsHomes=new Map();
 function gallerySettingsOpen(open){
   const panel=el('gallerySettingsPanel');
   if(!panel)return;
-  panel.classList.toggle('hidden',!open);
+  const holder=el('gallerySettingsContent');
   if(open){
-    const holder=el('gallerySettingsContent');
     for(const id of ['globalGallerySummary','galleryControls','galleryYears','status']){
-      const node=el(id);if(node&&node.parentElement!==holder)holder.append(node);
+      const node=el(id);
+      if(!node)continue;
+      if(!gallerySettingsHomes.has(id)){
+        const marker=document.createComment('gallery-home-'+id);
+        node.parentNode.insertBefore(marker,node);
+        gallerySettingsHomes.set(id,marker);
+      }
+      holder.append(node);
     }
+  }else{
+    for(const [id,marker] of gallerySettingsHomes){
+      if(marker.parentNode)marker.parentNode.insertBefore(el(id),marker);
+      marker.remove();
+    }
+    gallerySettingsHomes.clear();
   }
+  panel.classList.toggle('hidden',!open);
 }
 el('gallerySettingsToggle').onclick=()=>gallerySettingsOpen(el('gallerySettingsPanel').classList.contains('hidden'));
 el('gallerySettingsClose').onclick=()=>gallerySettingsOpen(false);
