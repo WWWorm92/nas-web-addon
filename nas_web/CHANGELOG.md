@@ -1,3 +1,11 @@
+## 0.21.0 (initial feature integration)
+
+- Private virtual favorites and albums, stored separately from the photo index and SMB files.
+- On-this-day memories from existing EXIF dates and indexed photo storage statistics.
+- Mobile More menu and photo long-press actions for collections, memories and statistics.
+- Existing range-streaming video player, MOV fallback and persistent thumbnail cache retained; no full-gallery video indexing or new cache tuning in this release.
+- No photo index reset, SMB write, permission changes or date display changes.
+
 ## 0.20.1
 
 - Compact mobile file rows and remove redundant folder-type subtitles.
