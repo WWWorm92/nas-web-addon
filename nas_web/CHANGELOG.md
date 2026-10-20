@@ -1,3 +1,12 @@
+## 0.14.0
+
+- Refreshed responsive gallery styling: tighter photo spacing, smaller date headings, and removed per-tile folder captions. Photo source remains available in the information panel.
+- Collapsible indexing status in the gallery to reduce visual clutter.
+- File manager: clearer folder/file visual treatment and refined list appearance on desktop.
+- Right-click opens the existing file context menu; mobile long-press opens the existing action sheet instead of immediately selecting.
+- Refined mobile navigation active state and subtle transitions, respecting reduced-motion settings.
+- Preserved SMB authorization, file operations, photo database, EXIF metadata, and thumbnail cache. No database migration or index reset.
+
 ## 0.13.0
 
 - Gallery: browser-native offscreen rendering optimization to reduce rendering work on long photo lists.
