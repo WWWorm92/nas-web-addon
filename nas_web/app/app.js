@@ -282,11 +282,68 @@ el('mobileAdd').onclick=()=>openMobileSheet('Добавить',[
 ]);
 el('mobilePhotos').onclick=()=>{closeMobileSheet();enterGlobalGallery()};
 el('mobileMore').onclick=()=>openMobileSheet('Ещё',[
+  {label:'★ Избранное и альбомы',run:()=>openCollections()},
+  {label:'Воспоминания',run:()=>openMemories()},
+  {label:'Статистика фотографий',run:()=>openNasStats()},
   {label:'Обновить список',run:()=>allPhotosMode?el('globalGalleryRescan').click():refresh()},
   {label:'Выбрать файлы',run:()=>{leaveGlobalGallery();el('selectionModeButton').click()}},
   {label:'Сменить тему',run:()=>el('theme').click()},
   {label:'Выйти из NAS Web',danger:true,run:()=>el('logout').click()}
 ]);
+
+async function collectionPost(url,data,method='POST'){
+ return api(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+}
+async function addPhotoToCollection(f){
+ try{
+  const data=await api('/api/collections');
+  const actions=[{label:'★ В избранное',run:async()=>{try{await collectionPost('/api/collections/item',{share:f.share,path:f.path,enabled:true});message('Добавлено в избранное')}catch(e){alert(e.message)}}}];
+  for(const album of data.albums)actions.push({label:'В альбом: '+album.name,run:async()=>{try{await collectionPost('/api/collections/item',{share:f.share,path:f.path,album_id:album.id,enabled:true});message('Добавлено в альбом')}catch(e){alert(e.message)}}});
+  actions.push({label:'＋ Новый альбом',run:async()=>{const name=prompt('Название альбома');if(!name)return;try{const a=await collectionPost('/api/collections/album',{name});await collectionPost('/api/collections/item',{share:f.share,path:f.path,album_id:a.id,enabled:true});message('Альбом создан')}catch(e){alert(e.message)}}});
+  openMobileSheet(f.name,actions);
+ }catch(e){alert(e.message)}
+}
+async function openCollections(){
+ try{
+  const data=await api('/api/collections');
+  const actions=[{label:'★ Избранное ('+data.favorites+')',run:()=>openCollectionPhotos(null,true)}];
+  for(const a of data.albums)actions.push({label:a.name+' ('+a.count+')',run:()=>openCollectionPhotos(a.id,false)});
+  actions.push({label:'＋ Создать альбом',run:async()=>{const name=prompt('Название альбома');if(!name)return;try{await collectionPost('/api/collections/album',{name});openCollections()}catch(e){alert(e.message)}}});
+  openMobileSheet('Альбомы',actions);
+ }catch(e){alert(e.message)}
+}
+async function openCollectionPhotos(albumId,favorites){
+ try{
+  const result=await api('/api/collections/photos?'+qs({favorites:String(favorites),...(favorites?{}:{album_id:String(albumId)}),limit:'120'}));
+  if(!allPhotosMode)await enterGlobalGallery();
+  allPhotos=result.items;allPhotoTotal=result.items.length;
+  allPhotoStatus={complete:true,total:allPhotoTotal,pending:0};
+  ++allPhotoScanToken;galleryRenderSignature='';renderAllGallery();
+  message(favorites?'Избранное':'Фотографии альбома');
+ }catch(e){alert(e.message)}
+}
+async function openMemories(){
+ try{
+  const result=await api('/api/gallery/memories');
+  if(!result.items.length){openMobileSheet('Воспоминания',[{label:'На эту дату фотографий пока нет',run:()=>{}}]);return}
+  if(!allPhotosMode)await enterGlobalGallery();
+  allPhotos=result.items;allPhotoTotal=result.items.length;
+  allPhotoStatus={complete:true,total:allPhotoTotal,pending:0};
+  ++allPhotoScanToken;galleryRenderSignature='';renderAllGallery();
+ }catch(e){alert(e.message)}
+}
+async function openNasStats(){
+ try{
+  const s=await api('/api/gallery/statistics');
+  const actions=[
+    {label:'Фотографий: '+s.photos.toLocaleString('ru'),run:()=>{}},
+    {label:'Размер фотографий: '+size(s.bytes),run:()=>{}},
+    {label:'С датой съёмки: '+s.dated.toLocaleString('ru'),run:()=>{}},
+    ...s.by_share.map(x=>({label:x.share+': '+x.photos+' фото · '+size(x.bytes),run:()=>{}}))
+  ];
+  openMobileSheet('Статистика галереи',actions);
+ }catch(e){alert(e.message)}
+}
 const gallerySettingsHomes=new Map();
 function gallerySettingsOpen(open){
   const panel=el('gallerySettingsPanel');
@@ -531,7 +588,7 @@ function renderAllGallery(){
     tile.dataset.photoId=galleryId(f);
     tile.onclick=()=>{if(tile.dataset.longPress){delete tile.dataset.longPress;return}if(galleryPickMode)toggleGalleryPick(f);else openPreview(f)};
     let hold=null,sx=0,sy=0;
-    tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;hold=setTimeout(()=>{tile.dataset.longPress='1';navigator.vibrate?.(15);openMobileSheet(f.name,[{label:'Выбрать',run:()=>toggleGalleryPick(f)},{label:'Открыть фото',run:()=>openPreview(f)},{label:'Открыть папку',run:()=>{leaveGlobalGallery();selected=f.share;dir=f.folder;renderShares();refresh()}},{label:'Сведения',run:()=>showPhotoDetails(f)},{label:'Скачать',run:()=>{const a=document.createElement('a');a.href='/api/file?'+qs({share:f.share,path:f.path});a.download=f.name;a.click()}}])},550)},{passive:true});
+    tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;hold=setTimeout(()=>{tile.dataset.longPress='1';navigator.vibrate?.(15);openMobileSheet(f.name,[{label:'Выбрать',run:()=>toggleGalleryPick(f)},{label:'Открыть фото',run:()=>openPreview(f)},{label:'★ В избранное / альбом',run:()=>addPhotoToCollection(f)},{label:'Открыть папку',run:()=>{leaveGlobalGallery();selected=f.share;dir=f.folder;renderShares();refresh()}},{label:'Сведения',run:()=>showPhotoDetails(f)},{label:'Скачать',run:()=>{const a=document.createElement('a');a.href='/api/file?'+qs({share:f.share,path:f.path});a.download=f.name;a.click()}}])},550)},{passive:true});
     tile.addEventListener('touchmove',e=>{if(e.touches.length&&Math.hypot(e.touches[0].clientX-sx,e.touches[0].clientY-sy)>12)clearTimeout(hold)},{passive:true});
     tile.addEventListener('touchend',()=>clearTimeout(hold));tile.addEventListener('touchcancel',()=>clearTimeout(hold));
     tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openPreview(f)}};
