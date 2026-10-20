@@ -53,7 +53,7 @@ function photoCachePut(key,blob){
   }
   return url;
 }
-function photoSource(f){return ['jpg','jpeg'].includes(ext(f.name))?'/api/file?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/'),inline:'true'}):imageURL(f,true)}
+function photoSource(f){return ['jpg','jpeg'].includes(ext(f.name))?'/api/photo?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/')}):imageURL(f,true)}
 function photoLoad(f){
   const key=photoKey(f),hit=photoCacheGet(key);
   if(hit)return Promise.resolve(hit);
