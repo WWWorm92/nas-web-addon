@@ -20,6 +20,22 @@ from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
 
 logger = logging.getLogger('nasweb')
+from collections import deque
+ADMIN_EVENTS=deque(maxlen=200)
+class AdminEventHandler(logging.Handler):
+    def emit(self,record):
+        try:
+            # Do not expose raw SMB paths, credentials or exception details.
+            message=record.getMessage()
+            if any(x in message.lower() for x in ("password","token","cookie","secret","authorization")):
+                message="[sensitive diagnostic omitted]"
+            ADMIN_EVENTS.append({"time":round(record.created),"level":record.levelname,
+                                 "message":message[:240]})
+        except Exception:pass
+logger.addHandler(AdminEventHandler())
+def admin_log_event(level,message):
+    getattr(logger,level)(message)
+
 app = FastAPI(title="NAS Web", docs_url=None, redoc_url=None, openapi_url=None)
 ROOT = Path(__file__).parent
 try:
@@ -299,19 +315,53 @@ def admin_logout(request: Request,x_csrf_token: str=Header(default="")):
     response=JSONResponse({"ok":True});response.delete_cookie("nas_admin",path="/")
     return response
 
+@app.get("/static/admin.js")
+def admin_script():
+    return Response((ROOT/"admin.js").read_text(encoding="utf-8"),media_type="application/javascript")
+
 @app.get("/api/admin/diagnostics")
 def admin_diagnostics(request: Request):
     admin_user(request)
     from datetime import datetime,timezone
+    import shutil
     cache=thumb_cache.statistics()
     with gallery_index.LOCK,gallery_index.connect() as db:
-        totals=db.execute("SELECT COUNT(*) FROM photos").fetchone()[0]
+        totals=db.execute("SELECT COUNT(*),COALESCE(SUM(size),0),COUNT(taken) FROM photos").fetchone()
         owners=db.execute("SELECT COUNT(DISTINCT owner) FROM photos").fetchone()[0]
-        jobs=db.execute("SELECT COUNT(*),SUM(CASE WHEN complete=1 THEN 1 ELSE 0 END) FROM jobs").fetchone()
-    return {"service":"NAS Web","gallery_index_rows":totals,"indexed_users":owners,
-            "scan_jobs":jobs[0],"completed_jobs":jobs[1] or 0,
+        jobs=db.execute("SELECT COUNT(*),SUM(CASE WHEN complete=1 THEN 1 ELSE 0 END),SUM(CASE WHEN limited=1 THEN 1 ELSE 0 END) FROM jobs").fetchone()
+        pending=db.execute("SELECT COUNT(*) FROM folders WHERE done=0").fetchone()[0]
+        dates=db.execute("SELECT COUNT(*) FROM photos WHERE exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')").fetchone()[0]
+    disk=shutil.disk_usage("/data")
+    return {"service":"NAS Web","gallery_index_rows":totals[0],"gallery_index_bytes":totals[1],
+            "gallery_dated":totals[2],"indexed_users":owners,"scan_jobs":jobs[0],
+            "completed_jobs":jobs[1] or 0,"limited_jobs":jobs[2] or 0,
+            "pending_folders":pending,"pending_exif":dates,
             "thumbnail_cache":{"files":cache["files"],"size_mb":cache["size_mb"]},
+            "data_disk":{"total":disk.total,"used":disk.used,"free":disk.free},
             "smb_host_configured":bool(HOST),"server_time":datetime.now(timezone.utc).isoformat()}
+
+@app.get("/api/admin/events")
+def admin_events(request: Request):
+    admin_user(request)
+    return {"events":list(ADMIN_EVENTS)[-100:]}
+
+@app.post("/api/admin/cache-maintenance")
+def admin_cache_maintenance(request: Request,x_csrf_token: str=Header(default="")):
+    check_origin(request);admin_protected(request,x_csrf_token)
+    # Evict expired/oversize cache files only, not the photo index or SMB data.
+    with thumb_cache.FILES_LOCK:
+        thumb_cache._prune()
+    admin_log_event("info","Cache maintenance completed")
+    return {"ok":True,"cache":thumb_cache.statistics()}
+
+@app.post("/api/admin/password")
+def admin_password(request: Request,payload: dict,x_csrf_token: str=Header(default="")):
+    check_origin(request);admin_protected(request,x_csrf_token)
+    try:admin_auth.change_password(request.cookies.get("nas_admin",""),
+                                   str(payload.get("old_password","")),str(payload.get("new_password","")))
+    except ValueError as exc:fail(400,str(exc))
+    admin_log_event("info","Administrator password changed")
+    return {"ok":True}
 
 @app.post("/api/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...), remember: bool = Form(False)):
