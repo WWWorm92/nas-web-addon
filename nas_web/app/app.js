@@ -32,6 +32,9 @@ function download(f){const a=document.createElement('a');a.href=fileUrl(f.name);
 const isPhoto=f=>!f.directory&&imageExt.includes(ext(f.name));
 let gallery=[],zoom=1,panX=0,panY=0,preloadTimer=null,viewerSerial=0,shownShare='',shownDir='',filmNodes=new Map();
 let originalController=null, originalObjectUrl=null;
+const originalCache=new Map();
+let originalCacheBytes=0;
+const ORIGINAL_CACHE_LIMIT=48*1024*1024;
 function clearOriginal(){if(originalController){originalController.abort();originalController=null}if(originalObjectUrl){URL.revokeObjectURL(originalObjectUrl);originalObjectUrl=null}}
 const imageURL=(f,large=false,folder=shownDir,share=shownShare)=>'/api/thumb?'+qs({share,path:[folder,f.name].filter(Boolean).join('/'),v:String(f.modified||0)+'-'+String(f.size||0),large:String(large)});
 function previewable(){return items.filter(canPreview)}
