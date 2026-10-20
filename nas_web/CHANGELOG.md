@@ -1,3 +1,10 @@
+## 0.19.0
+
+- Expand photo capture-date parsing to JPEG, PNG and WebP metadata, including textual date fields; read at most 1 MiB per file.
+- Add a separate overnight 'Повторно проверить даты' operation for photos without recognized capture dates; keep all known EXIF dates and existing folder/photo index.
+- Skip stale no-date cache entries during retries and keep background scan bounded to eight hours.
+- Preserve original files, SMB ACLs, thumbnails and photo index; the existing 'Обновить фототеку' action is separate.
+
 ## 0.18.7
 
 - Make the bottom mobile Search tab toggle a visible, focusable search input in files and gallery.
