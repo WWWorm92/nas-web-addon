@@ -36,7 +36,7 @@ def statistics():
 
 MAX_BYTES = 384 * 1024 * 1024
 TTL = 7 * 24 * 3600
-WORKERS = threading.BoundedSemaphore(2)
+WORKERS = threading.BoundedSemaphore(2)  # Small thumbnail workers\nLARGE_WORKERS = threading.BoundedSemaphore(1)  # Reserved viewer slot
 FILES_LOCK = threading.RLock()
 OPS = 0
 
@@ -102,7 +102,7 @@ def render_image(source, large=False):
         if img.width * img.height > 30_000_000:
             raise ValueError("Image dimensions too large")
         if img.format == "JPEG":
-            img.draft("RGB", (1600, 1200) if large else (480, 360))
+            img.draft("RGB", (1600, 1200) if large else (256, 192))
         img = ImageOps.exif_transpose(img)
         img.thumbnail((1600, 1200) if large else (256, 192), Image.Resampling.BILINEAR)
         out = io.BytesIO()
