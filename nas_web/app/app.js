@@ -479,8 +479,23 @@ async function uploadFiles(files){
     try{await uploadOne(file,target);success++}catch(e){alert('Ошибка загрузки '+file.name+': '+e.message)}
   }
   bar.classList.add('hidden');
-  message('Загружено '+success+' из '+files.length+' в '+target.share+'/'+target.path);
-  if(target.share===selected&&target.path===dir)await refresh();
+  const destination=target.share+'/'+target.path;
+  if(allPhotosMode&&success)await loadGlobalPage(true);
+  else if(target.share===selected&&target.path===dir)await refresh();
+  message('Загружено '+success+' из '+files.length+' в '+destination);
+  if(success){
+    const open=await askDialog({
+      title:'Загрузка завершена',
+      text:'Загружено '+success+' из '+files.length+' в '+destination+'. Открыть папку?',
+      confirm:'Открыть папку'
+    });
+    if(open){
+      leaveGlobalGallery();
+      selected=target.share;dir=target.path;
+      el('search').value='';renderShares();
+      await refresh();
+    }
+  }
 }
 el('togglePassword').onclick=()=>{const password=el('password'),visible=password.type==='password';password.type=visible?'text':'password';el('togglePassword').textContent=visible?'Скрыть':'Показать';password.focus()};
 el('loginForm').onsubmit=async e=>{e.preventDefault();el('loginError').textContent='';const submit=el('submitLogin');submit.disabled=true;submit.textContent='Проверяем доступ…';try{const form=new FormData();form.set('username',el('username').value);form.set('password',el('password').value);form.set('remember',el('remember').checked?'true':'false');const user=await api('/api/login',{method:'POST',body:form});el('password').value='';showApp(user)}catch(e){el('loginError').textContent=e.message}finally{submit.disabled=false;submit.innerHTML='Войти в NAS Web <span aria-hidden="true">→</span>'}};
