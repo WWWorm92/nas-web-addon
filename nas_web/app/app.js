@@ -76,6 +76,10 @@ async function scanGalleryDates(){
   const photos=items.filter(isPhoto),batchSize=8;
   for(let i=0;i<photos.length;i+=batchSize){
     if(generation!==galleryDateGeneration||view!=='gallery'||selected!==share||dir!==folder)return;
+    while(previewIndex>=0){
+      await new Promise(resolve=>setTimeout(resolve,300));
+      if(generation!==galleryDateGeneration||view!=='gallery'||selected!==share||dir!==folder)return;
+    }
     const batch=photos.slice(i,i+batchSize);
     try{
       const data=await api('/api/photo-dates',{method:'POST',headers:{'Content-Type':'application/json'},
