@@ -1,3 +1,8 @@
+## 0.18.1
+
+- Fix SQL concatenation error in EXIF-date gallery pagination discovered by GitHub Actions.
+- Preserve existing photo index, SMB permissions and all gallery metadata.
+
 ## 0.18.0
 
 - Sort the unified photo gallery by actual EXIF capture date by default.
