@@ -83,9 +83,11 @@ jobs:
                   assert g.pending_folder(db,a) is None
                   db.execute("UPDATE jobs SET complete=1 WHERE owner=?",(a,))
                   g.begin(db,b,["Disk"])
+                  db.commit()
                   assert g.page(b,["Disk"],0,10)==[]
                   g.add_folder_contents(db,b,"Disk","",[photo("same.jpg")])
                   assert g.next_unchecked(db,b,["Disk"]) is None
+                  db.commit()
                   assert g.page(b,["Disk"],0,10)[0]["taken"]=="2020-01-01T12:00:00"
                   g.begin(db,a,["Disk"])
                   assert g.pending_folder(db,a) is None
@@ -93,6 +95,7 @@ jobs:
                   g.begin(db,a,["Disk"])
                   assert g.pending_folder(db,a) is not None
                   g.add_folder_contents(db,a,"Disk","",[photo("same.jpg")])
+                  db.commit()
                   assert g.page(a,["Disk"],0,10)[0]["taken"]=="2020-01-01T12:00:00"
                   assert g.page(b,["Secret"],0,10)==[]
           print("Shared metadata, ACL isolation and resume OK")
