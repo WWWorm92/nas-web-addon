@@ -1,3 +1,10 @@
+## 0.20.1
+
+- Compact mobile file rows and remove redundant folder-type subtitles.
+- Reduce the size and number of actions in the mobile More sheet.
+- Use consistent vector navigation icons and remove duplicate gallery-header search control (bottom Search remains).
+- Preserve gallery date display and sorting exactly as before; no database, EXIF, SMB or ACL changes.
+
 ## 0.20.0
 
 - Refine mobile navigation, headers, gallery cards, settings panel, search field and tap feedback.
