@@ -434,12 +434,14 @@ def get_file(request: Request, share: str, path: str, inline: bool = False):
     filename = p.split("/")[-1]
     suffix = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
     mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    file_started = time.perf_counter()
     with smb(u) as conn:
         check_share(conn, share)
         try:
             total = conn.file_size(share, "/" + p)
         except Exception:
             fail(404, "Файл не найден")
+    metadata_ms = round((time.perf_counter() - file_started) * 1000)
     import re
     first, last = 0, max(0, total - 1)
     requested_range = request.headers.get("range")
@@ -464,8 +466,28 @@ def get_file(request: Request, share: str, path: str, inline: bool = False):
     if code == 206:
         headers["Content-Range"] = f"bytes {first}-{last}/{total}"
     def stream():
-        with smb(u) as conn:
-            yield from conn.iter_range(share, "/" + p, first, size)
+        stream_started = time.perf_counter()
+        first_byte_ms = None
+        bytes_sent = 0
+        chunks = 0
+        finished = False
+        try:
+            with smb(u) as conn:
+                for block in conn.iter_range(share, "/" + p, first, size):
+                    if first_byte_ms is None:
+                        first_byte_ms = round((time.perf_counter() - stream_started) * 1000)
+                    bytes_sent += len(block)
+                    chunks += 1
+                    yield block
+            finished = True
+        finally:
+            elapsed_ms = round((time.perf_counter() - stream_started) * 1000)
+            if inline and suffix in {"jpg", "jpeg", "png", "webp", "gif"}:
+                logger.warning(
+                    "Original photo stream: status=%s size_kb=%d metadata=%dms first_byte=%sms transfer=%dms blocks=%d bytes=%d complete=%s",
+                    code, round(size / 1024), metadata_ms, first_byte_ms,
+                    elapsed_ms, chunks, bytes_sent, finished
+                )
     return StreamingResponse(stream(), status_code=code, media_type=mime, headers=headers)
 
 @app.post("/api/upload")
