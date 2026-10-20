@@ -9,16 +9,5 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-size:14px}
 </style></head><body><main><h1>NAS Web · Администрирование</h1><p>Отдельный сервисный вход. Учётные записи и права SMB не затрагиваются.</p><div id="message" role="status"></div>
 <section class="card" id="setup" hidden><h2>Первичная настройка</h2><p>Укажите ключ admin_setup_key из настроек аддона и новый пароль администратора.</p><input id="key" type="password" placeholder="Ключ настройки" autocomplete="off"><input id="setupPassword" type="password" placeholder="Новый пароль (от 12 символов)" autocomplete="new-password"><button id="create">Создать администратора</button></section>
 <section class="card" id="login" hidden><h2>Вход администратора</h2><input id="password" type="password" placeholder="Пароль администратора" autocomplete="current-password"><button id="enter">Войти</button></section>
-<section class="card" id="dashboard" hidden><h2>Состояние сервиса</h2><pre id="stats"></pre><button id="refresh">Обновить</button> <button id="logout" class="secondary">Выйти</button></section>
-<p><a href="/">Вернуться к файлам</a></p></main><script>
-const $=id=>document.getElementById(id);let csrf='';
-async function req(url,data,token=''){const r=await fetch(url,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json',...(token?{'X-CSRF-Token':token}:{})},body:data?JSON.stringify(data):undefined});const d=await r.json();if(!r.ok)throw Error(d.detail||'Ошибка '+r.status);return d}
-function msg(s){$('message').textContent=s}
-async function init(){try{const s=await req('/api/admin/status');$('setup').hidden=s.configured;$('login').hidden=!s.configured;$('dashboard').hidden=true;if(s.authenticated)msg('Введите пароль для обновления административной сессии')}catch(e){msg(e.message)}}
-$('create').onclick=async()=>{try{await req('/api/admin/setup',{setup_key:$('key').value,password:$('setupPassword').value});msg('Администратор создан. Войдите с новым паролем.');init()}catch(e){msg(e.message)}};
-$('enter').onclick=async()=>{try{const r=await req('/api/admin/login',{password:$('password').value});csrf=r.csrf;$('password').value='';$('login').hidden=true;$('dashboard').hidden=false;msg('');load()}catch(e){msg(e.message)}};
-async function load(){try{const s=await req('/api/admin/diagnostics');$('stats').textContent='Записей фотоиндекса: '+s.gallery_index_rows+'\nПользователей в индексе: '+s.indexed_users+'\nЗадач индексации: '+s.scan_jobs+'\nЗавершено: '+s.completed_jobs+'\nМиниатюр в кэше: '+s.thumbnail_cache.files+'\nРазмер кэша: '+s.thumbnail_cache.size_mb+' МБ\nВремя сервера: '+s.server_time}catch(e){msg(e.message)}}
-$('refresh').onclick=load;
-$('logout').onclick=async()=>{try{await req('/api/admin/logout',{},csrf);csrf='';msg('Вы вышли');init()}catch(e){msg(e.message)}};
-init();
-</script></body></html>
+<section class="card" id="dashboard" hidden><h2>Состояние сервиса</h2><pre id="stats"></pre><h3>Сервисные события</h3><pre id="events"></pre><h3>Обслуживание</h3><button id="cacheClean" class="secondary">Очистить устаревший кэш</button><h3>Безопасность</h3><input id="oldPassword" type="password" autocomplete="current-password" placeholder="Текущий пароль"><input id="newPassword" type="password" autocomplete="new-password" placeholder="Новый пароль (12+ символов)"><button id="changePassword" class="secondary">Сменить пароль</button><hr><button id="refresh">Обновить</button> <button id="logout" class="secondary">Выйти</button></section>
+<p><a href="/">Вернуться к файлам</a></p></main><script src="/static/admin.js" defer></script></body></html>
