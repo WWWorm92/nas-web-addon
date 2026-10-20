@@ -80,7 +80,7 @@ def convert(source, dest):
             cmd += ["-c", "copy"]
         else:
             cmd += ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                    "-vf", "scale=w=min(1280\\,iw):h=-2", "-pix_fmt", "yuv420p",
+                    "-vf", "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2", "-pix_fmt", "yuv420p",
                     "-threads", "2", "-c:a", "aac", "-b:a", "128k"]
         cmd += ["-movflags", "+faststart", str(dest)]
         subprocess.run(cmd, capture_output=True, timeout=300, check=True)
