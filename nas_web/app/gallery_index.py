@@ -110,9 +110,12 @@ def state(owner, shares):
         checked_no_date = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" +
                                      ",".join("?" for _ in shares) + ") AND exif_checked=1 AND taken IS NULL",
                                      (owner, *shares)).fetchone()[0] if shares else 0
+        blocked = denied_count(db, owner, shares)
         return {"complete": bool(job["complete"]), "limited": bool(job["limited"]),
                 "scanned": scanned, "pending": pending, "total": total,
-                "dates_pending": dates_pending, "shared_dates_pending": shared_remaining,
+                "dates_pending": dates_pending, "dates_blocked": blocked,
+                "dates_available": max(0, dates_pending-blocked),
+                "shared_dates_pending": shared_remaining,
                 "dated": dated, "checked_no_date": checked_no_date}
 
 
@@ -195,22 +198,20 @@ def record_upload(owner, share, path, size, modified):
 
 
 def retry_missing_dates(db, owner, shares):
-    """Queue missing capture dates only; never reset folder discovery or known dates."""
+    """Resume only never-checked photos; DO NOT reset known no-date results.
+
+    Prior versions reset exif_checked=0 for every photo without a capture date,
+    inflating the queue and repeating expensive SMB reads. This maintenance
+    action must not erase either positive or negative EXIF results.
+    """
     if not shares:
         return 0
     where = "share IN (" + ",".join("?" for _ in shares) + ")"
     allowed = "(lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')"
-    count = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND " + where +
-                       " AND taken IS NULL AND " + allowed, (owner, *shares)).fetchone()[0]
-    db.execute("UPDATE photos SET exif_checked=0 WHERE owner=? AND " + where +
-               " AND taken IS NULL AND " + allowed, (owner, *shares))
-    db.execute("DELETE FROM shared_metadata WHERE taken IS NULL AND " +
-               "EXISTS (SELECT 1 FROM photos p WHERE p.share=shared_metadata.share "
-               "AND p.path=shared_metadata.path AND p.size=shared_metadata.size "
-               "AND p.modified=shared_metadata.modified AND p.owner=? AND " +
-               where.replace("share IN", "p.share IN") + ")",
-               (owner, *shares))
-    return count
+    return db.execute(
+        "SELECT COUNT(*) FROM photos WHERE owner=? AND " + where +
+        " AND exif_checked=0 AND " + allowed, (owner, *shares)
+    ).fetchone()[0]
 
 
 def mark_exif_denied(db, owner, row):
@@ -227,12 +228,20 @@ def clear_exif_denied(db, owner, share, path):
     db.execute("DELETE FROM exif_denied WHERE owner=? AND share=? AND path=?",(owner,share,path))
 
 
-def denied_count(db, owner):
-    return db.execute("""SELECT COUNT(*) FROM exif_denied d JOIN photos p
-                          ON p.owner=d.owner AND p.share=d.share AND p.path=d.path
-                          WHERE d.owner=? AND p.exif_checked=0 AND p.size=d.size
-                          AND p.modified=d.modified AND d.retry_after>?""",
-                      (owner,time.time())).fetchone()[0]
+def denied_count(db, owner, shares):
+    """Access-denied photos cooling down within this SMB user's visible shares."""
+    if not shares:
+        return 0
+    return db.execute(
+        "SELECT COUNT(*) FROM exif_denied d JOIN photos p "
+        "ON p.owner=d.owner AND p.share=d.share AND p.path=d.path "
+        "WHERE d.owner=? AND p.share IN (" + ",".join("?" for _ in shares) + ") "
+        "AND p.exif_checked=0 AND p.size=d.size AND p.modified=d.modified "
+        "AND d.retry_after>? "
+        "AND (lower(p.name) LIKE '%.jpg' OR lower(p.name) LIKE '%.jpeg' "
+        "OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp')",
+        (owner, *shares, time.time())
+    ).fetchone()[0]
 
 
 def next_unchecked(db, owner, shares, excluded=()):
