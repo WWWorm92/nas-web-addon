@@ -58,6 +58,16 @@ def connect():
     """)
     try:
         with db:
+            # One-time migration for the read-only SMB open fix. Earlier EXIF
+            # attempts requested write permission, so their ACCESS_DENIED
+            # cooldowns may be false positives. Expire ONLY those cooldowns
+            # once; never reset photos, known EXIF dates or other metadata.
+            db.execute("CREATE TABLE IF NOT EXISTS index_migrations (name TEXT PRIMARY KEY)")
+            name = "exif_readonly_smb_open_0229"
+            if db.execute("SELECT 1 FROM index_migrations WHERE name=?", (name,)).fetchone() is None:
+                added = db.execute("INSERT OR IGNORE INTO index_migrations(name) VALUES (?)", (name,))
+                if added.rowcount:
+                    db.execute("UPDATE exif_denied SET retry_after=0")
             yield db
     finally:
         db.close()
