@@ -1,3 +1,11 @@
+## 0.22.0
+
+- Separate NAS Web service administrator with its own PBKDF2 password and revocable 4-hour session; no SMB identity or access to user files.
+- First-run setup protected by admin_setup_key (24+ characters) configured in add-on options.
+- /admin dashboard shows indexed photo counts, scan jobs, and persistent thumbnail cache statistics.
+- Hide EXIF retry maintenance control from the standard user interface (API behavior retained).
+- Existing SMB accounts, photo index, gallery dates and file ACLs remain unchanged.
+
 ## 0.21.0 (initial feature integration)
 
 - Private virtual favorites and albums, stored separately from the photo index and SMB files.
