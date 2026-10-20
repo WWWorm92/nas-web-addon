@@ -89,9 +89,9 @@ def state(owner, shares):
         # files already discovered in shares this user can access.
         shared_remaining = db.execute(
             "SELECT COUNT(*) FROM (SELECT share,path,size,modified FROM photos "
-            "WHERE share IN (" + ",".join("?" for _ in shares) + ") "
+            "WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") "
             "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg') "
-            "GROUP BY share,path,size,modified)", tuple(shares)).fetchone()[0] if shares else 0
+            "GROUP BY share,path,size,modified)", (owner, *shares)).fetchone()[0] if shares else 0
         return {"complete": bool(job["complete"]), "limited": bool(job["limited"]),
                 "scanned": scanned, "pending": pending, "total": total,
                 "dates_pending": dates_pending, "shared_dates_pending": shared_remaining}
