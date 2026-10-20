@@ -272,6 +272,7 @@ const thumbQueue=[];let activeThumbs=0;const THUMB_CONCURRENCY=2;
 function pumpThumbs(){
   if(previewIndex>=0)return; // Give foreground photo transfer bandwidth priority.
   while(activeThumbs<THUMB_CONCURRENCY && thumbQueue.length){
+    thumbQueue.sort((a,b)=>{const ay=a.getBoundingClientRect().top,by=b.getBoundingClientRect().top;return (ay>=0&&ay<innerHeight?0:1)-(by>=0&&by<innerHeight?0:1)||Math.abs(ay)-Math.abs(by)});
     const img=thumbQueue.shift();
     if(!img.isConnected||!img.dataset.src)continue;
     activeThumbs++;
@@ -292,7 +293,9 @@ const photoObserver=new IntersectionObserver(records=>{
   }
   pumpThumbs();
 },{root:null,rootMargin:'350px 0px',threshold:0});
+let galleryRenderSignature='';
 function leaveGlobalGallery(){
+  galleryRenderSignature='';
   if(!allPhotosMode)return;
   if(previewIndex>=0)closePreview();
   allPhotosMode=false;allPhotoScanToken++;view=previousFileView;
@@ -364,14 +367,19 @@ async function enterGlobalGallery(){
   if(allPhotosMode&&token===allPhotoScanToken)scanAllPhotos(token);
 }
 function renderAllGallery(){
-  const grid=el('entries');thumbQueue.length=0;photoObserver.takeRecords();
+  const grid=el('entries');
+  const search=el('search').value.trim().toLocaleLowerCase();
+  const shown=allPhotos.filter(f=>!search||f.name.toLocaleLowerCase().includes(search)||f.folder.toLocaleLowerCase().includes(search));
+  const signature=shown.map(f=>[f.share,f.path,f.modified,f.size,f.taken||''].join('|')).join('\n');
+  if(galleryRenderSignature===signature&&grid.classList.contains('galleryMode')&&grid.children.length){
+    renderGlobalProgress();pumpThumbs();return;
+  }
+  galleryRenderSignature=signature;thumbQueue.length=0;photoObserver.takeRecords();
   for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);
   grid.replaceChildren();grid.classList.remove('list');grid.classList.add('galleryMode');
   if(!allPhotos.length&&!allPhotoStatus){for(let i=0;i<12;i++){const sk=document.createElement('div');sk.className='photoSkeleton';grid.append(sk)}}
   el('galleryYears').classList.remove('hidden');
   el('globalGallerySummary').classList.remove('hidden');
-  const search=el('search').value.trim().toLocaleLowerCase();
-  const shown=allPhotos.filter(f=>!search||f.name.toLocaleLowerCase().includes(search)||f.folder.toLocaleLowerCase().includes(search));
   let month='';
   for(const f of shown){
     const label=photoDay(f);
