@@ -451,7 +451,10 @@ def _gallery_scan_step(u, owner, shares):
                         photo_dates.save(u["name"], row["share"], row["path"],
                                          row["modified"], row["size"], taken)
                 except Exception as exc:
-                    logger.info("Gallery EXIF skipped: %s", type(exc).__name__)
+                    # Do not mark a failed SMB/EXIF read as permanently checked.
+                    # Stop this worker; a later scan request may retry safely.
+                    logger.warning("Gallery EXIF read failed (will retry): %s", type(exc).__name__)
+                    raise
                 with gallery_index.LOCK, gallery_index.connect() as db:
                     gallery_index.save_date(db, owner, row["share"], row["path"], taken)
     
