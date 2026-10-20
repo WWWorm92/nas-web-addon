@@ -110,3 +110,12 @@ This repository is an early prototype, **not a production-ready cloud drive**.
 - GitHub Actions checks Python and JS syntax and HTML/JS element references. Raspberry Pi hardware testing is still required; keep access LAN-only.
 
 - Large downloads and PDFs now stream directly from SMB with byte-range support, instead of waiting for a complete temporary copy on the Raspberry Pi.
+
+
+## 0.7.1 — cache persistence check
+
+- The thumbnail cache **only** uses `/data/nasweb-thumbs`. Silent fallback to `/tmp` has been removed.
+- At startup the add-on checks that it can create a test file and logs `NAS Web cache: path=/data/nasweb-thumbs writable=yes files=N size_mb=M`.
+- If the directory is unwritable the add-on fails explicitly instead of discarding thumbnails on the next update.
+- The first launch may have an empty cache because a previous version could have used ephemeral storage. After warming a photo folder, the next add-on upgrade should log a nonzero cache file count.
+- Existing SMB data is unaffected. Only NAS Web's own preview files are stored in `/data`.
