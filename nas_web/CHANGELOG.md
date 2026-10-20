@@ -1,3 +1,10 @@
+## 0.20.0
+
+- Refine mobile navigation, headers, gallery cards, settings panel, search field and tap feedback.
+- Improve safe-area spacing and reduce visual noise with consistent radii and typography.
+- Respect reduced-motion accessibility preferences.
+- Presentation-only update: no changes to SMB permissions, photo index, metadata extraction or file operations.
+
 ## 0.19.0
 
 - Expand photo capture-date parsing to JPEG, PNG and WebP metadata, including textual date fields; read at most 1 MiB per file.
