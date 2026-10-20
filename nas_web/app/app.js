@@ -313,9 +313,38 @@ el('gallerySearchToggle').onclick=()=>{
   const active=el('app').classList.toggle('gallerySearching');
   if(active)el('search').focus();else{el('search').value='';renderAllGallery()}
 };
+function mobileNavigateTo(path){
+ if(path===dir)return;
+ photoCacheClear();clearSelection();dir=path;el('search').value='';
+ el('app').classList.remove('filesSearching');
+ refresh();window.scrollTo({top:0,behavior:'instant'});
+}
+function mobileSharesMenu(){
+ openMobileSheet('Хранилища',shares.map(share=>({
+   label:(share===selected?'✓ ':'▱ ')+share,run:()=>{if(share!==selected)choose(share);else mobileNavigateTo('')}
+ })));
+}
 function updateMobileFilesBreadcrumb(){
  const node=el('mobileFilesBreadcrumb');
- if(node)node.textContent=(selected||'Хранилища')+(dir?' / '+dir.split('/').join(' / '):'');
+ if(!node)return;
+ node.replaceChildren();
+ const back=document.createElement('button');back.type='button';back.className='mobilePathBack';
+ back.textContent='←';back.setAttribute('aria-label','На уровень выше');
+ back.onclick=()=>{if(dir)mobileNavigateTo(dir.split('/').slice(0,-1).join('/'));else mobileSharesMenu()};
+ node.append(back);
+ const trail=document.createElement('div');trail.className='mobilePathTrail';
+ const root=document.createElement('button');root.type='button';root.textContent=selected||'Хранилища';
+ root.onclick=()=>mobileSharesMenu();trail.append(root);
+ const parts=dir?dir.split('/'):[];
+ parts.forEach((part,i)=>{
+   const sep=document.createElement('span');sep.textContent='›';sep.className='mobilePathSeparator';trail.append(sep);
+   const button=document.createElement('button');button.type='button';button.textContent=part;
+   const target=parts.slice(0,i+1).join('/');
+   button.onclick=()=>mobileNavigateTo(target);
+   if(i===parts.length-1)button.setAttribute('aria-current','page');
+   trail.append(button);
+ });
+ node.append(trail);
 }
 el('filesSearchToggle').onclick=()=>{
  const active=el('app').classList.toggle('filesSearching');
