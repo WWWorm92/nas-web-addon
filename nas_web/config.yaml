@@ -1,6 +1,6 @@
 name: NAS Web
 slug: nas_web
-version: "0.18.4"
+version: "0.18.5"
 description: SMB browser for Simple NAS (local testing only)
 startup: services
 boot: auto
