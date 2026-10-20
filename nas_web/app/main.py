@@ -349,12 +349,24 @@ def admin_diagnostics(request: Request):
         owners=db.execute("SELECT COUNT(DISTINCT owner) FROM photos").fetchone()[0]
         jobs=db.execute("SELECT COUNT(*),SUM(CASE WHEN complete=1 THEN 1 ELSE 0 END),SUM(CASE WHEN limited=1 THEN 1 ELSE 0 END) FROM jobs").fetchone()
         pending=db.execute("SELECT COUNT(*) FROM folders WHERE done=0").fetchone()[0]
-        dates=db.execute("SELECT COUNT(*) FROM photos WHERE exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')").fetchone()[0]
+        date_exts="(lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')"
+        dates=db.execute("SELECT COUNT(*) FROM photos WHERE exif_checked=0 AND "+date_exts).fetchone()[0]
+        checked_without=db.execute("SELECT COUNT(*) FROM photos WHERE exif_checked=1 AND taken IS NULL AND "+date_exts).fetchone()[0]
+        denied=db.execute("""SELECT COUNT(*) FROM exif_denied d JOIN photos p
+                ON p.owner=d.owner AND p.share=d.share AND p.path=d.path
+                WHERE p.exif_checked=0 AND d.size=p.size AND d.modified=p.modified
+                AND d.retry_after>? AND (lower(p.name) LIKE '%.jpg' OR lower(p.name) LIKE '%.jpeg'
+                OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp')""",
+                (time.time(),)).fetchone()[0]
+        unique=db.execute("SELECT COUNT(*) FROM (SELECT 1 FROM photos GROUP BY share,path,size,modified)").fetchone()[0]
     disk=shutil.disk_usage("/data")
     return {"service":"NAS Web","gallery_index_rows":totals[0],"gallery_index_bytes":totals[1],
             "gallery_dated":totals[2],"indexed_users":owners,"scan_jobs":jobs[0],
             "completed_jobs":jobs[1] or 0,"limited_jobs":jobs[2] or 0,
             "pending_folders":pending,"pending_exif":dates,
+            "pending_exif_available":max(0,dates-denied),"pending_exif_denied":denied,
+            "checked_exif_without_date":checked_without,
+            "unique_photo_files":unique,
             "thumbnail_cache":{"files":cache["files"],"size_mb":cache["size_mb"]},
             "data_disk":{"total":disk.total,"used":disk.used,"free":disk.free},
             "smb_host_configured":bool(HOST),"server_time":datetime.now(timezone.utc).isoformat()}
@@ -648,7 +660,10 @@ def _gallery_scan_step(u, owner, shares, skipped=None):
                     cached, taken = photo_dates.lookup(
                         u["name"], row["share"], row["path"],
                         row["modified"], row["size"])
-                    if (not cached or taken is None) and row["size"]:
+                    # A cached negative EXIF result is still a completed check.
+                    # Reopening it repeatedly defeats the disk cache and doubles
+                    # SMB work after an old-style retry.
+                    if not cached and row["size"]:
                         taken = photo_dates.from_jpeg_header(
                             conn, row["share"], row["path"], row["size"])
                         photo_dates.save(u["name"], row["share"], row["path"],
@@ -659,7 +674,11 @@ def _gallery_scan_step(u, owner, shares, skipped=None):
                     message=str(exc).upper()
                     if "STATUS_ACCESS_DENIED" in message or "0XC0000022" in message:
                         skipped.add((row["share"],row["path"]))
-                        logger.warning("Gallery EXIF skipped inaccessible SMB file (will retry later)")
+                        with gallery_index.LOCK, gallery_index.connect() as db:
+                            gallery_index.mark_exif_denied(db, owner, row)
+                        # Avoid hundreds of identical access-denied log lines.
+                        if len(skipped)==1 or len(skipped)%25==0:
+                            logger.warning("Gallery EXIF: %d inaccessible SMB files skipped for 24h", len(skipped))
                         if len(skipped)>=100:
                             return
                         continue
@@ -667,6 +686,7 @@ def _gallery_scan_step(u, owner, shares, skipped=None):
                     raise
                 with gallery_index.LOCK, gallery_index.connect() as db:
                     gallery_index.save_date(db, owner, row["share"], row["path"], taken)
+                    gallery_index.clear_exif_denied(db, owner, row["share"], row["path"])
     
 
 def _gallery_background(u, owner, shares):
@@ -682,10 +702,14 @@ def _gallery_background(u, owner, shares):
             with GALLERY_SCAN_LOCK:
                 _gallery_scan_step(u, owner, shares, skipped)
             state = gallery_index.state(owner, shares)
-            if len(skipped)>=100 or (skipped and state["dates_pending"]<=len(skipped)):
-                logger.info("Gallery EXIF worker paused: %d inaccessible files remain pending",len(skipped))
+            if len(skipped)>=100:
+                logger.info("Gallery EXIF batch paused after 100 access-denied files")
                 break
-            if state["complete"] and not state["dates_pending"]:
+            if state["complete"] and not state["dates_available"]:
+                # Outstanding items under ACL cooldown are NOT actionable;
+                # polling should stop until access or cooldown changes.
+                logger.info("Gallery EXIF scan finished: %d inaccessible files on cooldown",
+                            state["dates_blocked"])
                 break
             time.sleep(0.3)
     except Exception:
