@@ -164,6 +164,51 @@ body{background:var(--bg);-webkit-font-smoothing:antialiased}
   #app .item:hover{transform:none}
 }
 
+
+/* 0.9.1 mobile-first chrome; desktop remains unchanged */
+.mobileNav{display:none}
+.mobileSheetOverlay{position:fixed;inset:0;z-index:55;background:#0307119e;display:flex;align-items:flex-end;justify-content:center}
+.mobileSheet{width:min(100%,540px);max-height:min(82dvh,680px);overflow-y:auto;background:var(--panel);border:1px solid var(--border);border-bottom:0;border-radius:24px 24px 0 0;box-shadow:0 -18px 60px #0005;padding:8px 17px calc(18px + env(safe-area-inset-bottom))}
+.mobileSheetHandle{width:38px;height:4px;border-radius:8px;background:var(--muted);opacity:.5;margin:1px auto 16px}
+.mobileSheetHeading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
+.mobileSheetHeading h2{margin:0;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mobileSheetHeading button{background:var(--panel2);border:0;min-height:40px;min-width:40px;padding:6px;font-size:17px}
+.mobileSheetActions{display:grid;gap:6px}
+.mobileSheetActions button{width:100%;text-align:left;background:var(--panel2);border:1px solid transparent;padding:14px 16px;border-radius:13px;min-height:49px;font-weight:600}
+.mobileSheetActions button:active{background:var(--accentbg)}
+.mobileSheetActions .sheetDanger{color:var(--danger)}
+@media(max-width:760px){
+  body.sheetOpen{overflow:hidden}
+  #app .top{height:56px;min-height:56px}
+  #app .top .brand{font-size:17px}
+  #app .topRight #logout{display:none}
+  #app .topRight #theme{min-height:36px;min-width:38px;padding:5px}
+  #app .sidebar{padding:7px 11px}
+  #app .workspace{padding:14px 12px calc(104px + env(safe-area-inset-bottom))}
+  #app .controls{border:0;box-shadow:none;background:transparent;padding:0;gap:7px}
+  #app .controls #folder,#app .controls .uploadLabel,#app .controls #selectionModeButton{display:none}
+  #app .controls .search{min-height:46px;background:var(--panel);border:1px solid var(--border)}
+  #app .controls #up{min-height:40px}
+  #app .controls #sort{flex:1 1 auto;max-width:125px}
+  #app .controls .viewButtons{margin-left:auto}
+  #app .head{margin-bottom:4px}
+  #app .eyebrow{display:none}
+  #app .crumbNav{font-size:19px}
+  #app .selectionBar{top:8px}
+  .mobileNav{position:fixed;z-index:25;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch;padding:7px 7px calc(7px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--border);box-shadow:0 -8px 25px #00000019}
+  .mobileNav button{min-width:0;min-height:56px;border:0;background:transparent;border-radius:14px;padding:5px 2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--muted);font-size:22px}
+  .mobileNav button small{font-size:10px;font-weight:650;line-height:1.2}
+  .mobileNav button:active,.mobileNav button.navSelected{background:var(--accentbg);color:var(--accent)}
+  .mobileNav button.mobileAdd{color:var(--accent)}
+  .mobileNav button.mobileAdd span{display:grid;place-items:center;width:34px;height:31px;background:var(--accentbg);border-radius:11px;font-size:25px;line-height:1}
+  .mobileNav button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+}
+@media(min-width:761px){.mobileSheetOverlay{display:none!important}}
+@media(prefers-reduced-motion:no-preference){
+  .mobileSheet{animation:nasSheetUp .2s cubic-bezier(.2,.7,.25,1)}
+  @keyframes nasSheetUp{from{transform:translateY(30px);opacity:.85}to{transform:translateY(0);opacity:1}}
+}
+
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
 <div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div></div>
