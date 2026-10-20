@@ -1,4 +1,4 @@
-let csrf='',selected='',dir='',shares=[],items=[],view=(['grid','list','gallery'].includes(localStorage.getItem('nas_view'))?localStorage.getItem('nas_view'):'grid'),previewIndex=-1;
+let csrf='',selected='',dir='',shares=[],items=[],view=(['grid','list'].includes(localStorage.getItem('nas_view'))?localStorage.getItem('nas_view'):'grid'),previewIndex=-1;
 const el=id=>document.getElementById(id);
 const message=s=>el('status').textContent=s;
 const qs=o=>new URLSearchParams(o).toString();
