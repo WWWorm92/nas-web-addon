@@ -1,3 +1,12 @@
+## 0.17.0
+
+- Deleting a file or nonempty directory moves the entire object into the share-root .recycle folder using SMB rename, preserving its contents.
+- The recycle bin now stores the deleted object directly instead of reconstructing its source path. Name collisions receive a unique suffix.
+- Display .recycle as "Корзина" in file lists and breadcrumbs without renaming the actual SMB directory.
+- No permanent-delete fallback: if the move fails, the original object is not intentionally deleted.
+- Deleting objects inside .recycle is disabled until an explicit permanent-delete flow is implemented.
+- No changes to the photo index, EXIF, existing file contents or SMB access controls.
+
 ## 0.16.2
 
 - Prevent login from silently succeeding with zero readable SMB shares.
