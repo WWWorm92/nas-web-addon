@@ -378,6 +378,7 @@ async function scanAllPhotos(token){
     await new Promise(resolve=>setTimeout(resolve,350));
   }
 }
+function toggleGalleryStatus(){el('globalGallerySummary').classList.toggle('detailsOpen')}
 function renderGlobalProgress(){
   if(!allPhotosMode||!allPhotoStatus)return;
   const data=allPhotoStatus;
@@ -396,6 +397,7 @@ async function enterGlobalGallery(){
   el('search').value='';el('search').placeholder='Поиск среди загруженных фото…';
   el('crumb').textContent='Все фотографии';
   el('globalGallerySummary').classList.remove('hidden');
+  el('globalGallerySummary').classList.remove('detailsOpen');
   updateMobileNav();render();
   await loadGlobalPage(true);
   if(allPhotosMode&&token===allPhotoScanToken)scanAllPhotos(token);
@@ -437,7 +439,8 @@ function renderAllGallery(){
     img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};
     img.dataset.src=imageURL(f,false,f.folder,f.share);
     thumb.append(img);tile.append(thumb);
-    const origin=document.createElement('span');origin.className='originHint';origin.textContent=f.folder||f.share;tile.append(origin);
+    // The source folder remains available in the photo details panel.
+
     grid.append(tile);photoObserver.observe(img);
   }
   renderGalleryYears(shown);updateGalleryPick();
@@ -452,13 +455,14 @@ function renderAllGallery(){
   pumpThumbs();
 }
 function render(){if(allPhotosMode){renderAllGallery();return}thumbQueue.length=0;photoObserver.takeRecords();const grid=el('entries');for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);grid.replaceChildren();grid.classList.toggle('list',view==='list');grid.classList.toggle('galleryMode',view==='gallery');el('gridView').classList.toggle('active',view==='grid');el('listView').classList.toggle('active',view==='list');el('galleryView').classList.toggle('active',view==='gallery');const shown=view==='gallery'?photoGalleryItems():sortedFiltered();renderGalleryYears(shown);let previousMonth=null;for(const f of shown){if(view==='gallery'){const month=photoDay(f);if(month!==previousMonth){const heading=document.createElement('h3');heading.className='galleryMonth';heading.textContent=month;heading.dataset.year=photoYear(f);grid.append(heading);previousMonth=month}}const tile=document.createElement('article');tile.className='item';if(view==='gallery')tile.classList.add('galleryPhoto');tile.tabIndex=0;tile.role='button';tile.title=f.name;tile.dataset.filename=f.name;
+if(f.directory)tile.classList.add('folderTile');else tile.classList.add('fileTile');
 tile.onclick=()=>selectionMode?toggleSelected(f.name):openPreview(f);
 tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();selectionMode?toggleSelected(f.name):openPreview(f)}};
 let pressTimer=null,longPressed=false,startX=0,startY=0;
-tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;longPressed=false;startX=e.touches[0].clientX;startY=e.touches[0].clientY;pressTimer=setTimeout(()=>{longPressed=true;toggleSelected(f.name);navigator.vibrate?.(15)},520)},{passive:true});
+tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;longPressed=false;startX=e.touches[0].clientX;startY=e.touches[0].clientY;pressTimer=setTimeout(()=>{longPressed=true;openMenu(f,tile);navigator.vibrate?.(15)},520)},{passive:true});
 tile.addEventListener('touchmove',e=>{if(e.touches.length&&Math.hypot(e.touches[0].clientX-startX,e.touches[0].clientY-startY)>12)clearTimeout(pressTimer)},{passive:true});
 tile.addEventListener('touchend',()=>clearTimeout(pressTimer));tile.addEventListener('touchcancel',()=>clearTimeout(pressTimer));
-tile.addEventListener('contextmenu',e=>{if(e.target.closest('.more'))return;e.preventDefault();toggleSelected(f.name)});
+tile.addEventListener('contextmenu',e=>{if(e.target.closest('.more'))return;e.preventDefault();openMenu(f,tile)});
 tile.addEventListener('click',e=>{if(longPressed){e.stopImmediatePropagation();longPressed=false}},true);
 const check=document.createElement('button');check.type='button';check.className='selectionCheck';check.title='Выделить '+f.name;check.setAttribute('aria-label','Выделить '+f.name);check.onclick=e=>{e.stopPropagation();toggleSelected(f.name)};tile.append(check);const thumb=document.createElement('div');thumb.className='thumb';thumb.title=f.directory?'Открыть папку':'Просмотреть файл';if(f.directory)thumb.append(icon('folder'));else if(imageExt.includes(ext(f.name))){const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';img.onload=()=>img.classList.add('photoLoaded');img.dataset.src=imageURL(f,false,dir,selected);photoObserver.observe(img);img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};thumb.append(img)}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'Папка':size(f.size);details.append(meta);if(view!=='gallery')tile.append(details);const more=document.createElement('button');more.className='more';more.textContent='⋯';more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);grid.append(tile)}updateSelection();if(!shown.length)message(view==='gallery'?'В этой папке нет фотографий. Переключитесь на плитки, чтобы увидеть файлы и папки.':el('search').value?'Ничего не найдено':'Папка пуста');else message(shown.length+(view==='gallery'?' фотографий':' элементов'))}
 async function refresh(){galleryDateGeneration++;if(!selected)return;selectedFiles.clear();selectionMode=false;updateSelection();hideMenu();message('Загрузка…');const share=selected,path=dir;renderBreadcrumb();el('entries').replaceChildren();el('up').disabled=!dir;try{const data=await api('/api/list?'+qs({share,path}));if(share!==selected||path!==dir)return;items=data.items;render();if(view==='gallery')scanGalleryDates()}catch(e){message(e.message)}}
@@ -700,6 +704,7 @@ el('galleryPickDownload').onclick=async()=>{
   clearGalleryPick();
 };
 setGalleryColumns(galleryColumns);
+el('galleryStatusToggle').onclick=toggleGalleryStatus;
 el('galleryLoadMore').onclick=()=>loadGlobalPage(false);
 el('globalGalleryBack').onclick=leaveGlobalGallery;
 const galleryNextObserver=new IntersectionObserver(entries=>{
