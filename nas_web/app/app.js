@@ -26,8 +26,38 @@ async function api(url,options={}){const r=await fetch(url,{credentials:'same-or
 function showLogin(){hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
 function showApp(user){photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
 function renderShares(){el('shares').replaceChildren();for(const share of shares){const b=document.createElement('button');b.className='share'+(share===selected?' selected':'');b.append(icon('disk'),document.createTextNode(' '+share));b.onclick=()=>choose(share);el('shares').append(b)}}
-function choose(share){photoCacheClear();hideMenu();selected=share;dir='';el('search').value='';renderShares();refresh()}
-function enterFolder(name){photoCacheClear();hideMenu();dir=fpath(name);el('search').value='';refresh()}
+const selectedFiles=new Set();
+let selectionMode=false;
+function updateSelection(){
+  const active=selectedFiles.size>0||selectionMode;
+  el('selectionBar').classList.toggle('hidden',!active);
+  el('entries').classList.toggle('selectionMode',active);
+  el('selectionCount').textContent=selectedFiles.size+' выбрано';
+  el('selectionDownload').disabled=selectedFiles.size!==1||!!items.find(f=>selectedFiles.has(f.name)&&f.directory);
+  el('selectionDelete').disabled=selectedFiles.size===0;
+  for(const tile of el('entries').querySelectorAll('.item[data-filename]')){
+    const selected=selectedFiles.has(tile.dataset.filename);
+    tile.classList.toggle('selectedItem',selected);
+    const check=tile.querySelector('.selectionCheck');
+    if(check){check.textContent=selected?'✓':'○';check.setAttribute('aria-pressed',String(selected))}
+  }
+}
+function clearSelection(){selectedFiles.clear();selectionMode=false;updateSelection()}
+function toggleSelected(name){selectionMode=true;if(selectedFiles.has(name))selectedFiles.delete(name);else selectedFiles.add(name);updateSelection()}
+function renderBreadcrumb(){
+  const crumb=el('crumb');crumb.replaceChildren();
+  const parts=dir?dir.split('/'):[];
+  const add=(label,target,last)=>{
+    const btn=document.createElement('button');btn.type='button';btn.textContent=label;
+    if(last)btn.setAttribute('aria-current','page');
+    btn.onclick=()=>{if(dir===target)return;photoCacheClear();clearSelection();dir=target;el('search').value='';refresh()};
+    crumb.append(btn);
+  };
+  add(selected,'',parts.length===0);
+  parts.forEach((part,i)=>{const sep=document.createElement('span');sep.className='crumbSep';sep.textContent='›';crumb.append(sep);add(part,parts.slice(0,i+1).join('/'),i===parts.length-1)});
+}
+function choose(share){clearSelection();photoCacheClear();hideMenu();selected=share;dir='';el('search').value='';renderShares();refresh()}
+function enterFolder(name){clearSelection();photoCacheClear();hideMenu();dir=fpath(name);el('search').value='';refresh()}
 function download(f){const a=document.createElement('a');a.href=fileUrl(f.name);a.download=f.name;a.click()}
 const isPhoto=f=>!f.directory&&imageExt.includes(ext(f.name));
 let gallery=[],zoom=1,panX=0,panY=0,preloadTimer=null,viewerSerial=0,shownShare='',shownDir='',filmNodes=new Map();
@@ -144,7 +174,7 @@ const photoObserver=new IntersectionObserver(records=>{
   pumpThumbs();
 },{root:null,rootMargin:'350px 0px',threshold:0});
 function render(){thumbQueue.length=0;photoObserver.takeRecords();const grid=el('entries');for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);grid.replaceChildren();grid.classList.toggle('list',view==='list');el('gridView').classList.toggle('active',view==='grid');el('listView').classList.toggle('active',view==='list');const shown=sortedFiltered();for(const f of shown){const tile=document.createElement('article');tile.className='item';tile.tabIndex=0;tile.role='button';tile.title=f.name;tile.onclick=()=>openPreview(f);tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openPreview(f)}};const thumb=document.createElement('div');thumb.className='thumb';thumb.title=f.directory?'Открыть папку':'Просмотреть файл';if(f.directory)thumb.append(icon('folder'));else if(imageExt.includes(ext(f.name))){const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';img.onload=()=>img.classList.add('photoLoaded');img.dataset.src=imageURL(f,false,dir,selected);photoObserver.observe(img);img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};thumb.append(img)}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'Папка':size(f.size);details.append(meta);tile.append(details);const more=document.createElement('button');more.className='more';more.textContent='⋯';more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);grid.append(tile)}if(!shown.length)message(el('search').value?'Ничего не найдено':'Папка пуста');else message(shown.length+' элементов')}
-async function refresh(){if(!selected)return;hideMenu();message('Загрузка…');const share=selected,path=dir;el('crumb').textContent=share+(path?' / '+path.split('/').join(' / '):'');el('entries').replaceChildren();el('up').disabled=!dir;try{const data=await api('/api/list?'+qs({share,path}));if(share!==selected||path!==dir)return;items=data.items;render()}catch(e){message(e.message)}}
+async function refresh(){if(!selected)return;hideMenu();message('Загрузка…');const share=selected,path=dir;renderBreadcrumb();el('entries').replaceChildren();el('up').disabled=!dir;try{const data=await api('/api/list?'+qs({share,path}));if(share!==selected||path!==dir)return;items=data.items;render()}catch(e){message(e.message)}}
 async function mutate(action,payload){try{await api('/api/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({share:selected,...payload})});await refresh()}catch(e){alert(e.message)}}
 let activeDialog=null;
 function askDialog({title,text,initial='',input=false,confirm='Продолжить',danger=false}){
