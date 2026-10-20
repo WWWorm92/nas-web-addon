@@ -11,15 +11,30 @@ import time
 from pathlib import Path
 from PIL import Image, ImageOps
 
-# Persist across add-on updates, fall back if data volume is unavailable.
+# Home Assistant add-on /data persists across updates. Never silently use /tmp.
 CACHE_ROOT = Path("/data/nasweb-thumbs")
-try:
-    CACHE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if not os.access(CACHE_ROOT, os.W_OK):
-        raise PermissionError("Cache unwritable")
-except OSError:
-    CACHE_ROOT = Path("/tmp/nasweb-thumbs")
-    CACHE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+CACHE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+def check_writable():
+    """Verify real writes, not just directory permissions (mounted volumes differ)."""
+    import tempfile
+    with tempfile.NamedTemporaryFile(prefix=".write-test-", dir=CACHE_ROOT) as test:
+        test.write(b"ok")
+        test.flush()
+
+def statistics():
+    """Report cache state without exposing usernames or paths to private files."""
+    count, total = 0, 0
+    for path in CACHE_ROOT.glob("*.webp"):
+        try:
+            count += 1
+            total += path.stat().st_size
+        except OSError:
+            continue
+    return {"path": str(CACHE_ROOT), "writable": True, "files": count,
+            "size_mb": round(total / (1024 * 1024), 2)}
+
+check_writable()
 MAX_BYTES = 384 * 1024 * 1024
 TTL = 7 * 24 * 3600
 WORKERS = threading.BoundedSemaphore(2)
