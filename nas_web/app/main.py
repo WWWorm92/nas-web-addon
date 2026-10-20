@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index
+from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -410,6 +410,68 @@ def unified_gallery(request: Request, offset: int = 0, limit: int = 90, order: s
     owner = gallery_index.key(u["name"])
     status = gallery_index.state(owner, shares)
     return {"items": gallery_index.page(owner, shares, offset, limit, order), **status}
+
+
+# Virtual collections are private to each authenticated user. Every photo operation
+# checks both the session's allowed shares and the indexed photo identity.
+@app.get("/api/collections")
+def collection_list(request: Request):
+    u=user_for(request)
+    return collections.listing(gallery_index.key(u["name"]),list(u.get("shares",[])))
+
+@app.post("/api/collections/album")
+def collection_album_create(request: Request, payload: dict, x_csrf_token: str=Header(default="")):
+    check_origin(request)
+    u=protected(request,x_csrf_token)
+    try: album_id=collections.create_album(gallery_index.key(u["name"]),str(payload.get("name","")))
+    except ValueError as exc: fail(400,str(exc))
+    return {"id":album_id}
+
+@app.delete("/api/collections/album/{album_id}")
+def collection_album_delete(request: Request, album_id: int, x_csrf_token: str=Header(default="")):
+    check_origin(request)
+    u=protected(request,x_csrf_token)
+    collections.remove_album(gallery_index.key(u["name"]),album_id)
+    return {"ok":True}
+
+@app.post("/api/collections/item")
+def collection_item(request: Request, payload: dict, x_csrf_token: str=Header(default="")):
+    check_origin(request)
+    u=protected(request,x_csrf_token)
+    owner=gallery_index.key(u["name"])
+    share=name_ok(str(payload.get("share","")))
+    path=path_ok(str(payload.get("path","")))
+    if not path or not collections.photo_exists(owner,list(u.get("shares",[])),share,path):
+        fail(404,"Фотография недоступна")
+    enabled=payload.get("enabled") is True
+    if payload.get("album_id") is None:
+        collections.set_favorite(owner,share,path,enabled)
+    else:
+        try: collections.set_album_item(owner,int(payload["album_id"]),share,path,enabled)
+        except (ValueError,TypeError) as exc: fail(400,str(exc))
+    return {"ok":True}
+
+@app.get("/api/collections/photos")
+def collection_photos(request: Request, album_id: int=None, favorites: bool=False, offset: int=0, limit: int=90):
+    u=user_for(request)
+    if offset<0 or limit<1 or limit>120 or (not favorites and album_id is None):
+        fail(400,"Некорректный запрос")
+    return {"items":collections.photos(gallery_index.key(u["name"]),list(u.get("shares",[])),album_id,favorites,limit,offset)}
+
+@app.get("/api/gallery/memories")
+def gallery_memories(request: Request, month: int=0, day: int=0):
+    from datetime import date
+    u=user_for(request)
+    today=date.today()
+    month=month or today.month;day=day or today.day
+    try: date(2024,month,day)
+    except ValueError: fail(400,"Некорректная дата")
+    return {"items":collections.memories(gallery_index.key(u["name"]),list(u.get("shares",[])),month,day)}
+
+@app.get("/api/gallery/statistics")
+def gallery_statistics(request: Request):
+    u=user_for(request)
+    return collections.statistics(gallery_index.key(u["name"]),list(u.get("shares",[])))
 
 
 def _gallery_scan_step(u, owner, shares):
