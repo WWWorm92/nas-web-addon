@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
-from smb.SMBConnection import SMBConnection
+from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
 
 logger = logging.getLogger('nasweb')
