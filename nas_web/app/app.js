@@ -640,6 +640,7 @@ el('refresh').onclick=()=>allPhotosMode?el('globalGalleryRescan').click():refres
 el('gridView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='grid';localStorage.setItem('nas_view',view);render()};
 el('listView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='list';localStorage.setItem('nas_view',view);render()};
 el('galleryView').onclick=()=>enterGlobalGallery();
+el('uploadCenterButton').onclick=showUploadCenter;
 el('upload').onchange=e=>{uploadFiles([...e.target.files]);e.target.value=''};
 el('closePreview').onclick=closePreview;
 el('previewInfo').onclick=()=>{
