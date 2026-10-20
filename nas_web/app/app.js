@@ -269,7 +269,13 @@ function openMobileSheet(title,actions){
 el('mobileSheetClose').onclick=closeMobileSheet;
 el('mobileSheetOverlay').addEventListener('click',e=>{if(e.target===el('mobileSheetOverlay'))closeMobileSheet()});
 el('mobileHome').onclick=()=>{closeMobileSheet();leaveGlobalGallery();clearSelection();photoCacheClear();dir='';el('search').value='';refresh();window.scrollTo({top:0,behavior:'smooth'})};
-el('mobileSearch').onclick=()=>{closeMobileSheet();el('search').focus();el('search').scrollIntoView({block:'center',behavior:'smooth'})};
+el('mobileSearch').onclick=()=>{
+ closeMobileSheet();
+ const app=el('app'),gallery=allPhotosMode;
+ const active=app.classList.toggle(gallery?'gallerySearching':'filesSearching');
+ if(active){requestAnimationFrame(()=>{el('search').scrollIntoView({block:'nearest',behavior:'smooth'});el('search').focus()})}
+ else{el('search').value='';render()}
+};
 el('mobileAdd').onclick=()=>openMobileSheet('Добавить',[
   {label:'＋ Создать папку',run:()=>el('folder').click()},
   {label:'↑ Загрузить файлы',run:()=>el('upload').click()}
