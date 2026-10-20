@@ -178,6 +178,11 @@ def check_share(conn, share):
     if share not in getattr(conn, "authorized_shares", ()):
         fail(403, "Нет доступа к этой шаре")
 
+
+@app.on_event("shutdown")
+def close_idle_smb_connections():
+    smb_pool.close_all()
+
 @app.middleware("http")
 async def headers(request, call_next):
     started = time.perf_counter()
