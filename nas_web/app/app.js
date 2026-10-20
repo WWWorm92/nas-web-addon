@@ -401,7 +401,9 @@ el('previewInfo').onclick=()=>{
   const dimensions=img&&img.naturalWidth?img.naturalWidth+' × '+img.naturalHeight+' пикселей':'Ещё загружается';
   const stamp=Number(f.modified||0);
   const date=stamp?new Date(stamp*1000).toLocaleString('ru'):'Неизвестна';
-  const lines=['Файл: '+f.name,'Размер: '+size(Number(f.size||0)),'Изменён: '+date];
+  const lines=['Файл: '+f.name,'Размер: '+size(Number(f.size||0))];
+  if(f.taken)lines.push('Дата съёмки (EXIF): '+f.taken.replace('T',' '));
+  lines.push('Изменён: '+date);
   if(isPhoto(f))lines.push('Разрешение: '+dimensions);
   if(isMobileLayout()){
     openMobileSheet('Информация о файле',[]);
