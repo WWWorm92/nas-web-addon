@@ -22,20 +22,8 @@ from starlette.background import BackgroundTask
 logger = logging.getLogger('nasweb')
 from collections import deque
 ADMIN_EVENTS=deque(maxlen=200)
-class AdminEventHandler(logging.Handler):
-    def emit(self,record):
-        try:
-            # Do not expose raw SMB paths, credentials or exception details.
-            message=record.getMessage()
-            if any(x in message.lower() for x in ("password","token","cookie","secret","authorization")):
-                message="[sensitive diagnostic omitted]"
-            ADMIN_EVENTS.append({"time":round(record.created),"level":record.levelname,
-                                 "message":message[:240]})
-        except Exception:pass
-logger.addHandler(AdminEventHandler())
 def admin_log_event(level,message):
-    getattr(logger,level)(message)
-
+    ADMIN_EVENTS.append({"time":round(time.time()),"level":level.upper(),"message":message[:160]})
 app = FastAPI(title="NAS Web", docs_url=None, redoc_url=None, openapi_url=None)
 ROOT = Path(__file__).parent
 try:
@@ -350,6 +338,7 @@ def admin_cache_maintenance(request: Request,x_csrf_token: str=Header(default=""
     check_origin(request);admin_protected(request,x_csrf_token)
     # Evict expired/oversize cache files only, not the photo index or SMB data.
     with thumb_cache.FILES_LOCK:
+        thumb_cache.OPS = 24
         thumb_cache._prune()
     admin_log_event("info","Cache maintenance completed")
     return {"ok":True,"cache":thumb_cache.statistics()}
