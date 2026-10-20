@@ -36,6 +36,9 @@ function updateSelection(){
   el('selectionCount').textContent=selectedFiles.size+' выбрано';
   el('selectionDownload').disabled=selectedFiles.size!==1||!!items.find(f=>selectedFiles.has(f.name)&&f.directory);
   el('selectionDelete').disabled=selectedFiles.size===0;
+  el('selectionCopy').disabled=selectedFiles.size===0;
+  el('selectionMove').disabled=selectedFiles.size===0;
+  el('selectionZip').disabled=selectedFiles.size===0;
   for(const tile of el('entries').querySelectorAll('.item[data-filename]')){
     const selected=selectedFiles.has(tile.dataset.filename);
     tile.classList.toggle('selectedItem',selected);
@@ -213,6 +216,68 @@ el('loginForm').onsubmit=async e=>{e.preventDefault();el('loginError').textConte
 el('logout').onclick=async()=>{try{await api('/api/logout',{method:'POST'})}catch{}showLogin()};
 el('up').onclick=()=>{if(dir){clearSelection();dir=dir.split('/').slice(0,-1).join('/');refresh()}};
 el('folder').onclick=async()=>{const name=await askDialog({title:'Новая папка',text:'Папка будет создана в текущем расположении.',input:true,confirm:'Создать'});if(name)await mutate('mkdir',{path:dir,name})};
+let destinationResolve=null,destinationDir='',destinationBusy=false;
+async function showDestinationFolders(){
+  const share=el('destinationShare').value,box=el('destinationFolders');
+  box.replaceChildren();el('destinationError').textContent='';
+  el('destinationPath').textContent=share+' / '+destinationDir;
+  try{
+    const data=await api('/api/list?'+qs({share,path:destinationDir}));
+    if(el('destinationOverlay').classList.contains('hidden')||share!==el('destinationShare').value)return;
+    const upper=document.createElement('button');upper.textContent='↑ На уровень выше';upper.disabled=!destinationDir;
+    upper.onclick=()=>{destinationDir=destinationDir.split('/').slice(0,-1).join('/');showDestinationFolders()};
+    box.append(upper);
+    for(const folder of data.items.filter(x=>x.directory).sort((a,b)=>a.name.localeCompare(b.name,'ru'))){
+      const btn=document.createElement('button');btn.textContent='▱  '+folder.name;
+      btn.onclick=()=>{destinationDir=[destinationDir,folder.name].filter(Boolean).join('/');showDestinationFolders()};
+      box.append(btn);
+    }
+  }catch(e){el('destinationError').textContent=e.message}
+}
+function chooseDestination(operation){
+  return new Promise(resolve=>{
+    destinationResolve=resolve;destinationDir='';const overlay=el('destinationOverlay'),pick=el('destinationShare');
+    pick.replaceChildren();
+    for(const share of shares){const option=document.createElement('option');option.value=share;option.textContent=share;pick.append(option)}
+    pick.value=selected;overlay.classList.remove('hidden');
+    el('destinationTitle').textContent=operation==='move'?'Переместить в папку':'Копировать в папку';
+    el('destinationApply').textContent=operation==='move'?'Переместить сюда':'Копировать сюда';
+    showDestinationFolders();
+  });
+}
+function endDestination(value){
+  el('destinationOverlay').classList.add('hidden');
+  const done=destinationResolve;destinationResolve=null;if(done)done(value);
+}
+el('destinationShare').onchange=()=>{destinationDir='';showDestinationFolders()};
+el('destinationCancel').onclick=()=>endDestination(null);
+el('destinationApply').onclick=()=>endDestination({share:el('destinationShare').value,path:destinationDir});
+async function bulkTransfer(operation){
+  const targets=items.filter(f=>selectedFiles.has(f.name));if(!targets.length)return;
+  const destination=await chooseDestination(operation);if(!destination)return;
+  let done=0,failed=0,lastError='';
+  for(const f of targets){
+    try{await api('/api/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({share:selected,path:fpath(f.name),target_share:destination.share,target_dir:destination.path,operation})});done++}
+    catch(e){failed++;lastError=e.message}
+  }
+  clearSelection();await refresh();
+  message((operation==='move'?'Перемещено: ':'Скопировано: ')+done+(failed?'. Ошибок: '+failed+'. '+lastError:''));
+}
+el('selectionCopy').onclick=()=>bulkTransfer('copy');
+el('selectionMove').onclick=()=>bulkTransfer('move');
+el('selectionZip').onclick=async()=>{
+  const targets=items.filter(f=>selectedFiles.has(f.name));
+  if(!targets.length)return;
+  if(targets.some(f=>f.directory)){message('Для ZIP выберите только файлы');return}
+  try{
+    message('Подготавливаем ZIP…');
+    const r=await fetch('/api/zip',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({share:selected,path:dir,files:targets.map(f=>f.name)})});
+    if(!r.ok){let err;try{err=(await r.json()).detail}catch{}throw Error(err||'HTTP '+r.status)}
+    const blob=await r.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');
+    link.href=url;link.download='NAS-Web-files.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+    message('ZIP готов: '+targets.length+' файлов');
+  }catch(e){message('Ошибка ZIP: '+e.message)}
+};
 el('selectionModeButton').onclick=()=>{selectionMode=!selectionMode;selectedFiles.clear();updateSelection()};
 el('selectionCancel').onclick=clearSelection;
 el('selectAll').onclick=()=>{selectionMode=true;for(const file of sortedFiltered())selectedFiles.add(file.name);updateSelection()};
