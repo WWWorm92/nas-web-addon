@@ -28,14 +28,33 @@ function sortedFiltered(){let a=items.filter(f=>f.name.toLocaleLowerCase().inclu
 function render(){const grid=el('entries');grid.replaceChildren();grid.classList.toggle('list',view==='list');el('gridView').classList.toggle('active',view==='grid');el('listView').classList.toggle('active',view==='list');const shown=sortedFiltered();for(const f of shown){const tile=document.createElement('article');tile.className='item';const thumb=document.createElement('div');thumb.className='thumb';thumb.role='button';thumb.tabIndex=0;thumb.title=f.directory?'Открыть папку':'Просмотреть файл';thumb.onclick=()=>openPreview(f);thumb.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openPreview(f)}};if(f.directory)thumb.textContent='▱';else if(imageExt.includes(ext(f.name))){const img=document.createElement('img');img.loading='lazy';img.alt='';img.src='/api/thumb?'+qs({share:selected,path:fpath(f.name),v:String(f.modified||0)+'-'+String(f.size||0)});img.onerror=()=>{img.remove();thumb.textContent='▧'};thumb.append(img)}else thumb.textContent=ext(f.name)==='pdf'?'▣':videoExt.includes(ext(f.name))?'▷':'▤';tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'Папка':size(f.size);details.append(meta);tile.append(details);const more=document.createElement('button');more.className='more';more.textContent='⋯';more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};tile.append(more);grid.append(tile)}if(!shown.length)message(el('search').value?'Ничего не найдено':'Папка пуста');else message(shown.length+' элементов')}
 async function refresh(){if(!selected)return;hideMenu();message('Загрузка…');const share=selected,path=dir;el('crumb').textContent=share+(path?' / '+path.split('/').join(' / '):'');el('entries').replaceChildren();el('up').disabled=!dir;try{const data=await api('/api/list?'+qs({share,path}));if(share!==selected||path!==dir)return;items=data.items;render()}catch(e){message(e.message)}}
 async function mutate(action,payload){try{await api('/api/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({share:selected,...payload})});await refresh()}catch(e){alert(e.message)}}
-function renameItem(f){const name=prompt('Новое имя',f.name);if(name&&name!==f.name)mutate('rename',{path:fpath(f.name),name})}
-function deleteItem(f){if(confirm('Удалить «'+f.name+'»? Это действие нельзя отменить.'))mutate('delete',{path:fpath(f.name),directory:f.directory})}
+let activeDialog=null;
+function askDialog({title,text,initial='',input=false,confirm='Продолжить',danger=false}){
+  if(activeDialog){activeDialog(null)}
+  return new Promise(resolve=>{
+    const overlay=el('dialogOverlay'),field=el('dialogInput'),accept=el('dialogAccept');
+    el('dialogTitle').textContent=title;
+    el('dialogText').textContent=text;
+    field.classList.toggle('hidden',!input);
+    field.value=initial;accept.textContent=confirm;
+    accept.classList.toggle('dangerConfirm',danger);
+    overlay.classList.remove('hidden');
+    const finish=value=>{overlay.classList.add('hidden');el('actionDialog').onsubmit=null;el('dialogCancel').onclick=null;activeDialog=null;resolve(value)};
+    activeDialog=finish;
+    el('dialogCancel').onclick=()=>finish(null);
+    el('actionDialog').onsubmit=e=>{e.preventDefault();const value=input?field.value.trim():true;if(input&&!value)return;finish(value)};
+    requestAnimationFrame(()=>{if(input){field.focus();field.select()}else accept.focus()});
+  });
+}
+async function renameItem(f){const name=await askDialog({title:'Переименовать',text:'Введите новое имя файла или папки.',initial:f.name,input:true,confirm:'Сохранить'});if(name&&name!==f.name)await mutate('rename',{path:fpath(f.name),name})}
+async function deleteItem(f){const approved=await askDialog({title:'Удалить '+(f.directory?'папку':'файл')+'?',text:'«'+f.name+'» будет удалён без возможности восстановления.'+(f.directory?' Папка должна быть пустой.':''),confirm:'Удалить',danger:true});if(approved)await mutate('delete',{path:fpath(f.name),directory:f.directory})}
 function uploadOne(file){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();const data=new FormData();data.set('share',selected);data.set('path',dir);data.set('file',file);xhr.open('POST','/api/upload');xhr.withCredentials=true;xhr.setRequestHeader('X-CSRF-Token',csrf);xhr.upload.onprogress=e=>{if(e.lengthComputable)el('progressFill').style.width=(e.loaded/e.total*100).toFixed(0)+'%'};xhr.onload=()=>xhr.status>=200&&xhr.status<300?resolve():reject(Error('HTTP '+xhr.status));xhr.onerror=()=>reject(Error('Сетевая ошибка'));xhr.send(data)})}
 async function uploadFiles(files){if(!selected||!files.length)return;const bar=el('uploadProgress');bar.classList.remove('hidden');for(const file of files){message('Загрузка: '+file.name);el('progressFill').style.width='0';try{await uploadOne(file)}catch(e){alert('Ошибка загрузки '+file.name+': '+e.message)}}bar.classList.add('hidden');refresh()}
-el('loginForm').onsubmit=async e=>{e.preventDefault();el('loginError').textContent='';try{const form=new FormData();form.set('username',el('username').value);form.set('password',el('password').value);const user=await api('/api/login',{method:'POST',body:form});el('password').value='';showApp(user)}catch(e){el('loginError').textContent=e.message}};
+el('togglePassword').onclick=()=>{const password=el('password'),visible=password.type==='password';password.type=visible?'text':'password';el('togglePassword').textContent=visible?'Скрыть':'Показать';password.focus()};
+el('loginForm').onsubmit=async e=>{e.preventDefault();el('loginError').textContent='';const submit=el('submitLogin');submit.disabled=true;submit.textContent='Проверяем доступ…';try{const form=new FormData();form.set('username',el('username').value);form.set('password',el('password').value);const user=await api('/api/login',{method:'POST',body:form});el('password').value='';showApp(user)}catch(e){el('loginError').textContent=e.message}finally{submit.disabled=false;submit.innerHTML='Войти в NAS Web <span aria-hidden="true">→</span>'}};
 el('logout').onclick=async()=>{try{await api('/api/logout',{method:'POST'})}catch{}showLogin()};
 el('up').onclick=()=>{if(dir){dir=dir.split('/').slice(0,-1).join('/');refresh()}};
-el('folder').onclick=()=>{const name=prompt('Название новой папки');if(name)mutate('mkdir',{path:dir,name})};
+el('folder').onclick=async()=>{const name=await askDialog({title:'Новая папка',text:'Папка будет создана в текущем расположении.',input:true,confirm:'Создать'});if(name)await mutate('mkdir',{path:dir,name})};
 el('refresh').onclick=refresh;el('search').oninput=render;el('sort').onchange=render;
 el('gridView').onclick=()=>{view='grid';localStorage.setItem('nas_view',view);render()};
 el('listView').onclick=()=>{view='list';localStorage.setItem('nas_view',view);render()};
@@ -60,7 +79,7 @@ previewArea.addEventListener('touchend',event=>{
   }
 },{passive:true});
 previewArea.addEventListener('touchcancel',()=>touchStart=null);
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePreview();hideMenu()}if(el('preview').style.display==='flex'){if(e.key==='ArrowLeft')stepPreview(-1);if(e.key==='ArrowRight')stepPreview(1)}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(activeDialog)activeDialog(null);else{closePreview();hideMenu()}}if(el('preview').style.display==='flex'){if(e.key==='ArrowLeft')stepPreview(-1);if(e.key==='ArrowRight')stepPreview(1)}});
 document.addEventListener('pointerdown',e=>{if(!el('fileMenu').contains(e.target)&&!e.target.closest('.more'))hideMenu()});
 let dragDepth=0;const work=el('workspace');work.addEventListener('dragenter',e=>{e.preventDefault();dragDepth++;work.classList.add('drop')});work.addEventListener('dragover',e=>e.preventDefault());work.addEventListener('dragleave',e=>{e.preventDefault();dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)work.classList.remove('drop')});work.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;work.classList.remove('drop');uploadFiles([...e.dataTransfer.files])});
 const theme=localStorage.getItem('nas_theme')||'dark';document.documentElement.dataset.theme=theme;el('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('nas_theme',t)};
