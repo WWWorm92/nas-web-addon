@@ -264,8 +264,13 @@ def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool 
                     return Response(cached, media_type="image/webp")
                 buffer = LimitedBuffer()
                 conn.retrieveFile(share, "/" + p, buffer, timeout=40)
-            result = thumb_cache.render_image(buffer, large=large)
-            thumb_cache.put(key, result)
+            small, fullsize = thumb_cache.render_pair(buffer)
+            version = v[:80]
+            small_key = thumb_cache.key_for(u["name"], share, p, version + ":small")
+            big_key = thumb_cache.key_for(u["name"], share, p, version + ":large")
+            thumb_cache.put(small_key, small)
+            thumb_cache.put(big_key, fullsize)
+            result = fullsize if large else small
         return Response(result, media_type="image/webp")
     except HTTPException:
         raise
