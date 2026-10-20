@@ -109,14 +109,14 @@ def state(owner, shares):
                 "dated": dated, "checked_no_date": checked_no_date}
 
 
-def page(owner, shares, offset, limit):
+def page(owner, shares, offset, limit, order='taken'):
     if not shares:
         return []
     with LOCK, connect() as db:
         rows = db.execute(
             "SELECT share,path,folder,name,size,modified,taken FROM photos "
             "WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") "
-            "ORDER BY sort_key DESC, share, path LIMIT ? OFFSET ?",
+            ("ORDER BY CASE WHEN taken IS NULL THEN 1 ELSE 0 END, taken DESC, share, path LIMIT ? OFFSET ?" if order == 'taken' else "ORDER BY modified DESC, share, path LIMIT ? OFFSET ?"),
             (owner, *shares, limit, offset)).fetchall()
         return [dict(row) for row in rows]
 
