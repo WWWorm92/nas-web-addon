@@ -675,6 +675,7 @@ def scan_unified_gallery(request: Request, x_csrf_token: str = Header(default=""
 def retry_gallery_dates(request: Request, x_csrf_token: str = Header(default="")):
     check_origin(request)
     u = protected(request, x_csrf_token)
+    admin_user(request)
     shares = list(u.get("shares", []))
     owner = gallery_index.key(u["name"])
     with GALLERY_BACKGROUND_LOCK:
@@ -698,16 +699,8 @@ def retry_gallery_dates(request: Request, x_csrf_token: str = Header(default="")
 
 @app.post("/api/gallery/reindex")
 def reindex_unified_gallery(request: Request, x_csrf_token: str = Header(default="")):
-    check_origin(request)
-    u = protected(request, x_csrf_token)
-    owner = gallery_index.key(u["name"])
-    if not GALLERY_SCAN_LOCK.acquire(blocking=False):
-        fail(409, "Индексация уже выполняется")
-    try:
-        gallery_index.reset(owner, list(u.get("shares", [])))
-    finally:
-        GALLERY_SCAN_LOCK.release()
-    return {"ok": True}
+    # Legacy route intentionally disabled: never destroy a live photo index.
+    fail(403, "Полная переиндексация отключена для защиты существующей фототеки")
 
 
 @app.get("/api/thumb")
