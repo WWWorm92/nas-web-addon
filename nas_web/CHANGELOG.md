@@ -1,3 +1,9 @@
+## 0.18.7
+
+- Make the bottom mobile Search tab toggle a visible, focusable search input in files and gallery.
+- Remove the duplicate date sorting selector from mobile gallery settings while retaining desktop sorting.
+- Preserve all photos, EXIF dates, index and SMB permissions; no automatic deletion or filtering.
+
 ## 0.18.6
 
 - Fix JavaScript startup ReferenceError: initialize globalGalleryOrder before binding the gallery sorting controls.
