@@ -1,3 +1,9 @@
+## 0.18.5
+
+- Fix mobile login password field blocked by the full-width password visibility button due to conflicting CSS rules.
+- Put password visibility toggle beside the input, with independently sized controls.
+- Keep all session logic, photo index and SMB permissions unchanged.
+
 ## 0.18.4
 
 - Restore valid JavaScript API function declaration, fixing an initialization failure that disabled login form interactions.
