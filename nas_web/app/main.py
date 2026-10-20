@@ -394,15 +394,8 @@ def unified_gallery(request: Request, offset: int = 0, limit: int = 90):
     return {"items": gallery_index.page(owner, shares, offset, limit), **status}
 
 
-@app.post("/api/gallery/scan")
-def scan_unified_gallery(request: Request, x_csrf_token: str = Header(default="")):
-    check_origin(request)
-    u = protected(request, x_csrf_token)
-    shares = list(u.get("shares", []))
-    owner = gallery_index.key(u["name"])
-    if not GALLERY_SCAN_LOCK.acquire(blocking=False):
-        return {"busy": True, **gallery_index.state(owner, shares)}
-    try:
+def _gallery_scan_step(u, owner, shares):
+    """One bounded SMB scan batch; existing SQLite index is never reset."""
         with smb(u) as conn:
             for _ in range(3):
                 with gallery_index.LOCK, gallery_index.connect() as db:
@@ -445,9 +438,48 @@ def scan_unified_gallery(request: Request, x_csrf_token: str = Header(default=""
                         logger.info("Gallery EXIF skipped: %s", type(exc).__name__)
                     with gallery_index.LOCK, gallery_index.connect() as db:
                         gallery_index.save_date(db, owner, row["share"], row["path"], taken)
-        return {"busy": False, **gallery_index.state(owner, shares)}
+    
+
+def _gallery_background(u, owner, shares):
+    # Keep credentials only in RAM, and never run indefinitely after logout.
+    deadline = time.monotonic() + 1800
+    try:
+        while time.monotonic() < deadline:
+            with LOCK:
+                active = any(session.get("csrf") == u.get("csrf") and session.get("expires", 0) > time.time()
+                             for session in SESSIONS.values())
+            if not active:
+                break
+            with GALLERY_SCAN_LOCK:
+                _gallery_scan_step(u, owner, shares)
+            state = gallery_index.state(owner, shares)
+            if state["complete"] and not state["dates_pending"]:
+                break
+            time.sleep(0.3)
+    except Exception:
+        logger.exception("Background gallery indexing failed")
     finally:
-        GALLERY_SCAN_LOCK.release()
+        with GALLERY_BACKGROUND_LOCK:
+            GALLERY_BACKGROUND.pop(owner, None)
+
+
+GALLERY_BACKGROUND_LOCK = threading.Lock()
+GALLERY_BACKGROUND = {}
+
+@app.post("/api/gallery/scan")
+def scan_unified_gallery(request: Request, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    shares = list(u.get("shares", []))
+    owner = gallery_index.key(u["name"])
+    with GALLERY_BACKGROUND_LOCK:
+        active = GALLERY_BACKGROUND.get(owner)
+        if active is None or not active.is_alive():
+            worker = threading.Thread(target=_gallery_background, args=(dict(u), owner, tuple(shares)),
+                                      daemon=True, name="nas-gallery-index")
+            GALLERY_BACKGROUND[owner] = worker
+            worker.start()
+    return {"busy": True, **gallery_index.state(owner, shares)}
 
 
 @app.post("/api/gallery/reindex")
