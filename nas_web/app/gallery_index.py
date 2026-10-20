@@ -70,7 +70,7 @@ def state(owner, shares):
         scanned = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=1", (owner,)).fetchone()[0]
         pending = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=0", (owner,)).fetchone()[0]
         total = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ")", (owner, *shares)).fetchone()[0] if shares else 0
-        dates_pending = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND exif_checked=0 AND (name LIKE '%.jpg' OR name LIKE '%.jpeg')", (owner,)).fetchone()[0]
+        dates_pending = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg')", (owner, *shares)).fetchone()[0] if shares else 0
         return {"complete": bool(job["complete"]), "limited": bool(job["limited"]),
                 "scanned": scanned, "pending": pending, "total": total,
                 "dates_pending": dates_pending}
