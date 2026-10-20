@@ -216,6 +216,7 @@ function dismissFinish(dy){
 previewArea.addEventListener('touchstart',event=>{
   if(!previewArea.querySelector('img'))return;
   if(event.touches.length===2){
+    if(dismissActive)dismissReset();
     gesture={mode:'pinch',distance:dist(event.touches[0],event.touches[1]),scale:zoom,px:panX,py:panY};
   }else if(event.touches.length===1){
     const t=event.touches[0];
@@ -232,6 +233,11 @@ previewArea.addEventListener('touchmove',event=>{
     if(Math.hypot(dx,dy)>9)gesture.moved=true;
     if(zoom>1){
       event.preventDefault();panX=gesture.px+dx;panY=gesture.py+dy;drawZoom();
+    }else if(gesture.mode==='single'&&dy>12&&Math.abs(dy)>Math.abs(dx)*1.35){
+      gesture.dismissing=true;dismissActive=true;
+      event.preventDefault();dismissMove(dy);
+    }else if(gesture.dismissing){
+      event.preventDefault();dismissMove(Math.max(0,dy));
     }
   }
 },{passive:false});
@@ -241,14 +247,20 @@ previewArea.addEventListener('touchend',event=>{
   if(gesture.mode!=='single'||event.changedTouches.length!==1){gesture=null;return}
   const t=event.changedTouches[0],dx=t.clientX-gesture.x,dy=t.clientY-gesture.y;
   const tapped=Math.abs(dx)<12&&Math.abs(dy)<12&&Date.now()-gesture.when<320;
+  const dismissing=!!gesture.dismissing;
   gesture=null;
+  if(dismissing){
+    if(dy>105&&dy>Math.abs(dx)*1.15)dismissFinish(dy);
+    else dismissReset();
+    return;
+  }
   if(tapped){
     const now=Date.now();if(now-lastTap<330){setZoom(zoom>1?1:2.5);lastTap=0}else lastTap=now;
   }else if(zoom===1&&Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.25){
     stepPreview(dx<0?1:-1);
   }
 },{passive:true});
-previewArea.addEventListener('touchcancel',()=>{gesture=null});
+previewArea.addEventListener('touchcancel',()=>{gesture=null;if(dismissActive)dismissReset()});
 previewArea.addEventListener('dblclick',event=>{if(!previewArea.querySelector('img'))return;setZoom(zoom>1?1:2.5)});
 previewArea.addEventListener('wheel',event=>{if(!previewArea.querySelector('img')||!(event.ctrlKey||event.metaKey))return;event.preventDefault();setZoom(zoom*(event.deltaY<0?1.18:.85))},{passive:false});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(activeDialog)activeDialog(null);else{closePreview();hideMenu()}}if(el('preview').style.display==='flex'){if(e.key==='ArrowLeft')stepPreview(-1);if(e.key==='ArrowRight')stepPreview(1);if(e.key==='0')setZoom(1);if(e.key==='+')setZoom(zoom*1.25);if(e.key==='-')setZoom(zoom/1.25)}});
