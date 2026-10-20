@@ -265,6 +265,11 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         record_failure(key)
         logger.warning("SMB login failed: stage=%s exception=%s", stage, type(exc).__name__)
         fail(401, "Неверные данные входа или SMB недоступен")
+    # A successful SMB login with no readable shares must not create a
+    # misleading authenticated session with an empty gallery.
+    if not shares:
+        logger.warning("SMB login has no readable shares for account")
+        fail(503, "SMB не вернул доступных папок. Проверьте доступность NAS и повторите вход.")
     # Revoke any previous remembered token when logging into the same browser.
     remember_auth.revoke(request.cookies.get("nas_remember", ""))
     token, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
@@ -294,8 +299,19 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
 @app.get("/api/me")
 def me(request: Request):
     u = user_for(request)
+    # A transient SMB listing failure must not overwrite a previously
+    # authorized share list with [] in the browser. Actual SMB permissions
+    # continue to be enforced on each file request.
     with smb(u) as conn:
-        return {"username": u["name"], "shares": visible_shares(conn), "csrf": u["csrf"]}
+        current_shares = visible_shares(conn)
+    if not current_shares:
+        logger.warning("SMB share enumeration returned no readable shares during session restore")
+        fail(503, "Не удалось получить список SMB-папок. Повторите запрос позже.")
+    authorized = set(u.get("shares", []))
+    current_shares = [name for name in current_shares if name in authorized]
+    if not current_shares:
+        fail(403, "У текущей сессии нет доступа к доступным SMB-папкам. Войдите заново.")
+    return {"username": u["name"], "shares": current_shares, "csrf": u["csrf"]}
 
 @app.post("/api/logout")
 def logout(request: Request, x_csrf_token: str = Header(default="")):
