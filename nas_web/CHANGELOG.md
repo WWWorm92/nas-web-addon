@@ -1,3 +1,12 @@
+## 0.22.8
+
+- Fix inflated EXIF pending count after admin "retry": safe resume does not reset already-checked photos with no capture date or delete cached negative metadata.
+- Honor persisted positive **and negative** metadata cache to recover work queued by earlier versions without repeatedly opening the same files.
+- Remember SMB STATUS_ACCESS_DENIED per user/file/version with 24-hour cooldown, without changing gallery dates, photo rows, file contents, or SMB ACLs. Allow retry after cooldown or file modification.
+- Stop worker and UI polling when no actionable EXIF work remains; distinguish actively pending files from temporarily inaccessible ones.
+- Show per-user index records versus unique files, checked-without-EXIF, SMB-denied and actionable EXIF counts in admin.
+- Add regression CI for the EXIF queue and ACL retry, plus admin JS and entrypoint syntax checks.
+
 ## 0.22.5
 
 - Fix admin first-run setup failing with permission_denied: startup copies Supervisor-owned /data/options.json into private /data/nasweb-auth/options.json owned by the non-root app user.
