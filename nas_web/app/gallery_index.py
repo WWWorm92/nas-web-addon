@@ -206,13 +206,20 @@ def retry_missing_dates(db, owner, shares):
     return count
 
 
-def next_unchecked(db, owner, shares):
+def next_unchecked(db, owner, shares, excluded=()):
+    """Get next pending photo, excluding files denied during this worker run."""
     if not shares:
         return None
-    return db.execute("SELECT share,path,name,size,modified FROM photos WHERE owner=? "
-                      "AND share IN (" + ",".join("?" for _ in shares) + ") "
-                      "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp') LIMIT 1",
-                      (owner, *shares)).fetchone()
+    excluded=tuple(excluded)
+    sql=("SELECT share,path,name,size,modified FROM photos WHERE owner=? "
+         "AND share IN (" + ",".join("?" for _ in shares) + ") "
+         "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' "
+         "OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')")
+    args=[owner,*shares]
+    if excluded:
+        sql+=" AND (share || char(0) || path) NOT IN ("+",".join("?" for _ in excluded)+")"
+        args.extend(share+"\\0"+path for share,path in excluded)
+    return db.execute(sql+" LIMIT 1",args).fetchone()
 
 
 def save_date(db, owner, share, path, taken):
