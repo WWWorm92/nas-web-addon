@@ -31,6 +31,7 @@ let selectionMode=false;
 function updateSelection(){
   const active=selectedFiles.size>0||selectionMode;
   el('selectionBar').classList.toggle('hidden',!active);
+  el('selectionModeButton').classList.toggle('activeSelect',active);
   el('entries').classList.toggle('selectionMode',active);
   el('selectionCount').textContent=selectedFiles.size+' выбрано';
   el('selectionDownload').disabled=selectedFiles.size!==1||!!items.find(f=>selectedFiles.has(f.name)&&f.directory);
@@ -212,6 +213,7 @@ el('loginForm').onsubmit=async e=>{e.preventDefault();el('loginError').textConte
 el('logout').onclick=async()=>{try{await api('/api/logout',{method:'POST'})}catch{}showLogin()};
 el('up').onclick=()=>{if(dir){clearSelection();dir=dir.split('/').slice(0,-1).join('/');refresh()}};
 el('folder').onclick=async()=>{const name=await askDialog({title:'Новая папка',text:'Папка будет создана в текущем расположении.',input:true,confirm:'Создать'});if(name)await mutate('mkdir',{path:dir,name})};
+el('selectionModeButton').onclick=()=>{selectionMode=!selectionMode;selectedFiles.clear();updateSelection()};
 el('selectionCancel').onclick=clearSelection;
 el('selectAll').onclick=()=>{selectionMode=true;for(const file of sortedFiltered())selectedFiles.add(file.name);updateSelection()};
 el('selectionDownload').onclick=()=>{if(selectedFiles.size!==1)return;const file=items.find(f=>selectedFiles.has(f.name));if(file&&!file.directory)download(file)};
