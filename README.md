@@ -33,3 +33,14 @@ Experimental SMB web file manager for **Simple NAS** running on Home Assistant O
 - SMB permissions, share discovery, login and operations need testing against your Simple NAS configuration.
 
 This repository is an early prototype, **not a production-ready cloud drive**.
+
+
+## Version 0.4.0 security and optimization
+- Login attempts limited to 10 failures per 10 minutes per account and direct peer IP (in-process).
+- Sessions live 4 hours, at most 64 concurrent sessions; restart invalidates them.
+- Origin checks for login, logout, upload, delete, rename and folder creation.
+- Cookies remain HttpOnly and SameSite=Strict; `https_only` controls the Secure flag.
+- Photo tiles use bounded server-side 320x240 WebP thumbnails, while opening a photo still fetches the original.
+- File type icons use a restrained monochrome/blue palette; mobile layout remains responsive.
+
+**NOT YET VERIFIED FOR PUBLIC EXPOSURE.** Keep `https_only: false` during local HTTP tests. When HTTPS proxy support is verified, `https_only: true` will prevent sending session cookies over plain HTTP; note this makes the HTTP LAN URL unable to maintain a logged-in session. Login limits are local to the add-on process and are not a substitute for IP-level reverse proxy controls. Credentials remain in application RAM for active sessions. The browser UI and SMB behavior still need testing on the actual hardware.
