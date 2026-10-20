@@ -69,6 +69,7 @@ let allPhotosMode=false,allPhotos=[],allPhotoTotal=0,allPhotoStatus=null,allPhot
 const photoLocation=f=>({share:f.share||shownShare,folder:f.folder!==undefined?f.folder:shownDir});
 const photoDate=f=>f.taken?new Date(f.taken):new Date(Number(f.modified||0)*1000);
 const photoGalleryItems=()=>sortedFiltered().filter(isPhoto).sort((a,b)=>photoDate(b)-photoDate(a)||a.name.localeCompare(b.name,'ru'));
+function photoDay(f){const d=photoDate(f);if(!Number.isFinite(d.getTime())||d.getFullYear()<1970)return 'Без даты';const today=new Date();if(d.toDateString()===today.toDateString())return 'Сегодня';const yesterday=new Date(today);yesterday.setDate(today.getDate()-1);if(d.toDateString()===yesterday.toDateString())return 'Вчера';return new Intl.DateTimeFormat('ru',{day:'numeric',month:'long',year:'numeric'}).format(d)}
 function photoMonth(f){const d=photoDate(f);if(!Number.isFinite(d.getTime())||d.getFullYear()<1970)return 'Без даты';return new Intl.DateTimeFormat('ru',{month:'long',year:'numeric'}).format(d)}
 function photoYear(f){const d=photoDate(f);return Number.isFinite(d.getTime())&&d.getFullYear()>=1970?String(d.getFullYear()):'Без даты'}
 let galleryDateGeneration=0;
@@ -350,20 +351,25 @@ function renderAllGallery(){
   const grid=el('entries');thumbQueue.length=0;photoObserver.takeRecords();
   for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);
   grid.replaceChildren();grid.classList.remove('list');grid.classList.add('galleryMode');
+  if(!allPhotos.length&&!allPhotoStatus){for(let i=0;i<12;i++){const sk=document.createElement('div');sk.className='photoSkeleton';grid.append(sk)}}
   el('galleryYears').classList.remove('hidden');
   el('globalGallerySummary').classList.remove('hidden');
   const search=el('search').value.trim().toLocaleLowerCase();
   const shown=allPhotos.filter(f=>!search||f.name.toLocaleLowerCase().includes(search)||f.folder.toLocaleLowerCase().includes(search));
   let month='';
   for(const f of shown){
-    const label=photoMonth(f);
+    const label=photoDay(f);
     if(label!==month){
       const heading=document.createElement('h3');heading.className='galleryMonth';
       heading.textContent=label;heading.dataset.year=photoYear(f);grid.append(heading);month=label;
     }
     const tile=document.createElement('article');tile.className='item galleryPhoto';tile.tabIndex=0;tile.role='button';tile.title=f.share+' / '+f.path;
     tile.setAttribute('aria-label','Открыть '+f.name+' — '+f.share+'/'+f.folder);
-    tile.onclick=()=>openPreview(f);
+    tile.onclick=()=>{if(!tile.dataset.longPress)openPreview(f);else delete tile.dataset.longPress};
+    let hold=null,sx=0,sy=0;
+    tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;hold=setTimeout(()=>{tile.dataset.longPress='1';navigator.vibrate?.(15);openMobileSheet(f.name,[{label:'Открыть фото',run:()=>openPreview(f)},{label:'Открыть папку',run:()=>{leaveGlobalGallery();selected=f.share;dir=f.folder;renderShares();refresh()}},{label:'Скачать',run:()=>{const a=document.createElement('a');a.href='/api/download?'+qs({share:f.share,path:f.path});a.download=f.name;a.click()}}])},550)},{passive:true});
+    tile.addEventListener('touchmove',e=>{if(e.touches.length&&Math.hypot(e.touches[0].clientX-sx,e.touches[0].clientY-sy)>12)clearTimeout(hold)},{passive:true});
+    tile.addEventListener('touchend',()=>clearTimeout(hold));tile.addEventListener('touchcancel',()=>clearTimeout(hold));
     tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openPreview(f)}};
     const thumb=document.createElement('div');thumb.className='thumb';
     const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';
@@ -385,7 +391,7 @@ function renderAllGallery(){
   message(allPhotos.length?'Показано '+shown.length+' из '+allPhotoTotal+' фотографий':'Ищем фотографии во всех доступных папках…');
   pumpThumbs();
 }
-function render(){if(allPhotosMode){renderAllGallery();return}thumbQueue.length=0;photoObserver.takeRecords();const grid=el('entries');for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);grid.replaceChildren();grid.classList.toggle('list',view==='list');grid.classList.toggle('galleryMode',view==='gallery');el('gridView').classList.toggle('active',view==='grid');el('listView').classList.toggle('active',view==='list');el('galleryView').classList.toggle('active',view==='gallery');const shown=view==='gallery'?photoGalleryItems():sortedFiltered();renderGalleryYears(shown);let previousMonth=null;for(const f of shown){if(view==='gallery'){const month=photoMonth(f);if(month!==previousMonth){const heading=document.createElement('h3');heading.className='galleryMonth';heading.textContent=month;heading.dataset.year=photoYear(f);grid.append(heading);previousMonth=month}}const tile=document.createElement('article');tile.className='item';if(view==='gallery')tile.classList.add('galleryPhoto');tile.tabIndex=0;tile.role='button';tile.title=f.name;tile.dataset.filename=f.name;
+function render(){if(allPhotosMode){renderAllGallery();return}thumbQueue.length=0;photoObserver.takeRecords();const grid=el('entries');for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);grid.replaceChildren();grid.classList.toggle('list',view==='list');grid.classList.toggle('galleryMode',view==='gallery');el('gridView').classList.toggle('active',view==='grid');el('listView').classList.toggle('active',view==='list');el('galleryView').classList.toggle('active',view==='gallery');const shown=view==='gallery'?photoGalleryItems():sortedFiltered();renderGalleryYears(shown);let previousMonth=null;for(const f of shown){if(view==='gallery'){const month=photoDay(f);if(month!==previousMonth){const heading=document.createElement('h3');heading.className='galleryMonth';heading.textContent=month;heading.dataset.year=photoYear(f);grid.append(heading);previousMonth=month}}const tile=document.createElement('article');tile.className='item';if(view==='gallery')tile.classList.add('galleryPhoto');tile.tabIndex=0;tile.role='button';tile.title=f.name;tile.dataset.filename=f.name;
 tile.onclick=()=>selectionMode?toggleSelected(f.name):openPreview(f);
 tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();selectionMode?toggleSelected(f.name):openPreview(f)}};
 let pressTimer=null,longPressed=false,startX=0,startY=0;
@@ -466,7 +472,35 @@ function chooseUploadDestination(files){
     load();
   });
 }
-function uploadOne(file,target){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();const data=new FormData();data.set('share',target.share);data.set('path',target.path);data.set('file',file);xhr.open('POST','/api/upload');xhr.withCredentials=true;xhr.setRequestHeader('X-CSRF-Token',csrf);xhr.upload.onprogress=e=>{if(e.lengthComputable)el('progressFill').style.width=(e.loaded/e.total*100).toFixed(0)+'%'};xhr.onload=()=>xhr.status>=200&&xhr.status<300?resolve():reject(Error('HTTP '+xhr.status));xhr.onerror=()=>reject(Error('Сетевая ошибка'));xhr.send(data)})}
+const uploadQueue=[];
+let uploadActive=null;
+function showUploadCenter(){
+  const overlay=document.createElement('div');overlay.className='transferOverlay';
+  const panel=document.createElement('div');panel.className='transferPanel';
+  const title=document.createElement('h3');title.textContent='Центр загрузок';
+  const list=document.createElement('div');list.className='transferList';
+  const close=document.createElement('button');close.textContent='Закрыть';close.onclick=()=>overlay.remove();
+  function paint(){
+    list.replaceChildren();
+    for(const job of uploadQueue.slice(-30).reverse()){
+      const row=document.createElement('div');row.className='transferRow';
+      const name=document.createElement('strong');name.textContent=job.name;
+      const state=document.createElement('small');state.textContent=job.status+' · '+job.progress+'%';
+      const meter=document.createElement('progress');meter.max=100;meter.value=job.progress;
+      row.append(name,state,meter);list.append(row);
+    }
+  }
+  panel.append(title,list,close);overlay.append(panel);overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  document.body.append(overlay);paint();
+  const refresh=()=>{if(overlay.isConnected)paint()};
+  document.addEventListener('nas-upload-progress',refresh);
+  overlay.addEventListener('click',()=>{if(!overlay.isConnected)document.removeEventListener('nas-upload-progress',refresh)});
+}
+function updateUploadJob(job,status,progress){
+  job.status=status;job.progress=progress;
+  document.dispatchEvent(new Event('nas-upload-progress'));
+}
+function uploadOne(file,target,job){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();const data=new FormData();data.set('share',target.share);data.set('path',target.path);data.set('file',file);xhr.open('POST','/api/upload');xhr.withCredentials=true;xhr.setRequestHeader('X-CSRF-Token',csrf);xhr.upload.onprogress=e=>{if(e.lengthComputable){const progress=Math.round(e.loaded/e.total*100);el('progressFill').style.width=progress+'%';updateUploadJob(job,'Передача',progress)}};xhr.onload=()=>xhr.status>=200&&xhr.status<300?resolve():reject(Error('HTTP '+xhr.status));xhr.onerror=()=>reject(Error('Сетевая ошибка'));xhr.send(data)})}
 async function uploadFiles(files){
   if(!shares.length||!files.length)return;
   const target=await chooseUploadDestination(files);
@@ -474,9 +508,10 @@ async function uploadFiles(files){
   const bar=el('uploadProgress');bar.classList.remove('hidden');
   let success=0;
   for(const file of files){
+    const job={name:file.name,status:'Ожидание',progress:0};uploadQueue.push(job);updateUploadJob(job,'Подготовка',0);
     message('Загрузка в '+target.share+'/'+target.path+': '+file.name);
     el('progressFill').style.width='0';
-    try{await uploadOne(file,target);success++}catch(e){alert('Ошибка загрузки '+file.name+': '+e.message)}
+    try{await uploadOne(file,target,job);success++;updateUploadJob(job,'Готово',100)}catch(e){updateUploadJob(job,'Ошибка: '+e.message,job.progress);alert('Ошибка загрузки '+file.name+': '+e.message)}
   }
   bar.classList.add('hidden');
   const destination=target.share+'/'+target.path;
