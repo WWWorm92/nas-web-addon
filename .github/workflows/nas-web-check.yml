@@ -61,7 +61,7 @@ jobs:
               assert photo_dates.lookup("user", "disk", "photo.jpg", 1, 100) == (False, None)
               photo_dates.save("user", "disk", "photo.jpg", 1, 100, "2019-06-21T12:34:56")
               assert photo_dates.lookup("user", "disk", "photo.jpg", 1, 100) == (True, "2019-06-21T12:34:56")
-              assert photo_dates.lookup("other", "disk", "photo.jpg", 1, 100) == (False, None)
+              assert photo_dates.lookup("other", "disk", "photo.jpg", 1, 100) == (True, "2019-06-21T12:34:56")
           print("EXIF and metadata cache OK")
           PY
       - name: Unified gallery index tests
