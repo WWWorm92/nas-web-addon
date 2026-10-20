@@ -1,5 +1,6 @@
 """NAS Web: simple browser access to existing SMB shares."""
 import json
+import logging
 import mimetypes
 import os
 import secrets
@@ -15,6 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from smb.SMBConnection import SMBConnection
 from starlette.background import BackgroundTask
 
+logger = logging.getLogger('nasweb')
 app = FastAPI(title="NAS Web", docs_url=None, redoc_url=None, openapi_url=None)
 ROOT = Path(__file__).parent
 try:
@@ -117,8 +119,9 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
             shares = visible_shares(conn)
     except HTTPException:
         raise
-    except Exception:
-        fail(401, "Не удалось войти: проверьте пароль и доступность SMB")
+    except Exception as exc:
+        logger.error("SMB connection or share discovery failed: %s", type(exc).__name__)
+        fail(401, "SMB error; check NAS Web add-on logs")
     token, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
     with LOCK:
         for key in list(SESSIONS):
