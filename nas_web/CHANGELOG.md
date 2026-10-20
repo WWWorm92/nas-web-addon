@@ -1,3 +1,12 @@
+## 0.22.1
+
+- Finish standalone /admin dashboard: photo-index progress, EXIF queue, cache usage, /data free space and safe maintenance events.
+- Cache maintenance removes expired/over-limit thumbnail files without touching photo index or SMB files.
+- Admin password change revokes other admin sessions.
+- Move admin JavaScript to a same-origin static asset compatible with Content-Security-Policy (no inline scripts).
+- Never show raw SMB log messages or credentials in the admin event feed.
+- SMB users, photo dates and existing gallery index are unchanged.
+
 ## 0.22.0
 
 - Separate NAS Web service administrator with its own PBKDF2 password and revocable 4-hour session; no SMB identity or access to user files.
