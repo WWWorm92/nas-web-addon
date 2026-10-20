@@ -329,6 +329,8 @@ def photo_capture_dates(request: Request, payload: dict, x_csrf_token: str = Hea
     check_origin(request)
     u = protected(request, x_csrf_token)
     share = name_ok(payload.get("share", ""))
+    if share not in u.get("shares", []):
+        fail(403, "Нет доступа к этой шаре")
     folder = path_ok(payload.get("path", ""))
     requested = payload.get("files", [])
     if not isinstance(requested, list) or len(requested) > 8:
