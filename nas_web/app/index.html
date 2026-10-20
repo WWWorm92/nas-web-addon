@@ -72,10 +72,102 @@
 @media(max-width:650px){.crumbNav{font-size:17px;gap:1px}.crumbNav button{padding:5px 6px}.selectionBar{position:sticky;top:6px;z-index:9;box-shadow:0 8px 24px #0002}.selectionBar button{min-height:39px}.items.selectionMode .more{display:none}}
 
 #destinationOverlay{position:fixed;inset:0;z-index:65;background:#0009;display:grid;place-items:center;padding:16px}.destinationBox{width:min(510px,100%);max-height:86dvh;display:flex;flex-direction:column;gap:12px;border-radius:19px;background:var(--panel);border:1px solid var(--border);box-shadow:0 25px 80px #0006;padding:22px}.destinationBox h2{font-size:18px;margin:0}.destinationBox select{width:100%;min-height:44px}.destinationPath{font-size:13px;color:var(--muted);overflow-wrap:anywhere}.destinationFolders{flex:1;overflow-y:auto;min-height:110px;max-height:45dvh;display:grid;align-content:start;gap:5px}.destinationFolders button{width:100%;text-align:left;border:0;background:var(--panel2);padding:11px}.destinationFolders button:hover{background:var(--accentbg)}.destinationActions{display:flex;gap:9px;justify-content:flex-end}.destinationActions button{flex:1}.destinationBox #destinationError{min-height:15px;margin:0;font-size:12px;color:var(--danger)}
+
+/* NAS Web 0.9.0 — quiet cloud-drive visual system */
+:root{--bg:#0b1019;--panel:#141d2b;--panel2:#1c2939;--border:#29394b;--text:#eef4fc;--muted:#91a2b7;--accent:#87b3ff;--accentbg:#203956}
+:root[data-theme=light]{--bg:#f5f7fb;--panel:#fff;--panel2:#ecf1f7;--border:#dfe7f1;--text:#17243a;--muted:#6a7c92;--accent:#326fd5;--accentbg:#e8f0fe}
+body{background:var(--bg);-webkit-font-smoothing:antialiased}
+#app .top{height:72px;background:var(--panel);border-bottom:1px solid var(--border);padding-inline:clamp(15px,2vw,32px)}
+#app .top .brand{font-size:20px;letter-spacing:-.7px;gap:11px}
+#app .top .logo{border-radius:13px;background:var(--accentbg);width:39px;height:39px;font-size:23px}
+#app .topRight{gap:10px}
+#app .topRight #who{padding:8px 11px;background:var(--panel2);border-radius:999px;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+#app .topRight button{border-color:transparent;background:var(--panel2);border-radius:12px;min-height:39px}
+#app .topRight button:hover{border-color:var(--border);background:var(--accentbg)}
+#app .shell{background:var(--bg)}
+#app .sidebar{background:var(--panel);width:235px;border-right:1px solid var(--border);padding:28px 12px}
+#app .sidebarTitle{font-size:10px;letter-spacing:1.4px;font-weight:760;padding:0 15px 11px}
+#app .share{min-height:46px;padding:12px 14px;border-radius:13px;font-weight:610;display:flex;align-items:center;gap:11px}
+#app .share .vectorIcon{color:var(--muted)}
+#app .share.selected{background:var(--accentbg);color:var(--accent)}
+#app .share.selected .vectorIcon{color:var(--accent)}
+#app .share:hover{background:var(--panel2)}
+#app .workspace{max-width:1600px;width:100%;padding:clamp(20px,2.6vw,38px);margin-inline:auto}
+#app .head{margin-bottom:7px}
+#app .eyebrow{font-weight:750;letter-spacing:1.15px;font-size:10px;margin:0 0 10px}
+#app .eyebrowDot{padding-inline:4px;color:var(--accent)}
+#app .crumbNav{font-size:clamp(21px,2vw,29px);letter-spacing:-.8px;gap:3px;line-height:1.2}
+#app .crumbNav button{border-radius:9px;font-weight:725;padding:6px 9px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#app .crumbNav button[aria-current=page]{color:var(--text)}
+#app .controls{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:11px;margin:20px 0 12px;gap:8px;box-shadow:0 5px 22px #0000000b}
+#app .controls button,#app .controls select{min-height:41px;border-radius:11px;padding-inline:12px;font-size:12px;font-weight:610}
+#app .controls .search{background:var(--bg);flex:1 1 240px;max-width:none;min-height:44px;border-radius:11px;border-color:var(--border);font-size:13px;padding-left:15px}
+#app .controls .search:focus{border-color:var(--accent);outline-offset:1px}
+#app .controls .uploadLabel{min-height:41px;border-radius:11px;padding:9px 14px;font-size:12px;font-weight:725}
+#app .controls #selectionModeButton.activeSelect{background:var(--accentbg);border-color:var(--accent);color:var(--accent)}
+#app .controls #refresh{font-size:21px;font-weight:400;padding-inline:10px}
+#app .controls .viewButtons{background:var(--panel2);border:1px solid var(--border);padding:3px;border-radius:11px}
+#app .controls .viewButtons button{border-radius:8px;min-height:33px;padding:4px 10px;font-size:17px}
+#app .controls .viewButtons button.active{background:var(--panel);color:var(--accent);box-shadow:0 2px 7px #0002}
+#app .status{padding:4px 2px 9px;font-size:12px;min-height:29px;color:var(--muted)}
+#app .items{grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:15px}
+#app .item{background:var(--panel);border:1px solid var(--border);border-radius:18px;overflow:hidden;transition:border-color .16s,transform .16s,box-shadow .16s}
+#app .item .thumb{background:var(--panel2);height:158px;color:var(--accent)}
+#app .item .thumb img{object-fit:cover}
+#app .item .details{padding:13px 14px 15px}
+#app .item .filename{font-size:13px;font-weight:650;letter-spacing:-.1px}
+#app .item .filemeta{font-size:11px;margin-top:6px}
+#app .item .more{background:var(--panel);border:1px solid var(--border);border-radius:11px;min-height:34px;color:var(--text);backdrop-filter:blur(10px)}
+#app .items.list .item{margin-bottom:8px;min-height:72px}
+#app .items.list .thumb{height:72px;width:74px}
+#app .items.list .details{padding:10px 15px}
+#app .selectionBar{border-radius:15px;box-shadow:0 5px 18px #0001}
+@media(hover:hover) and (pointer:fine){
+  #app .item:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 10px 28px #0002}
+}
+@media(max-width:760px){
+  #app .top{height:62px;padding:0 14px}
+  #app .top .brand{font-size:17px}
+  #app .top .logo{width:34px;height:34px;font-size:19px}
+  #app .topRight{gap:6px}
+  #app .topRight button{padding:7px 10px;font-size:12px}
+  #app .sidebar{width:100%;padding:8px 12px;background:var(--panel);border-right:0;border-bottom:1px solid var(--border);overflow-x:auto}
+  #app .sidebarTitle{display:none}
+  #app .sidebar #shares{display:flex;gap:7px;width:max-content}
+  #app .sidebar .share{flex:0 0 auto;width:auto;min-height:37px;margin:0;padding:8px 12px;border:1px solid var(--border);font-size:12px;border-radius:11px}
+  #app .sidebar .share.selected{border-color:var(--accent)}
+  #app .workspace{padding:18px 12px calc(80px + env(safe-area-inset-bottom))}
+  #app .eyebrow{font-size:9px;margin-bottom:8px}
+  #app .crumbNav{font-size:19px;gap:1px}
+  #app .crumbNav button{max-width:145px;padding:5px}
+  #app .controls{margin:15px 0 10px;gap:7px;padding:9px;border-radius:16px}
+  #app .controls .search{order:-1;flex-basis:100%;min-width:100%;font-size:16px}
+  #app .controls button,#app .controls select{min-height:40px;font-size:12px;padding-inline:10px}
+  #app .controls .uploadLabel{font-size:12px;padding-inline:11px}
+  #app .controls #refresh{font-size:19px}
+  #app .controls .viewButtons{margin-left:auto}
+  #app .items:not(.list){grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  #app .items:not(.list) .item{border-radius:15px}
+  #app .items:not(.list) .thumb{height:clamp(120px,38vw,185px)}
+  #app .items:not(.list) .details{padding:10px 11px 12px}
+  #app .items:not(.list) .more{min-height:34px}
+  #app .items.list .thumb{height:69px;width:68px}
+  #app .selectionBar{top:8px}
+}
+@media(max-width:365px){
+  #app .controls{gap:5px}
+  #app .controls button,#app .controls select{padding-inline:8px}
+  #app .items:not(.list) .thumb{height:116px}
+}
+@media(prefers-reduced-motion:reduce){
+  #app .item{transition:none}
+  #app .item:hover{transform:none}
+}
+
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
-<div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">ФАЙЛЫ И ПАПКИ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div></div>
-<div class="controls"><input class="search" id="search" type="search" placeholder="Поиск в этой папке…" aria-label="Поиск файлов"><button id="up" title="На уровень выше">← Назад</button><button id="folder">＋ Папка</button><label class="primary uploadLabel">↑ Загрузить<input id="upload" type="file" multiple hidden></label><button id="selectionModeButton" type="button" title="Выделить несколько файлов">☑ Выбрать</button><button id="refresh" title="Обновить">⟳</button><select id="sort" aria-label="Сортировка"><option value="name">По имени</option><option value="new">Сначала новые</option><option value="size">По размеру</option></select><div class="viewButtons"><button id="gridView" class="active" title="Плитки" aria-label="Плитки">▦</button><button id="listView" title="Список" aria-label="Список">☰</button></div></div><div id="selectionBar" class="selectionBar hidden" role="toolbar" aria-label="Выделенные файлы"><span id="selectionCount">0 выбрано</span><button id="selectAll" type="button">Выбрать все</button><button id="selectionDownload" type="button">Скачать файл</button><button id="selectionCopy" type="button">Копировать</button><button id="selectionMove" type="button">Переместить</button><button id="selectionZip" type="button">Скачать ZIP</button><button id="selectionDelete" type="button" class="selectionDanger">Удалить</button><button id="selectionCancel" type="button">Отмена</button></div><div class="status" id="status" role="status"></div><div id="uploadProgress" class="hidden"><div id="progressFill"></div></div><div class="items" id="entries"></div></section></div></div>
+<div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div></div>
+<div class="controls"><input class="search" id="search" type="search" placeholder="Поиск файлов и папок…" aria-label="Поиск файлов"><button id="up" title="На уровень выше">← Назад</button><button id="folder">＋ Папка</button><label class="primary uploadLabel">↑ Загрузить<input id="upload" type="file" multiple hidden></label><button id="selectionModeButton" type="button" title="Выделить несколько файлов">☑ Выбрать</button><button id="refresh" title="Обновить список" aria-label="Обновить список">⟳</button><select id="sort" aria-label="Сортировка"><option value="name">По имени</option><option value="new">Сначала новые</option><option value="size">По размеру</option></select><div class="viewButtons"><button id="gridView" class="active" title="Плитки" aria-label="Плитки">▦</button><button id="listView" title="Список" aria-label="Список">☰</button></div></div><div id="selectionBar" class="selectionBar hidden" role="toolbar" aria-label="Выделенные файлы"><span id="selectionCount">0 выбрано</span><button id="selectAll" type="button">Выбрать все</button><button id="selectionDownload" type="button">Скачать файл</button><button id="selectionCopy" type="button">Копировать</button><button id="selectionMove" type="button">Переместить</button><button id="selectionZip" type="button">Скачать ZIP</button><button id="selectionDelete" type="button" class="selectionDanger">Удалить</button><button id="selectionCancel" type="button">Отмена</button></div><div class="status" id="status" role="status"></div><div id="uploadProgress" class="hidden"><div id="progressFill"></div></div><div class="items" id="entries"></div></section></div></div>
 <div id="destinationOverlay" class="hidden" role="presentation"><section class="destinationBox" role="dialog" aria-modal="true" aria-labelledby="destinationTitle"><h2 id="destinationTitle">Выберите папку назначения</h2><select id="destinationShare" aria-label="SMB-шара"></select><div id="destinationPath" class="destinationPath"></div><div id="destinationFolders" class="destinationFolders"></div><p id="destinationError" role="alert"></p><div class="destinationActions"><button id="destinationCancel" type="button">Отмена</button><button id="destinationApply" type="button" class="primary">Копировать сюда</button></div></section></div>
 <div id="dialogOverlay" class="hidden" role="presentation"><form id="actionDialog" class="dialogBox" role="dialog" aria-modal="true" aria-labelledby="dialogTitle"><div id="dialogIcon" class="dialogIcon">▱</div><h2 id="dialogTitle">Действие</h2><p id="dialogText"></p><input id="dialogInput" class="hidden" autocomplete="off" maxlength="240" aria-label="Имя папки"><div class="dialogActions"><button id="dialogCancel" type="button">Отмена</button><button id="dialogAccept" type="submit" class="primary">Продолжить</button></div></form></div><div id="fileMenu" class="hidden" role="menu"></div>
 <div id="preview" role="dialog" aria-label="Просмотр файлов" aria-modal="true"><div class="photoHeader"><div class="photoInfo"><div id="previewCounter" class="photoCount">1 / 1</div><div id="previewTitle" class="photoName"></div></div><div class="photoActions"><button id="previewDownload" title="Скачать оригинал" aria-label="Скачать оригинал">↓</button><button id="closePreview" title="Закрыть" aria-label="Закрыть">✕</button></div></div><div class="photoStage" id="photoStage"><div class="previewContent" id="previewBody"></div><div id="viewerSpinner" class="viewerSpinner hidden">Загрузка…</div></div><div id="filmstrip" class="filmstrip" role="listbox" aria-label="Фотографии"></div></div>
