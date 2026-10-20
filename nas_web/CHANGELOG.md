@@ -1,3 +1,11 @@
+## 0.18.0
+
+- Sort the unified photo gallery by actual EXIF capture date by default.
+- Put photos without an EXIF capture date after dated photos, under "Дата съёмки неизвестна", instead of presenting the NAS copy date as capture date.
+- Add a switch to sort by SMB file modification date when desired, on both desktop and mobile.
+- Apply the selected ordering on the server before pagination, so the first page shows real dated photos.
+- Preserve the entire photo index, shared EXIF metadata, SMB ACLs, thumbnails and indexing progress. No database reset or migration.
+
 ## 0.17.1
 
 - Do not mark JPEG EXIF extraction as completed after SMB read failures; failed items can be retried on later scans.
