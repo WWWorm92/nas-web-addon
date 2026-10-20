@@ -273,6 +273,73 @@ const photoObserver=new IntersectionObserver(records=>{
   }
   pumpThumbs();
 },{root:null,rootMargin:'350px 0px',threshold:0});
+function leaveGlobalGallery(){
+  if(!allPhotosMode)return;
+  allPhotosMode=false;allPhotoScanToken++;view=previousFileView;
+  el('app').classList.remove('globalGalleryOpen');
+  el('globalGallerySummary').classList.add('hidden');
+  el('galleryPageFooter').classList.add('hidden');
+  el('search').value='';el('search').placeholder='Поиск файлов и папок…';
+  renderBreadcrumb();render();updateMobileNav();
+}
+async function loadGlobalPage(reset=false){
+  if(allPhotoPageBusy||!allPhotosMode)return;
+  const token=allPhotoScanToken;
+  allPhotoPageBusy=true;
+  try{
+    const start=reset?0:allPhotos.length;
+    const data=await api('/api/gallery?'+qs({offset:start,limit:90}));
+    if(!allPhotosMode||token!==allPhotoScanToken)return;
+    allPhotoStatus=data;allPhotoTotal=data.total;
+    if(reset)allPhotos=data.items;else allPhotos.push(...data.items);
+    render();
+  }catch(e){if(token===allPhotoScanToken)message('Ошибка фотогалереи: '+e.message)}
+  finally{allPhotoPageBusy=false}
+}
+async function scanAllPhotos(token){
+  let steps=0;
+  while(allPhotosMode&&token===allPhotoScanToken){
+    if(previewIndex>=0){await new Promise(resolve=>setTimeout(resolve,500));continue}
+    try{
+      const data=await api('/api/gallery/scan',{method:'POST'});
+      if(token!==allPhotoScanToken||!allPhotosMode)return;
+      allPhotoStatus=data;allPhotoTotal=data.total;
+      steps++;
+      if((!allPhotos.length&&data.total)||steps%8===0){
+        if(allPhotos.length<90)await loadGlobalPage(true);
+        else renderGlobalProgress();
+      }else renderGlobalProgress();
+      if(data.complete&&(!data.dates_pending||data.limited)){
+        // EXIF ordering is authoritative once indexing finishes.
+        if(allPhotos.length<=90)await loadGlobalPage(true);
+        return;
+      }
+    }catch(e){if(token===allPhotoScanToken)message('Индексация: '+e.message);return}
+    await new Promise(resolve=>setTimeout(resolve,350));
+  }
+}
+function renderGlobalProgress(){
+  if(!allPhotosMode||!allPhotoStatus)return;
+  const data=allPhotoStatus;
+  el('globalGalleryProgress').textContent=(data.complete?'Найдено '+data.total+' фото':'Поиск: '+data.scanned+' папок · '+data.total+' фото')
+    +(data.dates_pending&&data.complete?' · EXIF: осталось '+data.dates_pending:'')
+    +(data.limited?' · лимит индекса':'');
+  el('galleryPageFooter').classList.toggle('hidden',allPhotos.length>=data.total);
+}
+async function enterGlobalGallery(){
+  if(allPhotosMode)return;
+  galleryDateGeneration++;clearSelection();
+  previousFileView=view==='gallery'?'grid':view;
+  allPhotosMode=true;view='gallery';allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;
+  const token=++allPhotoScanToken;
+  el('app').classList.add('globalGalleryOpen');
+  el('search').value='';el('search').placeholder='Поиск среди загруженных фото…';
+  el('crumb').textContent='Все фотографии';
+  el('globalGallerySummary').classList.remove('hidden');
+  updateMobileNav();render();
+  await loadGlobalPage(true);
+  if(allPhotosMode&&token===allPhotoScanToken)scanAllPhotos(token);
+}
 function renderAllGallery(){
   const grid=el('entries');thumbQueue.length=0;photoObserver.takeRecords();
   for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);
