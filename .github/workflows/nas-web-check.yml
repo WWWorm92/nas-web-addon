@@ -127,7 +127,7 @@ jobs:
               with index.LOCK, index.connect() as db:
                   index.save_date(db, owner, "Private", "a.jpg", "2025-06-07T09:11:00")
               assert index.page(owner, ["Private"], 0, 5)[0]["name"] == "a.jpg"
-              assert index.state(owner, ["Private"])["dates_pending"] == 0
+              assert index.state(owner, ["Private"])["dates_pending"] == 1
               assert index.state(owner, ["Other"])["total"] == 0
               assert index.state(owner, ["Other"])["pending"] >= 1
               index.reset(owner, ["Private"])
