@@ -612,8 +612,9 @@ def gallery_statistics(request: Request):
     return collections.statistics(gallery_index.key(u["name"]),list(u.get("shares",[])))
 
 
-def _gallery_scan_step(u, owner, shares):
+def _gallery_scan_step(u, owner, shares, skipped=None):
     """One bounded SMB scan batch; existing SQLite index is never reset."""
+    if skipped is None: skipped=set()
     with smb(u) as conn:
         for _ in range(3):
             with gallery_index.LOCK, gallery_index.connect() as db:
@@ -638,7 +639,7 @@ def _gallery_scan_step(u, owner, shares):
         if complete:
             for _ in range(3):
                 with gallery_index.LOCK, gallery_index.connect() as db:
-                    row = gallery_index.next_unchecked(db, owner, shares)
+                    row = gallery_index.next_unchecked(db, owner, shares, skipped)
                 if row is None:
                     break
                 taken = None
@@ -653,8 +654,15 @@ def _gallery_scan_step(u, owner, shares):
                         photo_dates.save(u["name"], row["share"], row["path"],
                                          row["modified"], row["size"], taken)
                 except Exception as exc:
-                    # Do not mark a failed SMB/EXIF read as permanently checked.
-                    # Stop this worker; a later scan request may retry safely.
+                    # An ACL-denied file must not stop indexing other readable photos.
+                    # Keep it pending in SQLite so a later run can retry if permissions change.
+                    message=str(exc).upper()
+                    if "STATUS_ACCESS_DENIED" in message or "0XC0000022" in message:
+                        skipped.add((row["share"],row["path"]))
+                        logger.warning("Gallery EXIF skipped inaccessible SMB file (will retry later)")
+                        if len(skipped)>=100:
+                            return
+                        continue
                     logger.warning("Gallery EXIF read failed (will retry): %s", type(exc).__name__)
                     raise
                 with gallery_index.LOCK, gallery_index.connect() as db:
@@ -664,6 +672,7 @@ def _gallery_scan_step(u, owner, shares):
 def _gallery_background(u, owner, shares):
     # Keep credentials only in RAM, and never run indefinitely after logout.
     deadline = time.monotonic() + 8 * 3600
+    skipped=set()
     try:
         while time.monotonic() < deadline:
             # Credentials come from a successful authenticated /api/gallery/scan
@@ -671,8 +680,11 @@ def _gallery_background(u, owner, shares):
             # are not present in SESSIONS, so checking only SESSIONS would stop
             # their worker immediately. Keep each worker bounded by deadline.
             with GALLERY_SCAN_LOCK:
-                _gallery_scan_step(u, owner, shares)
+                _gallery_scan_step(u, owner, shares, skipped)
             state = gallery_index.state(owner, shares)
+            if len(skipped)>=100 or (skipped and state["dates_pending"]<=len(skipped)):
+                logger.info("Gallery EXIF worker paused: %d inaccessible files remain pending",len(skipped))
+                break
             if state["complete"] and not state["dates_pending"]:
                 break
             time.sleep(0.3)
