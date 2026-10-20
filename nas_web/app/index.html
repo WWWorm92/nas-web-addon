@@ -33,6 +33,12 @@
 .videoFallback p{font-size:13px;color:#acbad0;max-width:330px;line-height:1.5}
 .videoFallback button{background:#294978;color:#fff;border:1px solid #446fa8}
 @media(max-width:650px){.items.list .item{min-height:72px}.items.list .more{min-width:44px;min-height:44px}.item .thumb{touch-action:manipulation}}
+.photoStage img{backface-visibility:hidden}
+#preview.dismissClosing .photoHeader,#preview.dismissClosing .filmstrip{opacity:0;transition:opacity .16s ease}
+#preview.dismissClosing{pointer-events:none}
+@media(prefers-reduced-motion:reduce){
+  #preview.dismissClosing .photoHeader,#preview.dismissClosing .filmstrip{transition:none}
+}
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
 <div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">ФАЙЛЫ И ПАПКИ</p><div class="path" id="crumb">Выберите хранилище</div></div></div>
