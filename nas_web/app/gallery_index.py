@@ -32,6 +32,11 @@ def connect():
         sort_key TEXT NOT NULL,
         PRIMARY KEY (owner, share, path)
       );
+      CREATE TABLE IF NOT EXISTS shared_metadata (
+        share TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL,
+        modified REAL NOT NULL, taken TEXT, exif_checked INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (share,path,size,modified)
+      );
       CREATE INDEX IF NOT EXISTS photo_order ON photos(owner, sort_key DESC, share, path);
       CREATE TABLE IF NOT EXISTS folders (
         owner TEXT NOT NULL, share TEXT NOT NULL, path TEXT NOT NULL,
@@ -135,6 +140,11 @@ def next_unchecked(db, owner, shares):
 
 
 def save_date(db, owner, share, path, taken):
+    row = db.execute("SELECT size,modified FROM photos WHERE owner=? AND share=? AND path=?", (owner, share, path)).fetchone()
+    if row is None:
+        return
+    db.execute("INSERT OR REPLACE INTO shared_metadata(share,path,size,modified,taken,exif_checked) VALUES (?,?,?,?,?,1)",
+               (share, path, row["size"], row["modified"], taken))
     sort_key = taken if taken else None
     if sort_key:
         db.execute("UPDATE photos SET taken=?,sort_key=?,exif_checked=1 WHERE owner=? AND share=? AND path=?",
@@ -142,3 +152,20 @@ def save_date(db, owner, share, path, taken):
     else:
         db.execute("UPDATE photos SET exif_checked=1 WHERE owner=? AND share=? AND path=?",
                    (owner, share, path))
+
+def reuse_shared(db, owner, shares):
+    """Copy metadata only into already discovered ACL-scoped user rows."""
+    if not shares:
+        return
+    db.execute("""INSERT OR IGNORE INTO shared_metadata(share,path,size,modified,taken,exif_checked)
+                  SELECT share,path,size,modified,taken,exif_checked FROM photos
+                  WHERE exif_checked=1 AND share IN (""" + ",".join("?" for _ in shares) + ")", tuple(shares))
+    db.execute("""UPDATE photos SET
+                  taken=(SELECT m.taken FROM shared_metadata m WHERE m.share=photos.share
+                         AND m.path=photos.path AND m.size=photos.size AND m.modified=photos.modified),
+                  exif_checked=1,
+                  sort_key=COALESCE((SELECT m.taken FROM shared_metadata m WHERE m.share=photos.share
+                         AND m.path=photos.path AND m.size=photos.size AND m.modified=photos.modified),sort_key)
+                  WHERE owner=? AND exif_checked=0 AND EXISTS
+                  (SELECT 1 FROM shared_metadata m WHERE m.share=photos.share AND m.path=photos.path
+                   AND m.size=photos.size AND m.modified=photos.modified AND m.exif_checked=1)""", (owner,))
