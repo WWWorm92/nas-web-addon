@@ -36,7 +36,8 @@ def statistics():
 
 MAX_BYTES = 384 * 1024 * 1024
 TTL = 7 * 24 * 3600
-WORKERS = threading.BoundedSemaphore(2)  # Small thumbnail workers\nLARGE_WORKERS = threading.BoundedSemaphore(1)  # Reserved viewer slot
+WORKERS = threading.BoundedSemaphore(2)  # Small thumbnail workers
+LARGE_WORKERS = threading.BoundedSemaphore(1)  # Reserved viewer slot
 FILES_LOCK = threading.RLock()
 OPS = 0
 
