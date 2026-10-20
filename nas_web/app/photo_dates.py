@@ -10,7 +10,7 @@ from PIL import Image
 
 DB = Path("/data/nasweb-auth/photo-dates.sqlite3")
 LOCK = threading.RLock()
-JPEG_HEADER_LIMIT = 512 * 1024
+JPEG_HEADER_LIMIT = 128 * 1024
 
 
 def _db():
@@ -60,7 +60,7 @@ def parse_exif(buffer):
 
 
 def from_jpeg_header(conn, share, path):
-    # Read up to 512 KiB, enough for ordinary EXIF blocks without downloading JPEG.
+    # Read up to 128 KiB, enough for ordinary JPEG EXIF without downloading originals.
     chunks = []
     for block in conn.iter_range(share, "/" + path, 0, JPEG_HEADER_LIMIT):
         chunks.append(block)
