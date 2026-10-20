@@ -39,6 +39,18 @@ RATE_WINDOW = 600
 RATE_LIMIT = 10
 COOKIE_SECURE = bool(opts.get('https_only', False))
 
+@app.on_event("startup")
+def report_cache_state():
+    try:
+        thumb_cache.check_writable()
+        info = thumb_cache.statistics()
+        logger.warning("NAS Web cache: path=%s writable=yes files=%d size_mb=%.2f",
+                       info["path"], info["files"], info["size_mb"])
+    except OSError as exc:
+        logger.critical("NAS Web cache unavailable at /data/nasweb-thumbs: %s", type(exc).__name__)
+        raise
+
+
 def smb_action_error(action, exc):
     """Log server status while keeping internal paths and credentials out of responses."""
     status = ""
