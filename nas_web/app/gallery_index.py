@@ -142,6 +142,31 @@ def add_folder_contents(db, owner, share, folder, entries):
     db.execute("UPDATE folders SET done=1 WHERE owner=? AND share=? AND path=?", (owner, share, folder))
 
 
+
+def record_upload(owner, share, path, size, modified):
+    """Insert a successfully uploaded image without resetting a scan in progress."""
+    if not path.lower().endswith(IMAGE_EXTS):
+        return False
+    folder, _, name = path.rpartition("/")
+    modified = float(modified)
+    size = int(size)
+    stamp = datetime.fromtimestamp(max(0, min(modified, 4102444800)), timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    with LOCK, connect() as db:
+        count = db.execute("SELECT COUNT(*) FROM photos WHERE owner=?", (owner,)).fetchone()[0]
+        existing = db.execute("SELECT 1 FROM photos WHERE owner=? AND share=? AND path=?",
+                              (owner, share, path)).fetchone()
+        if not existing and count >= MAX_PHOTOS:
+            return False
+        shared = db.execute("SELECT taken,exif_checked FROM shared_metadata WHERE share=? AND path=? AND size=? AND modified=?",
+                            (share, path, size, modified)).fetchone()
+        taken = shared["taken"] if shared else None
+        checked = shared["exif_checked"] if shared else 0
+        db.execute("INSERT OR REPLACE INTO photos(owner,share,path,folder,name,size,modified,taken,exif_checked,sort_key) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                   (owner, share, path, folder, name, size, modified, taken, checked, taken or stamp))
+    return True
+
+
 def next_unchecked(db, owner, shares):
     if not shares:
         return None
