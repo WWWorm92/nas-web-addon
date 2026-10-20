@@ -1,3 +1,13 @@
+## 0.13.0
+
+- Gallery: browser-native offscreen rendering optimization to reduce rendering work on long photo lists.
+- Gallery: adjustable mobile grid density (2–5 photos per row), saved on this device.
+- Gallery: quick month/year jump for currently loaded photographs.
+- Gallery: long-press selection and batch ZIP download grouped by SMB share and folder.
+- Thumbnail cache: increase persistent cache to 512 MiB and extend TTL to 14 days.
+- Indexing: skip expensive shared-EXIF synchronization when the user's photos have no unchecked metadata.
+- Existing photo index, extracted EXIF, user-specific SMB access, and original file contents are preserved.
+
 ## 0.12.1
 
 - Faster gallery rendering: preserve already loaded thumbnails when the photo list has not changed.
