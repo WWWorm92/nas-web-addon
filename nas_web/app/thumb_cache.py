@@ -34,7 +34,6 @@ def statistics():
     return {"path": str(CACHE_ROOT), "writable": True, "files": count,
             "size_mb": round(total / (1024 * 1024), 2)}
 
-check_writable()
 MAX_BYTES = 384 * 1024 * 1024
 TTL = 7 * 24 * 3600
 WORKERS = threading.BoundedSemaphore(2)
