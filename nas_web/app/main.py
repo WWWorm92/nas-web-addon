@@ -279,7 +279,8 @@ def admin_setup_secret():
 @app.get("/api/admin/status")
 def admin_status(request: Request):
     return {"configured":admin_auth.configured(),"authenticated":bool(admin_auth.session(request.cookies.get("nas_admin",""))),
-            "setup_key_ready":len(admin_setup_secret())>=24}
+            "setup_key_ready":len(admin_setup_secret())>=24,
+            "options_file_present":Path("/data/options.json").is_file()}
 
 @app.post("/api/admin/setup")
 def admin_setup(request: Request,payload: dict):
