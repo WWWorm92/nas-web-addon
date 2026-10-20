@@ -132,3 +132,14 @@ Fixes the crash on import of thumb_cache.py: `PermissionError: [Errno 13] Permis
 - Authenticated requests now reuse short-lived idle SMB connections within the **same signed-in session**, never across accounts or concurrently. Pool is capped at three idle connections per session and 12 globally, with 35-second idle expiration. Connections are dropped after an operation error, after logout, and on application shutdown.
 - Login credentials are still verified with a fresh SMB connection. Samba enforces normal file/share permissions. No change to files or thumbnails.
 - Slow thumbnail logs now additionally show `connect=...ms read=...ms reused=true|false` to separate authentication/transport overhead from HDD transfer. Check new lines after upgrade to confirm whether pooling improved first-load times. Hardware benchmarks have not yet been run.
+
+
+## 0.7.9 — original photo caching and swipe prefetch
+
+- Original photo blobs are cached in browser memory using a 48 MiB LRU limit (not persistent browser storage).
+- Reopening already cached photos skips another SMB transfer; cached entries are scoped to the current signed-in session, SMB share, folder, filename, modification timestamp and file size.
+- After the current photo is fully loaded, the viewer prefetches the next photo, reuses an in-progress request when swiping, and cancels irrelevant transfers.
+- While the photo viewer is open, it pauses starting new gallery-thumbnail requests. Existing requests can finish.
+- Browser photo memory and object URLs are cleared on login changes, logout, share changes and folder changes. Closing the viewer keeps the bounded cache available for re-opening photos.
+- Server-side photo-stream priority from 0.7.8 remains in place.
+- On-demand performance depends on SMB/HDD throughput. Images not yet prefetched still require a full original transfer. Browser JS syntax checked; real device testing pending.
