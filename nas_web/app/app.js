@@ -316,8 +316,7 @@ function gallerySettingsOpen(open){
 }
 let globalGalleryOrder=localStorage.getItem('nasweb-gallery-order')==='modified'?'modified':'taken';
 const orderSelect=el('galleryOrderSelect');
-orderSelect.value=globalGalleryOrder;el('galleryOrderDesktop').value=globalGalleryOrder;
-el('galleryOrderDesktop').onchange=()=>setGlobalGalleryOrder(el('galleryOrderDesktop').value);
+orderSelect.value=globalGalleryOrder;
 orderSelect.onchange=()=>setGlobalGalleryOrder(orderSelect.value);
 el('gallerySettingsToggle').onclick=()=>gallerySettingsOpen(el('gallerySettingsPanel').classList.contains('hidden'));
 el('gallerySettingsClose').onclick=()=>gallerySettingsOpen(false);
@@ -438,7 +437,7 @@ function leaveGlobalGallery(){
 function setGlobalGalleryOrder(order){
  if(!['taken','modified'].includes(order)||order===globalGalleryOrder)return;
  globalGalleryOrder=order;localStorage.setItem('nasweb-gallery-order',order);
- el('galleryOrderDesktop').value=order;el('galleryOrderSelect').value=order;
+ el('galleryOrderSelect').value=order;
  allPhotoScanToken++;allPhotos=[];allPhotoTotal=0;galleryRenderSignature='';
  loadGlobalPage(true);
 }
