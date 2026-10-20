@@ -1,3 +1,9 @@
+## 0.22.5
+
+- Fix admin first-run setup failing with permission_denied: startup copies Supervisor-owned /data/options.json into private /data/nasweb-auth/options.json owned by the non-root app user.
+- Application reads the private copy after privilege drop. Supervisor configuration file ownership and mode are unchanged.
+- Existing photo index, SMB ACLs and user data remain untouched.
+
 ## 0.22.2
 
 - Move manual EXIF retry to admin-only maintenance. Requires both independent admin authorization and a current SMB user session, preserving SMB access boundaries.
