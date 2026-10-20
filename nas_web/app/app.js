@@ -36,6 +36,7 @@ function updateSelection(){
   el('selectionCount').textContent=selectedFiles.size+' выбрано';
   el('selectionDownload').disabled=selectedFiles.size!==1||!!items.find(f=>selectedFiles.has(f.name)&&f.directory);
   el('selectionDelete').disabled=selectedFiles.size===0;
+  updateMobileNav();
   el('selectionCopy').disabled=selectedFiles.size===0;
   el('selectionMove').disabled=selectedFiles.size===0;
   el('selectionZip').disabled=selectedFiles.size===0;
@@ -148,9 +149,58 @@ else {
 }else if(ext(f.name)==='pdf'){node=document.createElement('iframe');node.title=f.name;node.src=fileUrl(f.name,true)}else{node=document.createElement(['mp3','ogg'].includes(ext(f.name))?'audio':'video');node.controls=true;node.playsInline=true;node.preload='metadata';node.src='/api/video?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/')});if(ext(f.name)==='mov'){let fallbackOffered=false;node.addEventListener('error',()=>{if(serial!==viewerSerial||fallbackOffered)return;fallbackOffered=true;const hint=document.createElement('div');hint.className='videoFallback';const p=document.createElement('p');p.textContent='Браузер не смог воспроизвести MOV. Можно преобразовать его в совместимый MP4 (первый запуск может занять несколько минут).';const btn=document.createElement('button');btn.textContent='Открыть как MP4';btn.onclick=()=>{btn.disabled=true;p.textContent='Подготавливаем MP4 на Raspberry Pi. Первый запуск может быть долгим…';node.addEventListener('error',()=>{p.textContent='Не удалось преобразовать видео. Возможно, файл слишком большой или кодек не поддерживается. Оригинал можно скачать кнопкой сверху.'},{once:true});node.addEventListener('loadeddata',()=>hint.remove(),{once:true});node.src='/api/mov-mp4?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/'),v:String(f.modified||0)+'-'+String(f.size||0)});node.load();node.play().catch(()=>{});btn.remove()};hint.append(p,btn);box.append(hint)},{once:true})}}box.append(node);renderFilmstrip()}
 function renderFilmstrip(){const strip=el('filmstrip');if(gallery.length<2){strip.classList.add('hidden');return}strip.classList.remove('hidden');const from=Math.max(0,previewIndex-5),to=Math.min(gallery.length,previewIndex+6),fragment=document.createDocumentFragment();for(let i=from;i<to;i++){const f=gallery[i];let b=filmNodes.get(i);if(!b){b=document.createElement('button');b.type='button';b.setAttribute('aria-label','Фотография '+(i+1)+' из '+gallery.length);if(isPhoto(f)){const img=document.createElement('img');img.loading='lazy';img.alt='';img.src=imageURL(f);b.append(img)}else{const mark=document.createElement('span');mark.textContent='▣';b.append(mark)}b.onclick=()=>{if(previewIndex!==i){const movement=i>previewIndex?1:-1;previewIndex=i;showPreview(movement)}};filmNodes.set(i,b)}b.classList.toggle('active',i===previewIndex);fragment.append(b)}strip.replaceChildren(fragment);const active=strip.querySelector('button.active');if(active)requestAnimationFrame(()=>active.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'}))}
 function stepPreview(offset){if(zoom>1||!gallery.length)return;const next=previewIndex+offset;if(next<0||next>=gallery.length)return;previewIndex=next;showPreview(offset)}
+function isMobileLayout(){return window.matchMedia('(max-width:760px)').matches}
+function closeMobileSheet(){
+  el('mobileSheetOverlay').classList.add('hidden');
+  el('mobileSheetActions').replaceChildren();
+  document.body.classList.remove('sheetOpen');
+}
+function openMobileSheet(title,actions){
+  hideMenu();
+  el('mobileSheetTitle').textContent=title;
+  const container=el('mobileSheetActions');container.replaceChildren();
+  for(const action of actions){
+    const btn=document.createElement('button');btn.type='button';
+    btn.textContent=action.label;
+    if(action.danger)btn.classList.add('sheetDanger');
+    btn.onclick=()=>{closeMobileSheet();action.run()};
+    container.append(btn);
+  }
+  el('mobileSheetOverlay').classList.remove('hidden');
+  document.body.classList.add('sheetOpen');
+  el('mobileSheetClose').focus({preventScroll:true});
+}
+el('mobileSheetClose').onclick=closeMobileSheet;
+el('mobileSheetOverlay').addEventListener('click',e=>{if(e.target===el('mobileSheetOverlay'))closeMobileSheet()});
+el('mobileHome').onclick=()=>{closeMobileSheet();clearSelection();photoCacheClear();dir='';el('search').value='';refresh();window.scrollTo({top:0,behavior:'smooth'})};
+el('mobileSearch').onclick=()=>{closeMobileSheet();el('search').focus();el('search').scrollIntoView({block:'center',behavior:'smooth'})};
+el('mobileAdd').onclick=()=>openMobileSheet('Добавить',[
+  {label:'＋ Создать папку',run:()=>el('folder').click()},
+  {label:'↑ Загрузить файлы',run:()=>el('upload').click()}
+]);
+el('mobileSelect').onclick=()=>{closeMobileSheet();el('selectionModeButton').click()};
+el('mobileMore').onclick=()=>openMobileSheet('Дополнительно',[
+  {label:'⟳ Обновить список',run:()=>refresh()},
+  {label:'◐ Сменить тему',run:()=>el('theme').click()},
+  {label:'⇥ Выйти из NAS Web',danger:true,run:()=>el('logout').click()}
+]);
+function updateMobileNav(){
+  const select=el('mobileSelect');if(!select)return;
+  select.classList.toggle('navSelected',selectionMode||selectedFiles.size>0);
+}
 function hideMenu(){el('fileMenu').classList.add('hidden');el('fileMenu').replaceChildren()}
 function menuButton(text,fn,danger=false){const btn=document.createElement('button');btn.textContent=text;if(danger)btn.classList.add('danger');btn.onclick=()=>{hideMenu();fn()};return btn}
-function openMenu(f,button){const menu=el('fileMenu');menu.replaceChildren();if(f.directory)menu.append(menuButton('Открыть',()=>enterFolder(f.name)));else{if(canPreview(f))menu.append(menuButton('Просмотреть',()=>openPreview(f)));menu.append(menuButton('Скачать',()=>download(f)))}menu.append(menuButton('Переименовать',()=>renameItem(f)));menu.append(menuButton('Удалить',()=>deleteItem(f),true));menu.classList.remove('hidden');const rect=button.getBoundingClientRect(),mw=200,mh=190;menu.style.left=Math.max(8,Math.min(rect.left,innerWidth-mw-8))+'px';menu.style.top=(rect.bottom+mh>innerHeight?Math.max(8,rect.top-mh):rect.bottom+5)+'px'}
+function openMenu(f,button){
+if(isMobileLayout()){
+  const actions=[];
+  if(f.directory)actions.push({label:'▱ Открыть папку',run:()=>enterFolder(f.name)});
+  else{if(canPreview(f))actions.push({label:'▣ Просмотреть',run:()=>openPreview(f)});actions.push({label:'↓ Скачать',run:()=>download(f)})}
+  actions.push({label:'✎ Переименовать',run:()=>renameItem(f)});
+  actions.push({label:'□ Выделить',run:()=>toggleSelected(f.name)});
+  actions.push({label:'× Удалить',danger:true,run:()=>deleteItem(f)});
+  openMobileSheet(f.name,actions);return;
+}
+const menu=el('fileMenu');menu.replaceChildren();if(f.directory)menu.append(menuButton('Открыть',()=>enterFolder(f.name)));else{if(canPreview(f))menu.append(menuButton('Просмотреть',()=>openPreview(f)));menu.append(menuButton('Скачать',()=>download(f)))}menu.append(menuButton('Переименовать',()=>renameItem(f)));menu.append(menuButton('Удалить',()=>deleteItem(f),true));menu.classList.remove('hidden');const rect=button.getBoundingClientRect(),mw=200,mh=190;menu.style.left=Math.max(8,Math.min(rect.left,innerWidth-mw-8))+'px';menu.style.top=(rect.bottom+mh>innerHeight?Math.max(8,rect.top-mh):rect.bottom+5)+'px'}
 function sortedFiltered(){let a=items.filter(f=>f.name.toLocaleLowerCase().includes(el('search').value.trim().toLocaleLowerCase()));const sort=el('sort').value;a.sort((x,y)=>Number(y.directory)-Number(x.directory)||(sort==='new'?Number(y.modified||0)-Number(x.modified||0):sort==='size'?Number(y.size)-Number(x.size):x.name.localeCompare(y.name,'ru')));return a}
 // Limit simultaneous thumbnail requests so phones don't saturate the NAS.
 const thumbQueue=[];let activeThumbs=0;const THUMB_CONCURRENCY=2;
@@ -390,7 +440,7 @@ previewArea.addEventListener('touchcancel',()=>{gesture=null;if(dismissActive)di
 previewArea.addEventListener('click',event=>{if(!event.target.closest('img')||Date.now()-lastTouchAt<600)return;clearTimeout(tapTimer);tapTimer=setTimeout(toggleViewerControls,210)});
 previewArea.addEventListener('dblclick',event=>{if(!previewArea.querySelector('img'))return;clearTimeout(tapTimer);setZoom(zoom>1?1:2.5)});
 previewArea.addEventListener('wheel',event=>{if(!previewArea.querySelector('img')||!(event.ctrlKey||event.metaKey))return;event.preventDefault();setZoom(zoom*(event.deltaY<0?1.18:.85))},{passive:false});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(activeDialog)activeDialog(null);else{closePreview();hideMenu()}}if(el('preview').style.display==='flex'){if(e.key==='ArrowLeft')stepPreview(-1);if(e.key==='ArrowRight')stepPreview(1);if(e.key==='0')setZoom(1);if(e.key==='+')setZoom(zoom*1.25);if(e.key==='-')setZoom(zoom/1.25)}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!el('mobileSheetOverlay').classList.contains('hidden'))closeMobileSheet();else if(activeDialog)activeDialog(null);else{closePreview();hideMenu()}}if(el('preview').style.display==='flex'){if(e.key==='ArrowLeft')stepPreview(-1);if(e.key==='ArrowRight')stepPreview(1);if(e.key==='0')setZoom(1);if(e.key==='+')setZoom(zoom*1.25);if(e.key==='-')setZoom(zoom/1.25)}});
 document.addEventListener('pointerdown',e=>{if(!el('fileMenu').contains(e.target)&&!e.target.closest('.more'))hideMenu()});
 let dragDepth=0;const work=el('workspace');work.addEventListener('dragenter',e=>{e.preventDefault();dragDepth++;work.classList.add('drop')});work.addEventListener('dragover',e=>e.preventDefault());work.addEventListener('dragleave',e=>{e.preventDefault();dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)work.classList.remove('drop')});work.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;work.classList.remove('drop');uploadFiles([...e.dataTransfer.files])});
 const theme=localStorage.getItem('nas_theme')||'dark';document.documentElement.dataset.theme=theme;el('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('nas_theme',t)};
