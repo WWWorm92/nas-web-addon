@@ -100,6 +100,54 @@ jobs:
                   assert g.page(b,["Secret"],0,10)==[]
           print("Shared metadata, ACL isolation and resume OK")
           PY
+      - name: EXIF resume and denied-access safety tests
+        run: |
+          PYTHONPATH=nas_web python - <<'PY'
+          import tempfile
+          import time
+          from pathlib import Path
+          from types import SimpleNamespace
+          from app import gallery_index as g, photo_dates
+          def pic(name, mtime=100):
+              return SimpleNamespace(filename=name,isDirectory=False,file_size=120,last_write_time=mtime)
+          with tempfile.TemporaryDirectory() as tmp:
+              g.DB=Path(tmp)/"gallery.sqlite3"
+              photo_dates.DB=Path(tmp)/"cache.sqlite3"
+              a,b=g.key("alice"),g.key("bob")
+              with g.connect() as db:
+                  g.begin(db,a,["Photos"])
+                  g.add_folder_contents(db,a,"Photos","",[
+                      pic("no-date.jpg"),pic("dated.jpg"),pic("denied.jpg")])
+                  g.save_date(db,a,"Photos","no-date.jpg",None)
+                  g.save_date(db,a,"Photos","dated.jpg","2020-01-01T11:22:33")
+                  row=g.next_unchecked(db,a,["Photos"])
+                  assert row["path"]=="denied.jpg"
+                  g.mark_exif_denied(db,a,row)
+              status=g.state(a,["Photos"])
+              assert status["dates_pending"]==1
+              assert status["dates_blocked"]==1
+              assert status["dates_available"]==0
+              assert status["checked_no_date"]==1
+              with g.connect() as db:
+                  # Repeating maintenance must not requeue known negative EXIF.
+                  assert g.retry_missing_dates(db,a,["Photos"])==1
+                  assert g.next_unchecked(db,a,["Photos"]) is None
+                  assert db.execute("SELECT exif_checked FROM photos WHERE owner=? AND path='no-date.jpg'",(a,)).fetchone()[0]==1
+                  assert db.execute("SELECT taken FROM photos WHERE owner=? AND path='dated.jpg'",(a,)).fetchone()[0]=="2020-01-01T11:22:33"
+                  # Automatic retry after cooldown without losing photo records.
+                  db.execute("UPDATE exif_denied SET retry_after=? WHERE owner=?",(time.time()-1,a))
+                  assert g.next_unchecked(db,a,["Photos"])["path"]=="denied.jpg"
+                  g.clear_exif_denied(db,a,"Photos","denied.jpg")
+                  assert g.next_unchecked(db,a,["Photos"])["path"]=="denied.jpg"
+                  # ACL failures scoped by user, not globally.
+                  g.begin(db,b,["Photos"])
+                  g.add_folder_contents(db,b,"Photos","",[pic("denied.jpg")])
+                  assert g.next_unchecked(db,b,["Photos"])["path"]=="denied.jpg"
+              # A cached "checked but no EXIF" result is valid metadata.
+              photo_dates.save("alice","Photos","no-date.jpg",100.0,120,None)
+              assert photo_dates.lookup("alice","Photos","no-date.jpg",100.0,120)==(True,None)
+          print("EXIF negative results preserved; SMB ACL failures isolated and time-bounded")
+          PY
       - name: Unified gallery index tests
         run: |
           PYTHONPATH=nas_web python - <<'PY'
