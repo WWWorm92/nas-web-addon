@@ -106,6 +106,9 @@ def pending_folder(db, owner):
 
 
 def add_folder_contents(db, owner, share, folder, entries):
+    # Failed SMB listings are passed as empty collections; never prune on failure.
+    if entries:
+        prune_missing(db, owner, share, folder, entries)
     folders_count = db.execute("SELECT COUNT(*) FROM folders WHERE owner=?", (owner,)).fetchone()[0]
     photos_count = db.execute("SELECT COUNT(*) FROM photos WHERE owner=?", (owner,)).fetchone()[0]
     for entry in entries:
