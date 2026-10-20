@@ -269,13 +269,10 @@ def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool 
                     return Response(cached, media_type="image/webp")
                 buffer = LimitedBuffer()
                 conn.retrieveFile(share, "/" + p, buffer, timeout=40)
-            small, fullsize = thumb_cache.render_pair(buffer)
-            version = v[:80]
-            small_key = thumb_cache.key_for(u["name"], share, p, version + ":small")
-            big_key = thumb_cache.key_for(u["name"], share, p, version + ":large")
-            thumb_cache.put(small_key, small)
-            thumb_cache.put(big_key, fullsize)
-            result = fullsize if large else small
+            # Fast path: never resize/encode a 1600px preview while generating
+            # a 256px folder thumbnail. Large renditions are demand-driven.
+            result = thumb_cache.render_image(buffer, large=large)
+            thumb_cache.put(key, result)
         return Response(result, media_type="image/webp")
     except HTTPException:
         raise
