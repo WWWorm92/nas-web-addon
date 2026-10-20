@@ -38,6 +38,7 @@ def connect():
         PRIMARY KEY (share,path,size,modified)
       );
       CREATE INDEX IF NOT EXISTS photo_order ON photos(owner, sort_key DESC, share, path);
+      CREATE INDEX IF NOT EXISTS photo_identity ON photos(share,path,size,modified,exif_checked);
       CREATE TABLE IF NOT EXISTS folders (
         owner TEXT NOT NULL, share TEXT NOT NULL, path TEXT NOT NULL,
         done INTEGER NOT NULL DEFAULT 0,
@@ -84,9 +85,16 @@ def state(owner, shares):
         pending = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=0", (owner,)).fetchone()[0]
         total = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ")", (owner, *shares)).fetchone()[0] if shares else 0
         dates_pending = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg')", (owner, *shares)).fetchone()[0] if shares else 0
+        # Shared EXIF progress is deduplicated by file identity. Only include
+        # files already discovered in shares this user can access.
+        shared_remaining = db.execute(
+            "SELECT COUNT(*) FROM (SELECT share,path,size,modified FROM photos "
+            "WHERE share IN (" + ",".join("?" for _ in shares) + ") "
+            "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg') "
+            "GROUP BY share,path,size,modified)", tuple(shares)).fetchone()[0] if shares else 0
         return {"complete": bool(job["complete"]), "limited": bool(job["limited"]),
                 "scanned": scanned, "pending": pending, "total": total,
-                "dates_pending": dates_pending}
+                "dates_pending": dates_pending, "shared_dates_pending": shared_remaining}
 
 
 def page(owner, shares, offset, limit):
@@ -177,18 +185,19 @@ def next_unchecked(db, owner, shares):
 
 
 def save_date(db, owner, share, path, taken):
-    row = db.execute("SELECT size,modified FROM photos WHERE owner=? AND share=? AND path=?", (owner, share, path)).fetchone()
+    """Save once, then distribute EXIF to every indexed matching file identity."""
+    row = db.execute("SELECT size,modified FROM photos WHERE owner=? AND share=? AND path=?",
+                     (owner, share, path)).fetchone()
     if row is None:
         return
-    db.execute("INSERT OR REPLACE INTO shared_metadata(share,path,size,modified,taken,exif_checked) VALUES (?,?,?,?,?,1)",
-               (share, path, row["size"], row["modified"], taken))
-    sort_key = taken if taken else None
-    if sort_key:
-        db.execute("UPDATE photos SET taken=?,sort_key=?,exif_checked=1 WHERE owner=? AND share=? AND path=?",
-                   (taken, sort_key, owner, share, path))
-    else:
-        db.execute("UPDATE photos SET exif_checked=1 WHERE owner=? AND share=? AND path=?",
-                   (owner, share, path))
+    size, modified = row["size"], row["modified"]
+    db.execute("INSERT OR REPLACE INTO shared_metadata(share,path,size,modified,taken,exif_checked) "
+               "VALUES (?,?,?,?,?,1)", (share, path, size, modified, taken))
+    db.execute(
+        "UPDATE photos SET taken=?,exif_checked=1,sort_key=COALESCE(?,sort_key) "
+        "WHERE share=? AND path=? AND size=? AND modified=?",
+        (taken, taken, share, path, size, modified))
+
 
 def reuse_shared(db, owner, shares):
     """Copy metadata only into already discovered ACL-scoped user rows."""
