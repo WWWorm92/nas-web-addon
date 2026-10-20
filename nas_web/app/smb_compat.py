@@ -65,3 +65,39 @@ class SMBConnection:
 
     def deleteFiles(self, share, path):
         return self.conn.deleteFile(share, path.replace("/", "\\"))
+
+    def file_size(self, share, path):
+        import ntpath
+        remote = path.replace("/", "\\")
+        parent, basename = ntpath.split(remote)
+        if not basename or any(x in basename for x in "*?"):
+            raise FileNotFoundError(path)
+        matches = self.conn.listPath(share, (parent.rstrip("\\") + "\\" if parent else "\\") + basename)
+        for item in matches:
+            if item.get_longname() == basename and not item.is_directory():
+                return item.get_filesize()
+        raise FileNotFoundError(path)
+
+    def iter_range(self, share, path, start, length):
+        # The generator's finally clause closes the SMB file and tree even
+        # when the HTTP browser cancels the response.
+        remote = path.replace("/", "\\")
+        tid = self.conn.connectTree(share)
+        fid = None
+        try:
+            fid = self.conn.openFile(tid, remote)
+            remaining = length
+            offset = start
+            while remaining > 0:
+                block = self.conn.readFile(tid, fid, offset, min(128 * 1024, remaining))
+                if not block:
+                    break
+                yield block
+                offset += len(block)
+                remaining -= len(block)
+        finally:
+            try:
+                if fid is not None:
+                    self.conn.closeFile(tid, fid)
+            finally:
+                self.conn.disconnectTree(tid)
