@@ -1,8 +1,7 @@
-"""Small session-scoped thumbnail cache.
+"""Shared user-scoped thumbnail cache.
 
-Cached files are private to a live login session, and never shared across
-accounts or sessions. The browser receives no cache permission independently
-of its session cookie.
+Cached files are scoped to a SMB username, share and version. Every cache
+read still requires an authenticated session and SMB file-read permission.
 """
 import hashlib
 import io
@@ -12,10 +11,10 @@ import time
 from pathlib import Path
 from PIL import Image, ImageOps
 
-CACHE_ROOT = Path("/tmp/nasweb-thumbs")
+CACHE_ROOT = Path("/data/nasweb-thumbs")
 CACHE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
-MAX_BYTES = 128 * 1024 * 1024
-TTL = 4 * 3600
+MAX_BYTES = 384 * 1024 * 1024
+TTL = 14 * 24 * 3600
 WORKERS = threading.BoundedSemaphore(2)
 FILES_LOCK = threading.RLock()
 OPS = 0
