@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert, smb_pool, remember_auth
+from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -320,6 +320,62 @@ def list_files(request: Request, share: str, path: str = ""):
             fail(403, "Не удалось прочитать папку")
     return {"items": [{"name": f.filename, "directory": f.isDirectory, "size": f.file_size,
                        "modified": f.last_write_time} for f in files if f.filename not in (".", "..")]}
+
+PHOTO_DATE_WORKERS = threading.BoundedSemaphore(1)
+
+@app.post("/api/photo-dates")
+def photo_capture_dates(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+    """Resolve at most 8 JPEG capture dates per request, using a persistent cache."""
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    share = name_ok(payload.get("share", ""))
+    folder = path_ok(payload.get("path", ""))
+    requested = payload.get("files", [])
+    if not isinstance(requested, list) or len(requested) > 8:
+        fail(400, "Не более восьми фотографий за запрос")
+    results = {}
+    for file in requested:
+        if not isinstance(file, dict):
+            fail(400, "Некорректная запись файла")
+        name = name_ok(file.get("name", ""))
+        if name in results:
+            fail(400, "Повторяющийся файл")
+        version = file.get("modified")
+        size = file.get("size")
+        if not isinstance(version, (int, float)) or not isinstance(size, (int, float)) or size < 0:
+            fail(400, "Некорректная версия файла")
+        p = "/".join(x for x in (folder, name) if x)
+        cached, taken = photo_dates.lookup(u["name"], share, p, version, size)
+        results[name] = {"taken": taken, "cached": cached}
+    missing = [f for f in requested if not results[f["name"]]["cached"]]
+    if missing:
+        with PHOTO_DATE_WORKERS:
+            wait_for_photo_transfer()
+            with smb(u) as conn:
+                check_share(conn, share)
+                # Check the actual SMB directory listing instead of trusting names
+                # or metadata supplied by an untrusted browser.
+                entries = {e.filename: e for e in conn.listPath(share, full(folder))
+                           if not e.isDirectory}
+                for file in missing:
+                    name = file["name"]
+                    entry = entries.get(name)
+                    if entry is None:
+                        results[name] = {"taken": None, "cached": False}
+                        continue
+                    if int(entry.file_size) != int(file["size"]) or int(entry.last_write_time) != int(file["modified"]):
+                        results[name] = {"taken": None, "cached": False}
+                        continue
+                    p = "/".join(x for x in (folder, name) if x)
+                    taken = None
+                    if name.lower().endswith((".jpg", ".jpeg")) and entry.file_size:
+                        try:
+                            taken = photo_dates.from_jpeg_header(conn, share, p)
+                        except Exception as exc:
+                            logger.info("EXIF scan unavailable: %s", type(exc).__name__)
+                    photo_dates.save(u["name"], share, p, file["modified"], file["size"], taken)
+                    results[name] = {"taken": taken, "cached": True}
+    return {"dates": results}
 
 @app.get("/api/thumb")
 def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool = False):
