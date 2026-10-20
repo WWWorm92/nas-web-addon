@@ -6,7 +6,7 @@ async function req(url,data,token='',method='POST'){
  const d=await r.json();if(!r.ok)throw Error(d.detail||'Ошибка '+r.status);return d;
 }
 function msg(s){$('message').textContent=s}
-async function init(){try{const s=await req('/api/admin/status');$('setup').hidden=s.configured;$('login').hidden=!s.configured;$('dashboard').hidden=true;if(s.authenticated)msg('Для управления войдите с паролем администратора')}catch(e){msg(e.message)}}
+async function init(){try{const s=await req('/api/admin/status');$('setup').hidden=s.configured;$('login').hidden=!s.configured;$('dashboard').hidden=true;if(!s.configured&&!s.setup_key_ready)msg('Ключ настройки недоступен серверу. Файл /data/options.json: '+(s.options_file_present?'есть':'отсутствует')+'. Проверьте настройки аддона.');else if(s.authenticated)msg('Для управления войдите с паролем администратора')}catch(e){msg(e.message)}}
 $('create').onclick=async()=>{try{await req('/api/admin/setup',{setup_key:$('key').value,password:$('setupPassword').value});$('key').value='';$('setupPassword').value='';msg('Администратор создан');init()}catch(e){msg(e.message)}};
 $('enter').onclick=async()=>{try{const r=await req('/api/admin/login',{password:$('password').value});csrf=r.csrf;$('password').value='';$('login').hidden=true;$('dashboard').hidden=false;msg('');await load()}catch(e){msg(e.message)}};
 async function load(){try{
