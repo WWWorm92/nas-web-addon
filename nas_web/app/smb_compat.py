@@ -101,3 +101,18 @@ class SMBConnection:
                     self.conn.closeFile(tid, fid)
             finally:
                 self.conn.disconnectTree(tid)
+
+    def can_read(self, share, path):
+        """Ask SMB to open this exact file for reading, without fetching contents."""
+        remote = path.replace("/", "\\")
+        tid = self.conn.connectTree(share)
+        fid = None
+        try:
+            fid = self.conn.openFile(tid, remote, desiredAccess=0x00000001, shareMode=0x00000007)
+            return True
+        finally:
+            try:
+                if fid is not None:
+                    self.conn.closeFile(tid, fid)
+            finally:
+                self.conn.disconnectTree(tid)
