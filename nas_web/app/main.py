@@ -264,14 +264,27 @@ def admin_protected(request: Request,csrf: str):
 def admin_page():
     return FileResponse(ROOT/"admin.html",media_type="text/html")
 
+def admin_setup_secret():
+    """Read Supervisor add-on options at request time, never cache setup secrets."""
+    options_path=Path("/data/options.json")
+    try:
+        current=json.loads(options_path.read_text(encoding="utf-8"))
+    except (OSError,ValueError,TypeError):
+        return ""
+    if not isinstance(current,dict):
+        return ""
+    value=current.get("admin_setup_key","")
+    return value if isinstance(value,str) else ""
+
 @app.get("/api/admin/status")
 def admin_status(request: Request):
-    return {"configured":admin_auth.configured(),"authenticated":bool(admin_auth.session(request.cookies.get("nas_admin","")))}
+    return {"configured":admin_auth.configured(),"authenticated":bool(admin_auth.session(request.cookies.get("nas_admin",""))),
+            "setup_key_ready":len(admin_setup_secret())>=24}
 
 @app.post("/api/admin/setup")
 def admin_setup(request: Request,payload: dict):
     check_origin(request)
-    secret=str(opts.get("admin_setup_key",""))
+    secret=admin_setup_secret()
     if len(secret)<24:fail(503,"Задайте admin_setup_key (минимум 24 символа) в настройках аддона")
     guard=login_guard(request,"__admin_setup__")
     if admin_auth.configured():fail(409,"Администратор уже создан")
