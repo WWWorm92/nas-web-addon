@@ -1,3 +1,11 @@
+## 0.15.0
+
+- Mobile unified gallery redesigned around the photos: compact sticky "Фото" header with search and settings actions.
+- Move month navigation, grid-density controls, index/EXIF status, and year shortcuts into a collapsible gallery settings panel.
+- Hide redundant global-gallery title, file-manager toolbar, persistent status, and upload-center button on mobile; preserve their underlying actions.
+- Restore original controls when settings close so the desktop layout remains intact.
+- No changes to SMB authentication, per-user permissions, existing gallery database, EXIF, thumbnail cache, or background indexing.
+
 ## 0.14.1
 
 - Fix background photo/EXIF indexing stopping immediately for sessions restored by the Remember me login option.
