@@ -97,9 +97,16 @@ def state(owner, shares):
             "WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") "
             "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg') "
             "GROUP BY share,path,size,modified)", (owner, *shares)).fetchone()[0] if shares else 0
+        dated = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" +
+                           ",".join("?" for _ in shares) + ") AND taken IS NOT NULL",
+                           (owner, *shares)).fetchone()[0] if shares else 0
+        checked_no_date = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" +
+                                     ",".join("?" for _ in shares) + ") AND exif_checked=1 AND taken IS NULL",
+                                     (owner, *shares)).fetchone()[0] if shares else 0
         return {"complete": bool(job["complete"]), "limited": bool(job["limited"]),
                 "scanned": scanned, "pending": pending, "total": total,
-                "dates_pending": dates_pending, "shared_dates_pending": shared_remaining}
+                "dates_pending": dates_pending, "shared_dates_pending": shared_remaining,
+                "dated": dated, "checked_no_date": checked_no_date}
 
 
 def page(owner, shares, offset, limit):
