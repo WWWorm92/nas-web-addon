@@ -313,6 +313,28 @@ el('gallerySearchToggle').onclick=()=>{
   const active=el('app').classList.toggle('gallerySearching');
   if(active)el('search').focus();else{el('search').value='';renderAllGallery()}
 };
+function updateMobileFilesBreadcrumb(){
+ const node=el('mobileFilesBreadcrumb');
+ if(node)node.textContent=(selected||'Хранилища')+(dir?' / '+dir.split('/').join(' / '):'');
+}
+el('filesSearchToggle').onclick=()=>{
+ const active=el('app').classList.toggle('filesSearching');
+ if(active)el('search').focus();else{el('search').value='';render()}
+};
+el('filesSortToggle').onclick=()=>openMobileSheet('Сортировка',[
+ {label:'По имени',run:()=>{el('sort').value='name';render()}},
+ {label:'Сначала новые',run:()=>{el('sort').value='new';render()}},
+ {label:'По размеру',run:()=>{el('sort').value='size';render()}}
+]);
+el('filesSettingsToggle').onclick=()=>openMobileSheet('Файлы',[
+ {label:'▦ Плитки',run:()=>el('gridView').click()},
+ {label:'☰ Список',run:()=>el('listView').click()},
+ {label:'☑ Выбрать файлы',run:()=>el('selectionModeButton').click()},
+ {label:'＋ Создать папку',run:()=>el('folder').click()},
+ {label:'⟳ Обновить',run:()=>refresh()},
+ {label:'◐ Сменить тему',run:()=>el('theme').click()},
+ {label:'⇥ Выйти',danger:true,run:()=>el('logout').click()}
+]);
 function updateMobileNav(){
   const photos=el('mobilePhotos');
   photos.classList.toggle('navSelected',allPhotosMode);
@@ -424,6 +446,7 @@ async function enterGlobalGallery(){
   galleryDateGeneration++;clearSelection();
   previousFileView=view==='gallery'?'grid':view;
   gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
+  el('app').classList.remove('filesSearching');
   allPhotosMode=true;view='gallery';allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;
   const token=++allPhotoScanToken;
   el('app').classList.add('globalGalleryOpen');
@@ -487,7 +510,7 @@ function renderAllGallery(){
   message(allPhotos.length?'Показано '+shown.length+' из '+allPhotoTotal+' фотографий':'Ищем фотографии во всех доступных папках…');
   pumpThumbs();
 }
-function render(){if(allPhotosMode){renderAllGallery();return}thumbQueue.length=0;photoObserver.takeRecords();const grid=el('entries');for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);grid.replaceChildren();grid.classList.toggle('list',view==='list');grid.classList.toggle('galleryMode',view==='gallery');el('gridView').classList.toggle('active',view==='grid');el('listView').classList.toggle('active',view==='list');el('galleryView').classList.toggle('active',view==='gallery');const shown=view==='gallery'?photoGalleryItems():sortedFiltered();renderGalleryYears(shown);let previousMonth=null;for(const f of shown){if(view==='gallery'){const month=photoDay(f);if(month!==previousMonth){const heading=document.createElement('h3');heading.className='galleryMonth';heading.textContent=month;heading.dataset.year=photoYear(f);grid.append(heading);previousMonth=month}}const tile=document.createElement('article');tile.className='item';if(view==='gallery')tile.classList.add('galleryPhoto');tile.tabIndex=0;tile.role='button';tile.title=f.name;tile.dataset.filename=f.name;
+function render(){updateMobileFilesBreadcrumb();if(allPhotosMode){renderAllGallery();return}thumbQueue.length=0;photoObserver.takeRecords();const grid=el('entries');for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);grid.replaceChildren();grid.classList.toggle('list',view==='list');grid.classList.toggle('galleryMode',view==='gallery');el('gridView').classList.toggle('active',view==='grid');el('listView').classList.toggle('active',view==='list');el('galleryView').classList.toggle('active',view==='gallery');const shown=view==='gallery'?photoGalleryItems():sortedFiltered();renderGalleryYears(shown);let previousMonth=null;for(const f of shown){if(view==='gallery'){const month=photoDay(f);if(month!==previousMonth){const heading=document.createElement('h3');heading.className='galleryMonth';heading.textContent=month;heading.dataset.year=photoYear(f);grid.append(heading);previousMonth=month}}const tile=document.createElement('article');tile.className='item';if(view==='gallery')tile.classList.add('galleryPhoto');tile.tabIndex=0;tile.role='button';tile.title=f.name;tile.dataset.filename=f.name;
 if(f.directory)tile.classList.add('folderTile');else tile.classList.add('fileTile');
 tile.onclick=()=>selectionMode?toggleSelected(f.name):openPreview(f);
 tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();selectionMode?toggleSelected(f.name):openPreview(f)}};
