@@ -355,6 +355,21 @@ el('listView').onclick=()=>{view='list';localStorage.setItem('nas_view',view);re
 el('galleryView').onclick=()=>{view='gallery';localStorage.setItem('nas_view',view);clearSelection();render()};
 el('upload').onchange=e=>{uploadFiles([...e.target.files]);e.target.value=''};
 el('closePreview').onclick=closePreview;
+el('previewInfo').onclick=()=>{
+  if(previewIndex<0)return;
+  const f=gallery[previewIndex];
+  const img=el('previewBody').querySelector('img');
+  const dimensions=img&&img.naturalWidth?img.naturalWidth+' × '+img.naturalHeight+' пикселей':'Ещё загружается';
+  const stamp=Number(f.modified||0);
+  const date=stamp?new Date(stamp*1000).toLocaleString('ru'):'Неизвестна';
+  const lines=['Файл: '+f.name,'Размер: '+size(Number(f.size||0)),'Изменён: '+date];
+  if(isPhoto(f))lines.push('Разрешение: '+dimensions);
+  if(isMobileLayout()){
+    openMobileSheet('Информация о файле',[]);
+    const p=document.createElement('p');p.className='photoFileInfo';p.textContent=lines.join('\n');
+    el('mobileSheetActions').append(p);
+  }else askDialog({title:'Информация о файле',text:lines.join('\n'),confirm:'Закрыть'});
+};
 el('previewDownload').onclick=()=>{if(previewIndex>=0){const f=gallery[previewIndex];const a=document.createElement('a');a.href='/api/file?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/')});a.download=f.name;a.click()}};
 let gesture=null,lastTap=0,tapTimer=null,lastTouchAt=0;
 function toggleViewerControls(){const viewer=el('preview');if(viewer.style.display==='flex')viewer.classList.toggle('controlsHidden')}
