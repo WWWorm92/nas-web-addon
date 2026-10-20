@@ -299,6 +299,7 @@ async function addPhotoToCollection(f){
   const data=await api('/api/collections');
   const actions=[{label:'★ В избранное',run:async()=>{try{await collectionPost('/api/collections/item',{share:f.share,path:f.path,enabled:true});message('Добавлено в избранное')}catch(e){alert(e.message)}}}];
   for(const album of data.albums)actions.push({label:'В альбом: '+album.name,run:async()=>{try{await collectionPost('/api/collections/item',{share:f.share,path:f.path,album_id:album.id,enabled:true});message('Добавлено в альбом')}catch(e){alert(e.message)}}});
+  actions.push({label:'☆ Убрать из избранного',run:async()=>{try{await collectionPost('/api/collections/item',{share:f.share,path:f.path,enabled:false});message('Удалено из избранного')}catch(e){alert(e.message)}}});
   actions.push({label:'＋ Новый альбом',run:async()=>{const name=prompt('Название альбома');if(!name)return;try{const a=await collectionPost('/api/collections/album',{name});await collectionPost('/api/collections/item',{share:f.share,path:f.path,album_id:a.id,enabled:true});message('Альбом создан')}catch(e){alert(e.message)}}});
   openMobileSheet(f.name,actions);
  }catch(e){alert(e.message)}
@@ -307,7 +308,7 @@ async function openCollections(){
  try{
   const data=await api('/api/collections');
   const actions=[{label:'★ Избранное ('+data.favorites+')',run:()=>openCollectionPhotos(null,true)}];
-  for(const a of data.albums)actions.push({label:a.name+' ('+a.count+')',run:()=>openCollectionPhotos(a.id,false)});
+  for(const a of data.albums){actions.push({label:a.name+' ('+a.count+')',run:()=>openCollectionPhotos(a.id,false)});actions.push({label:'Удалить альбом «'+a.name+'»',run:async()=>{if(!confirm('Удалить альбом? Фотографии останутся на NAS.'))return;try{await api('/api/collections/album/'+a.id,{method:'DELETE'});openCollections()}catch(e){alert(e.message)}}})}
   actions.push({label:'＋ Создать альбом',run:async()=>{const name=prompt('Название альбома');if(!name)return;try{await collectionPost('/api/collections/album',{name});openCollections()}catch(e){alert(e.message)}}});
   openMobileSheet('Альбомы',actions);
  }catch(e){alert(e.message)}
