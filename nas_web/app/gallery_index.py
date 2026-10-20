@@ -89,13 +89,13 @@ def state(owner, shares):
         scanned = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=1", (owner,)).fetchone()[0]
         pending = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=0", (owner,)).fetchone()[0]
         total = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ")", (owner, *shares)).fetchone()[0] if shares else 0
-        dates_pending = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg')", (owner, *shares)).fetchone()[0] if shares else 0
+        dates_pending = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')", (owner, *shares)).fetchone()[0] if shares else 0
         # Shared EXIF progress is deduplicated by file identity. Only include
         # files already discovered in shares this user can access.
         shared_remaining = db.execute(
             "SELECT COUNT(*) FROM (SELECT share,path,size,modified FROM photos "
             "WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") "
-            "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg') "
+            "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp') "
             "GROUP BY share,path,size,modified)", (owner, *shares)).fetchone()[0] if shares else 0
         dated = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" +
                            ",".join("?" for _ in shares) + ") AND taken IS NOT NULL",
@@ -187,12 +187,31 @@ def record_upload(owner, share, path, size, modified):
     return True
 
 
+def retry_missing_dates(db, owner, shares):
+    """Queue missing capture dates only; never reset folder discovery or known dates."""
+    if not shares:
+        return 0
+    where = "share IN (" + ",".join("?" for _ in shares) + ")"
+    allowed = "(lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')"
+    count = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND " + where +
+                       " AND taken IS NULL AND " + allowed, (owner, *shares)).fetchone()[0]
+    db.execute("UPDATE photos SET exif_checked=0 WHERE owner=? AND " + where +
+               " AND taken IS NULL AND " + allowed, (owner, *shares))
+    db.execute("DELETE FROM shared_metadata WHERE taken IS NULL AND " +
+               "EXISTS (SELECT 1 FROM photos p WHERE p.share=shared_metadata.share "
+               "AND p.path=shared_metadata.path AND p.size=shared_metadata.size "
+               "AND p.modified=shared_metadata.modified AND p.owner=? AND " +
+               where.replace("share IN", "p.share IN") + ")",
+               (owner, *shares))
+    return count
+
+
 def next_unchecked(db, owner, shares):
     if not shares:
         return None
     return db.execute("SELECT share,path,name,size,modified FROM photos WHERE owner=? "
                       "AND share IN (" + ",".join("?" for _ in shares) + ") "
-                      "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg') LIMIT 1",
+                      "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp') LIMIT 1",
                       (owner, *shares)).fetchone()
 
 
