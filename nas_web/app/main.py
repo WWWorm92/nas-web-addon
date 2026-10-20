@@ -362,27 +362,47 @@ def video_stream(request: Request, share: str, path: str):
 
 @app.get("/api/file")
 def get_file(request: Request, share: str, path: str, inline: bool = False):
+    """Stream SMB directly to the browser; never stage multi-GB files in /tmp."""
     p = path_ok(path)
     if not p:
         fail(400, "Выберите файл")
+    u = user_for(request)
     filename = p.split("/")[-1]
     suffix = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
     mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-    tmp = tempfile.NamedTemporaryFile(prefix="nasweb_", delete=False)
-    try:
-        with tmp, smb(user_for(request)) as conn:
-            check_share(conn, share)
-            conn.retrieveFile(share, "/" + p, tmp, timeout=300)
-        disposition = "inline" if inline and suffix in {"jpg", "jpeg", "png", "gif", "webp", "pdf", "txt", "mp4", "webm", "mp3", "ogg"} else "attachment"
-        return FileResponse(tmp.name, media_type=mime,
-            headers={"Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}"},
-            background=BackgroundTask(lambda: os.unlink(tmp.name)))
-    except Exception:
+    with smb(u) as conn:
+        check_share(conn, share)
         try:
-            os.unlink(tmp.name)
-        except OSError:
-            pass
-        fail(403, "Не удалось скачать файл")
+            total = conn.file_size(share, "/" + p)
+        except Exception:
+            fail(404, "Файл не найден")
+    import re
+    first, last = 0, max(0, total - 1)
+    requested_range = request.headers.get("range")
+    if requested_range and total:
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", requested_range.strip())
+        if not match or not any(match.groups()):
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{total}"})
+        low, high = match.groups()
+        if low:
+            first = int(low)
+            last = min(last, int(high)) if high else last
+        else:
+            first = max(0, total - int(high))
+        if first > last or first >= total:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{total}"})
+    code = 206 if requested_range and total else 200
+    size = last - first + 1 if total else 0
+    disposition = "inline" if inline and suffix in {"jpg","jpeg","png","gif","webp","pdf","txt","mp4","webm","mp3","ogg"} else "attachment"
+    headers = {"Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
+               "Accept-Ranges": "bytes", "Content-Length": str(size),
+               "Cache-Control": "private, no-store"}
+    if code == 206:
+        headers["Content-Range"] = f"bytes {first}-{last}/{total}"
+    def stream():
+        with smb(u) as conn:
+            yield from conn.iter_range(share, "/" + p, first, size)
+    return StreamingResponse(stream(), status_code=code, media_type=mime, headers=headers)
 
 @app.post("/api/upload")
 async def upload(request: Request, share: str = Form(...), path: str = Form(""),
