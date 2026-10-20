@@ -527,7 +527,7 @@ async function scanAllPhotos(token){
         if(allPhotos.length<90)await loadGlobalPage(true);
         else renderGlobalProgress();
       }else renderGlobalProgress();
-      if(data.complete&&(!data.dates_pending||data.limited)){
+      if(data.complete&&((data.dates_available??data.dates_pending)===0||data.limited)){
         // The finished index has a stable chronology for pagination.
         await loadGlobalPage(true);
         return;
@@ -541,7 +541,7 @@ function renderGlobalProgress(){
   if(!allPhotosMode||!allPhotoStatus)return;
   const data=allPhotoStatus;
   el('globalGalleryProgress').textContent=(data.complete?'Найдено '+data.total+' фото':'Поиск: '+data.scanned+' папок · '+data.total+' фото')
-    +(data.dates_pending&&data.complete?' · EXIF: осталось '+(data.shared_dates_pending??data.dates_pending):'')
+    +(data.dates_pending&&data.complete?' · EXIF: к проверке '+(data.dates_available??data.dates_pending)+(data.dates_blocked?' · нет доступа: '+data.dates_blocked:''):'')
     +(data.limited?' · лимит индекса':'');
   el('galleryPageFooter').classList.toggle('hidden',!data.complete||allPhotos.length>=data.total);
 }
