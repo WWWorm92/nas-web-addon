@@ -269,7 +269,7 @@ def video_stream(request: Request, share: str, path: str):
     first, last = 0, total - 1
     if range_header:
         import re
-        match = re.fullmatch(r"bytes=(\\d*)-(\\d*)", range_header.strip())
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header.strip())
         if not match or not any(match.groups()):
             return Response(status_code=416, headers={"Content-Range": f"bytes */{total}"})
         low, high = match.groups()
