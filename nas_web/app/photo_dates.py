@@ -37,31 +37,62 @@ def save(user, share, path, modified, size, taken):
                    (_key(user, share, path, modified, size), taken))
 
 
+# Bounded SMB header reads; never download entire photo for metadata.
+HEADER_LIMIT = 1024 * 1024
+DATE_TAGS = (36867, 36868, 306)
+
+def _normalize_date(value):
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", "ignore")
+    if not isinstance(value, str):
+        return None
+    match = re.search(r"(\\d{4})[:\\-](\\d{2})[:\\-](\\d{2})[ T](\\d{2}):(\\d{2}):(\\d{2})", value)
+    if not match:
+        return None
+    try:
+        dt = datetime(*(int(x) for x in match.groups()))
+    except ValueError:
+        return None
+    if 1970 <= dt.year <= 2100:
+        return dt.strftime("%Y-%m-%dT%H:%M:%S")
+    return None
+
 def parse_exif(buffer):
     try:
         with Image.open(buffer) as image:
             data = image.getexif()
-            # DateTimeOriginal (36867), DateTimeDigitized, DateTime
             nested = data.get_ifd(34665) if 34665 in data else {}
-            for tag in (36867, 36868, 306):
+            for tag in DATE_TAGS:
                 value = nested.get(tag) or data.get(tag)
-                if not isinstance(value, str):
-                    continue
-                text = value.strip()[:19]
-                if not re.fullmatch(r"\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}", text):
-                    continue
-                taken = datetime.strptime(text, "%Y:%m:%d %H:%M:%S")
-                if 1970 <= taken.year <= 2100:
-                    # EXIF has no timezone: use local calendar fields, not UTC conversion.
-                    return text.replace(":", "-", 2).replace(" ", "T")
-    except (OSError, ValueError, TypeError, SyntaxError):
+                date = _normalize_date(value)
+                if date:
+                    return date
+            # PNG eXIf / tEXt, WebP EXIF and image metadata fallbacks.
+            for name in ("DateTimeOriginal", "DateTimeDigitized", "DateTime",
+                         "date:create", "Creation Time", "creation_time", "date:modify"):
+                date = _normalize_date(image.info.get(name))
+                if date:
+                    return date
+            exif_bytes = image.info.get("exif")
+            if exif_bytes:
+                try:
+                    from PIL import Image as PILImage
+                    exif = PILImage.Exif()
+                    exif.load(exif_bytes)
+                    nested = exif.get_ifd(34665) if 34665 in exif else {}
+                    for tag in DATE_TAGS:
+                        date = _normalize_date(nested.get(tag) or exif.get(tag))
+                        if date:
+                            return date
+                except (OSError, ValueError, TypeError, SyntaxError, KeyError):
+                    pass
+    except (OSError, ValueError, TypeError, SyntaxError, KeyError):
         return None
     return None
 
-
 def from_jpeg_header(conn, share, path, file_size):
-    # Read up to 128 KiB, enough for ordinary JPEG EXIF without downloading originals.
+    # Legacy function name retained for existing callers.
     chunks = []
-    for block in conn.iter_range(share, "/" + path, 0, min(int(file_size), JPEG_HEADER_LIMIT)):
+    for block in conn.iter_range(share, "/" + path, 0, min(int(file_size), HEADER_LIMIT)):
         chunks.append(block)
     return parse_exif(io.BytesIO(b"".join(chunks)))
