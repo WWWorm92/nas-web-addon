@@ -292,7 +292,10 @@ async function loadGlobalPage(reset=false){
     const data=await api('/api/gallery?'+qs({offset:start,limit:90}));
     if(!allPhotosMode||token!==allPhotoScanToken)return;
     allPhotoStatus=data;allPhotoTotal=data.total;
-    if(reset)allPhotos=data.items;else allPhotos.push(...data.items);
+    if(reset)allPhotos=data.items;else {
+      const known=new Set(allPhotos.map(f=>f.share+'|'+f.path));
+      for(const f of data.items)if(!known.has(f.share+'|'+f.path))allPhotos.push(f);
+    }
     render();
   }catch(e){if(token===allPhotoScanToken)message('Ошибка фотогалереи: '+e.message)}
   finally{allPhotoPageBusy=false}
@@ -311,8 +314,8 @@ async function scanAllPhotos(token){
         else renderGlobalProgress();
       }else renderGlobalProgress();
       if(data.complete&&(!data.dates_pending||data.limited)){
-        // EXIF ordering is authoritative once indexing finishes.
-        if(allPhotos.length<=90)await loadGlobalPage(true);
+        // The finished index has a stable chronology for pagination.
+        await loadGlobalPage(true);
         return;
       }
     }catch(e){if(token===allPhotoScanToken)message('Индексация: '+e.message);return}
@@ -325,7 +328,7 @@ function renderGlobalProgress(){
   el('globalGalleryProgress').textContent=(data.complete?'Найдено '+data.total+' фото':'Поиск: '+data.scanned+' папок · '+data.total+' фото')
     +(data.dates_pending&&data.complete?' · EXIF: осталось '+data.dates_pending:'')
     +(data.limited?' · лимит индекса':'');
-  el('galleryPageFooter').classList.toggle('hidden',allPhotos.length>=data.total);
+  el('galleryPageFooter').classList.toggle('hidden',!data.complete||allPhotos.length>=data.total);
 }
 async function enterGlobalGallery(){
   if(allPhotosMode)return;
@@ -376,7 +379,7 @@ function renderAllGallery(){
       +(status.limited?' · достигнут предел индекса':'')
       +(status.complete&&status.dates_pending?' · уточняем даты EXIF':'')
     : 'Подготавливаем фототеку…';
-  el('galleryPageFooter').classList.toggle('hidden',allPhotos.length>=allPhotoTotal||!allPhotos.length);
+  el('galleryPageFooter').classList.toggle('hidden',!status?.complete||allPhotos.length>=allPhotoTotal||!allPhotos.length);
   message(allPhotos.length?'Показано '+shown.length+' из '+allPhotoTotal+' фотографий':'Ищем фотографии во всех доступных папках…');
   pumpThumbs();
 }
@@ -498,7 +501,20 @@ el('selectionDelete').onclick=async()=>{
   clearSelection();await refresh();
   if(failed)message('Удалено: '+removed+'. Не удалось удалить: '+failed+'. Проверьте права и содержимое папок.');
 };
-el('refresh').onclick=refresh;el('search').oninput=render;el('sort').onchange=render;
+el('galleryLoadMore').onclick=()=>loadGlobalPage(false);
+el('globalGalleryRescan').onclick=async()=>{
+  const approved=await askDialog({title:'Обновить фототеку?',text:'NAS Web заново найдёт фотографии во всех доступных папках. Существующие файлы не изменятся.',confirm:'Обновить'});
+  if(!approved||!allPhotosMode)return;
+  allPhotoScanToken++;
+  try{
+    await api('/api/gallery/reindex',{method:'POST'});
+    allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;render();
+    const token=++allPhotoScanToken;
+    await loadGlobalPage(true);
+    if(allPhotosMode&&token===allPhotoScanToken)scanAllPhotos(token);
+  }catch(e){message(e.message)}
+};
+el('refresh').onclick=()=>allPhotosMode?el('globalGalleryRescan').click():refresh();el('search').oninput=render;el('sort').onchange=render;
 el('gridView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='grid';localStorage.setItem('nas_view',view);render()};
 el('listView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='list';localStorage.setItem('nas_view',view);render()};
 el('galleryView').onclick=()=>enterGlobalGallery();
