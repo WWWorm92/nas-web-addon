@@ -329,7 +329,7 @@ function renderGlobalProgress(){
   if(!allPhotosMode||!allPhotoStatus)return;
   const data=allPhotoStatus;
   el('globalGalleryProgress').textContent=(data.complete?'Найдено '+data.total+' фото':'Поиск: '+data.scanned+' папок · '+data.total+' фото')
-    +(data.dates_pending&&data.complete?' · EXIF: осталось '+data.dates_pending:'')
+    +(data.dates_pending&&data.complete?' · EXIF: осталось '+(data.shared_dates_pending??data.dates_pending):'')
     +(data.limited?' · лимит индекса':'');
   el('galleryPageFooter').classList.toggle('hidden',!data.complete||allPhotos.length>=data.total);
 }
@@ -385,7 +385,7 @@ function renderAllGallery(){
   el('globalGalleryProgress').textContent=status
     ? (status.complete?'Найдено '+status.total+' фото': 'Поиск фотографий: '+status.scanned+' папок, найдено '+status.total)
       +(status.limited?' · достигнут предел индекса':'')
-      +(status.complete&&status.dates_pending?' · уточняем даты EXIF':'')
+      +(status.complete&&status.dates_pending?' · EXIF: осталось '+(status.shared_dates_pending??status.dates_pending):'')
     : 'Подготавливаем фототеку…';
   el('galleryPageFooter').classList.toggle('hidden',!status?.complete||allPhotos.length>=allPhotoTotal||!allPhotos.length);
   message(allPhotos.length?'Показано '+shown.length+' из '+allPhotoTotal+' фотографий':'Ищем фотографии во всех доступных папках…');
