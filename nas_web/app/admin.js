@@ -12,19 +12,19 @@ $('enter').onclick=async()=>{try{const r=await req('/api/admin/login',{password:
 async function load(){try{
  const s=await req('/api/admin/diagnostics');
  $('stats').textContent='Уникальных файлов в индексе: '+s.unique_photo_files.toLocaleString('ru')+
- '\\nЗаписей по пользователям: '+s.gallery_index_rows.toLocaleString('ru')+
- '\\nОбщий размер записей: '+fmt(s.gallery_index_bytes)+' (возможны дубли)'+
- '\\nЗаписей с EXIF-датой: '+s.gallery_dated.toLocaleString('ru')+
- '\\nЗаписей проверено без даты: '+s.checked_exif_without_date.toLocaleString('ru')+
- '\\nEXIF ждут проверки: '+s.pending_exif_available.toLocaleString('ru')+
- '\\nEXIF недоступны по SMB (пауза 24 ч): '+s.pending_exif_denied.toLocaleString('ru')+
- '\\nВсего ещё без проверки: '+s.pending_exif.toLocaleString('ru')+
- '\\nПользователей в индексе: '+s.indexed_users+
- '\\nЗадач обхода папок: '+s.scan_jobs+' (завершено: '+s.completed_jobs+')'+
- '\\nОжидающих папок: '+s.pending_folders+
- '\\nКэш миниатюр: '+s.thumbnail_cache.files+' файлов · '+s.thumbnail_cache.size_mb+' МБ'+
- '\\nСвободно в хранилище аддона: '+fmt(s.data_disk.free)+
- '\\nВремя сервера: '+s.server_time;
+ '\nЗаписей по пользователям: '+s.gallery_index_rows.toLocaleString('ru')+
+ '\nОбщий размер записей: '+fmt(s.gallery_index_bytes)+' (возможны дубли)'+
+ '\nЗаписей с EXIF-датой: '+s.gallery_dated.toLocaleString('ru')+
+ '\nЗаписей проверено без даты: '+s.checked_exif_without_date.toLocaleString('ru')+
+ '\nEXIF ждут проверки: '+s.pending_exif_available.toLocaleString('ru')+
+ '\nEXIF недоступны по SMB (пауза 24 ч): '+s.pending_exif_denied.toLocaleString('ru')+
+ '\nВсего ещё без проверки: '+s.pending_exif.toLocaleString('ru')+
+ '\nПользователей в индексе: '+s.indexed_users+
+ '\nЗадач обхода папок: '+s.scan_jobs+' (завершено: '+s.completed_jobs+')'+
+ '\nОжидающих папок: '+s.pending_folders+
+ '\nКэш миниатюр: '+s.thumbnail_cache.files+' файлов · '+s.thumbnail_cache.size_mb+' МБ'+
+ '\nСвободно в хранилище аддона: '+fmt(s.data_disk.free)+
+ '\nВремя сервера: '+s.server_time;
  await events();
  }catch(e){msg(e.message)}
 }
