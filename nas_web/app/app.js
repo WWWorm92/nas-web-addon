@@ -115,11 +115,45 @@ function showPhotoDetails(f){
   const close=document.createElement('button');close.textContent='Закрыть';close.onclick=()=>overlay.remove();
   panel.append(close);overlay.append(panel);overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};document.body.append(overlay);
 }
+let galleryColumns=Number(localStorage.getItem('nasweb-gallery-columns')||3);
+if(![2,3,4,5].includes(galleryColumns))galleryColumns=3;
+const galleryPicked=new Map();
+let galleryPickMode=false;
+function galleryId(f){return f.share+'\\0'+f.path}
+function updateGalleryPick(){
+  const bar=el('galleryPickBar');
+  if(!bar)return;
+  bar.classList.toggle('hidden',!galleryPickMode);
+  el('galleryPickCount').textContent=galleryPicked.size+' выбрано';
+  for(const tile of el('entries').querySelectorAll('.galleryPhoto[data-photo-id]')){
+    const yes=galleryPicked.has(tile.dataset.photoId);
+    tile.classList.toggle('selectedItem',yes);
+    tile.setAttribute('aria-selected',String(yes));
+  }
+}
+function toggleGalleryPick(f){
+  galleryPickMode=true;
+  const id=galleryId(f);
+  if(galleryPicked.has(id))galleryPicked.delete(id);else galleryPicked.set(id,f);
+  updateGalleryPick();
+}
+function clearGalleryPick(){galleryPicked.clear();galleryPickMode=false;updateGalleryPick()}
+function setGalleryColumns(n){
+  galleryColumns=Math.max(2,Math.min(5,n));
+  localStorage.setItem('nasweb-gallery-columns',String(galleryColumns));
+  el('entries').style.setProperty('--gallery-columns',galleryColumns);
+  el('galleryZoomLabel').textContent=galleryColumns+' в ряд';
+}
+function galleryJumpTo(year,month){
+  const heading=[...el('entries').querySelectorAll('.galleryMonth')].find(h=>h.dataset.year===year&&(!month||h.dataset.month===month));
+  if(heading)heading.scrollIntoView({behavior:'smooth',block:'start'});
+}
 function renderGalleryYears(photos){
   const bar=el('galleryYears');bar.replaceChildren();
   bar.classList.toggle('hidden',view!=='gallery'||!photos.length);
   if(view!=='gallery')return;
   const years=[...new Set(photos.map(photoYear))];
+  const picker=el('galleryMonthJump');if(picker){picker.replaceChildren();const first=document.createElement('option');first.value='';first.textContent='Перейти к месяцу';picker.append(first);const seen=new Set();for(const f of photos){const d=photoDate(f);if(!Number.isFinite(d.getTime()))continue;const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(seen.has(key))continue;seen.add(key);const option=document.createElement('option');option.value=key;option.textContent=new Intl.DateTimeFormat('ru',{month:'long',year:'numeric'}).format(d);picker.append(option)}}
   for(const year of years){
     const button=document.createElement('button');button.type='button';button.textContent=year;
     button.onclick=()=>{const heading=[...el('entries').querySelectorAll('.galleryMonth')].find(h=>h.dataset.year===year);if(heading)heading.scrollIntoView({behavior:'smooth',block:'start'});for(const b of bar.children)b.classList.toggle('galleryYearCurrent',b===button)};
@@ -295,7 +329,7 @@ const photoObserver=new IntersectionObserver(records=>{
 },{root:null,rootMargin:'350px 0px',threshold:0});
 let galleryRenderSignature='';
 function leaveGlobalGallery(){
-  galleryRenderSignature='';
+  galleryRenderSignature='';clearGalleryPick();
   if(!allPhotosMode)return;
   if(previewIndex>=0)closePreview();
   allPhotosMode=false;allPhotoScanToken++;view=previousFileView;
@@ -374,7 +408,8 @@ function renderAllGallery(){
   if(galleryRenderSignature===signature&&grid.classList.contains('galleryMode')&&grid.children.length){
     renderGlobalProgress();pumpThumbs();return;
   }
-  galleryRenderSignature=signature;thumbQueue.length=0;photoObserver.takeRecords();
+  galleryRenderSignature=signature;thumbQueue.length=0;
+  setGalleryColumns(galleryColumns);photoObserver.takeRecords();
   for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);
   grid.replaceChildren();grid.classList.remove('list');grid.classList.add('galleryMode');
   if(!allPhotos.length&&!allPhotoStatus){for(let i=0;i<12;i++){const sk=document.createElement('div');sk.className='photoSkeleton';grid.append(sk)}}
@@ -385,13 +420,14 @@ function renderAllGallery(){
     const label=photoDay(f);
     if(label!==month){
       const heading=document.createElement('h3');heading.className='galleryMonth';
-      heading.textContent=label;heading.dataset.year=photoYear(f);grid.append(heading);month=label;
+      heading.textContent=label;heading.dataset.year=photoYear(f);heading.dataset.month=String(photoDate(f).getMonth()+1).padStart(2,'0');grid.append(heading);month=label;
     }
     const tile=document.createElement('article');tile.className='item galleryPhoto';tile.tabIndex=0;tile.role='button';tile.title=f.share+' / '+f.path;
     tile.setAttribute('aria-label','Открыть '+f.name+' — '+f.share+'/'+f.folder);
-    tile.onclick=()=>{if(!tile.dataset.longPress)openPreview(f);else delete tile.dataset.longPress};
+    tile.dataset.photoId=galleryId(f);
+    tile.onclick=()=>{if(tile.dataset.longPress){delete tile.dataset.longPress;return}if(galleryPickMode)toggleGalleryPick(f);else openPreview(f)};
     let hold=null,sx=0,sy=0;
-    tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;hold=setTimeout(()=>{tile.dataset.longPress='1';navigator.vibrate?.(15);openMobileSheet(f.name,[{label:'Открыть фото',run:()=>openPreview(f)},{label:'Открыть папку',run:()=>{leaveGlobalGallery();selected=f.share;dir=f.folder;renderShares();refresh()}},{label:'Сведения',run:()=>showPhotoDetails(f)},{label:'Скачать',run:()=>{const a=document.createElement('a');a.href='/api/file?'+qs({share:f.share,path:f.path});a.download=f.name;a.click()}}])},550)},{passive:true});
+    tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;hold=setTimeout(()=>{tile.dataset.longPress='1';navigator.vibrate?.(15);openMobileSheet(f.name,[{label:'Выбрать',run:()=>toggleGalleryPick(f)},{label:'Открыть фото',run:()=>openPreview(f)},{label:'Открыть папку',run:()=>{leaveGlobalGallery();selected=f.share;dir=f.folder;renderShares();refresh()}},{label:'Сведения',run:()=>showPhotoDetails(f)},{label:'Скачать',run:()=>{const a=document.createElement('a');a.href='/api/file?'+qs({share:f.share,path:f.path});a.download=f.name;a.click()}}])},550)},{passive:true});
     tile.addEventListener('touchmove',e=>{if(e.touches.length&&Math.hypot(e.touches[0].clientX-sx,e.touches[0].clientY-sy)>12)clearTimeout(hold)},{passive:true});
     tile.addEventListener('touchend',()=>clearTimeout(hold));tile.addEventListener('touchcancel',()=>clearTimeout(hold));
     tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openPreview(f)}};
@@ -404,7 +440,7 @@ function renderAllGallery(){
     const origin=document.createElement('span');origin.className='originHint';origin.textContent=f.folder||f.share;tile.append(origin);
     grid.append(tile);photoObserver.observe(img);
   }
-  renderGalleryYears(shown);
+  renderGalleryYears(shown);updateGalleryPick();
   const status=allPhotoStatus;
   el('globalGalleryProgress').textContent=status
     ? (status.complete?'Найдено '+status.total+' фото': 'Поиск фотографий: '+status.scanned+' папок, найдено '+status.total)
@@ -642,6 +678,28 @@ el('selectionDelete').onclick=async()=>{
   clearSelection();await refresh();
   if(failed)message('Удалено: '+removed+'. Не удалось удалить: '+failed+'. Проверьте права и содержимое папок.');
 };
+el('galleryZoomOut').onclick=()=>setGalleryColumns(galleryColumns-1);
+el('galleryZoomIn').onclick=()=>setGalleryColumns(galleryColumns+1);
+el('galleryMonthJump').onchange=e=>{const [year,month]=e.target.value.split('-');if(year)galleryJumpTo(year,month)};
+el('galleryPickDone').onclick=clearGalleryPick;
+el('galleryPickDownload').onclick=async()=>{
+  const chosen=[...galleryPicked.values()];
+  if(!chosen.length)return;
+  // ZIP API accepts one share and one directory. Group downloads safely.
+  const groups=new Map();
+  for(const f of chosen){const key=JSON.stringify([f.share,f.folder]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(f.name)}
+  for(const [key,names] of groups){
+    const [share,path]=JSON.parse(key);
+    try{
+      const response=await fetch('/api/zip',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({share,path,files:names})});
+      if(!response.ok)throw Error('HTTP '+response.status);
+      const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');
+      link.href=url;link.download='NAS-Web-photos.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+    }catch(e){message('Ошибка скачивания: '+e.message);return}
+  }
+  clearGalleryPick();
+};
+setGalleryColumns(galleryColumns);
 el('galleryLoadMore').onclick=()=>loadGlobalPage(false);
 el('globalGalleryBack').onclick=leaveGlobalGallery;
 const galleryNextObserver=new IntersectionObserver(entries=>{
