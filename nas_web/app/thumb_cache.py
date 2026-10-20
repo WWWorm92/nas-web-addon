@@ -11,10 +11,10 @@ import time
 from pathlib import Path
 from PIL import Image, ImageOps
 
-CACHE_ROOT = Path("/data/nasweb-thumbs")
+CACHE_ROOT = Path("/tmp/nasweb-thumbs")
 CACHE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
-MAX_BYTES = 384 * 1024 * 1024
-TTL = 14 * 24 * 3600
+MAX_BYTES = 192 * 1024 * 1024
+TTL = 24 * 3600
 WORKERS = threading.BoundedSemaphore(2)
 FILES_LOCK = threading.RLock()
 OPS = 0
