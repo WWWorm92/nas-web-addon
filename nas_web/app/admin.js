@@ -27,6 +27,7 @@ async function load(){try{
 async function events(){try{const d=await req('/api/admin/events');$('events').textContent=d.events.length?d.events.map(x=>new Date(x.time*1000).toLocaleString('ru')+' · '+x.level+' · '+x.message).join('\n'):'Событий обслуживания пока нет'}catch(e){msg(e.message)}}
 $('refresh').onclick=load;
 $('cacheClean').onclick=async()=>{if(!confirm('Удалить только устаревшие и лишние миниатюры? Фотографии не затрагиваются.'))return;try{await req('/api/admin/cache-maintenance',{},csrf);msg('Обслуживание кэша завершено');await load()}catch(e){msg(e.message)}};
+$('retryDates').onclick=async()=>{if(!confirm('Проверить отсутствующие EXIF-даты для текущего SMB-пользователя? Найденные даты и индекс сохраняются.'))return;try{const r=await req('/api/admin/retry-dates',{},csrf);msg('В очередь поставлено: '+r.queued+' фото');await load()}catch(e){msg(e.message)}};
 $('changePassword').onclick=async()=>{try{await req('/api/admin/password',{old_password:$('oldPassword').value,new_password:$('newPassword').value},csrf);$('oldPassword').value='';$('newPassword').value='';msg('Пароль изменён, другие административные сессии завершены')}catch(e){msg(e.message)}};
 $('logout').onclick=async()=>{try{await req('/api/admin/logout',{},csrf);csrf='';msg('Вы вышли');init()}catch(e){msg(e.message)}};
 init();
