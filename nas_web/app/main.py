@@ -963,11 +963,37 @@ def delete(request: Request, payload: dict, x_csrf_token: str = Header(default="
     with smb(protected(request, x_csrf_token)) as conn:
         share = payload.get("share", "")
         check_share(conn, share)
+        # Move the complete object into the share's recycle directory.
+        # SMB rename is atomic within a share, so a nonempty directory
+        # is moved intact without recursive deletion or path recreation.
+        if path == ".recycle" or path.startswith(".recycle/"):
+            fail(400, "Удаление объектов внутри корзины пока не поддерживается")
+        parent, _, basename = path.rpartition("/")
         try:
-            if payload.get("directory"):
-                conn.deleteDirectory(share, "/" + path)
+            source_entry = entry_in_folder(conn, share, parent, basename)
+            if source_entry is None:
+                fail(404, "Объект не найден")
+            if bool(source_entry.isDirectory) != bool(payload.get("directory")):
+                fail(409, "Тип объекта изменился. Обновите папку")
+            root_entries = {x.filename for x in conn.listPath(share, "/")}
+            if ".recycle" not in root_entries:
+                conn.createDirectory(share, "/.recycle")
             else:
-                conn.deleteFiles(share, "/" + path)
+                recycle_entry = entry_in_folder(conn, share, "", ".recycle")
+                if not recycle_entry or not recycle_entry.isDirectory:
+                    fail(409, "Имя .recycle занято файлом")
+            from uuid import uuid4
+            trash_name = basename
+            existing = {x.filename for x in conn.listPath(share, "/.recycle")}
+            if trash_name in existing:
+                stem, dot, ext = basename.rpartition(".")
+                if not stem or not dot:
+                    stem, ext = basename, ""
+                suffix = uuid4().hex[:8]
+                trash_name = stem + " (" + suffix + ")" + ("." + ext if ext else "")
+            conn.rename(share, "/" + path, "/.recycle/" + trash_name)
+        except HTTPException:
+            raise
         except Exception as exc:
-            smb_action_error("delete", exc)
-    return {"ok": True}
+            smb_action_error("move to recycle", exc)
+    return {"ok": True, "recycled": True}
