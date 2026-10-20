@@ -53,7 +53,7 @@ function renderBreadcrumb(){
   const crumb=el('crumb');crumb.replaceChildren();
   const parts=dir?dir.split('/'):[];
   const add=(label,target,last)=>{
-    const btn=document.createElement('button');btn.type='button';btn.textContent=label;
+    const btn=document.createElement('button');btn.type='button';btn.textContent=label==='.recycle'?'Корзина':label;
     if(last)btn.setAttribute('aria-current','page');
     btn.onclick=()=>{if(dir===target)return;photoCacheClear();clearSelection();dir=target;el('search').value='';refresh()};
     crumb.append(btn);
@@ -338,7 +338,7 @@ function updateMobileFilesBreadcrumb(){
  const parts=dir?dir.split('/'):[];
  parts.forEach((part,i)=>{
    const sep=document.createElement('span');sep.textContent='›';sep.className='mobilePathSeparator';trail.append(sep);
-   const button=document.createElement('button');button.type='button';button.textContent=part;
+   const button=document.createElement('button');button.type='button';button.textContent=part==='.recycle'?'Корзина':part;
    const target=parts.slice(0,i+1).join('/');
    button.onclick=()=>mobileNavigateTo(target);
    if(i===parts.length-1)button.setAttribute('aria-current','page');
@@ -757,7 +757,7 @@ el('selectionDownload').onclick=()=>{if(selectedFiles.size!==1)return;const file
 el('selectionDelete').onclick=async()=>{
   const targets=items.filter(f=>selectedFiles.has(f.name));
   if(!targets.length)return;
-  const approved=await askDialog({title:'Удалить выбранные элементы?',text:'Будет удалено '+targets.length+' элементов. Это действие нельзя отменить. Непустые папки могут потребовать предварительной очистки.',confirm:'Удалить '+targets.length,danger:true});
+  const approved=await askDialog({title:'Удалить выбранные элементы?',text:'В корзину будет перемещено '+targets.length+' элементов, включая содержимое выбранных папок.',confirm:'Удалить '+targets.length,danger:true});
   if(!approved)return;
   let removed=0,failed=0;
   for(const f of targets){
