@@ -52,3 +52,14 @@ def logout(token):
     if not token:return
     with connect() as db,db:
         db.execute("DELETE FROM sessions WHERE digest=?",(hashlib.sha256(token.encode()).hexdigest(),))
+
+def change_password(token,old_password,new_password):
+    if len(new_password)<12 or len(new_password)>256:
+        raise ValueError("Новый пароль: от 12 до 256 символов")
+    salt=os.urandom(32)
+    with connect() as db,db:
+        row=db.execute("SELECT salt,hash FROM admin WHERE id=1").fetchone()
+        if row is None or not hmac.compare_digest(_hash(old_password,row[0]),row[1]):
+            raise ValueError("Неверный текущий пароль")
+        db.execute("UPDATE admin SET salt=?,hash=? WHERE id=1",(salt,_hash(new_password,salt)))
+        db.execute("DELETE FROM sessions WHERE digest<>?",(hashlib.sha256(token.encode()).hexdigest(),))
