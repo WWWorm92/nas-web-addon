@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections
+from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -244,6 +244,74 @@ def favicon_svg():
 def mobile_icon():
     return FileResponse(ROOT / "icon-192.png", media_type="image/png")
 
+
+# Independent service administrator. The admin cookie is never accepted by
+# user_for(), and the admin account has no SMB identity or file privileges.
+def admin_user(request: Request):
+    csrf=admin_auth.session(request.cookies.get("nas_admin",""))
+    if csrf is None:fail(401,"Требуется вход администратора")
+    return csrf
+
+def admin_protected(request: Request,csrf: str):
+    expected=admin_user(request)
+    if not csrf or not secrets.compare_digest(csrf,expected):fail(403,"CSRF check failed")
+
+@app.get("/admin")
+def admin_page():
+    return FileResponse(ROOT/"admin.html",media_type="text/html")
+
+@app.get("/api/admin/status")
+def admin_status(request: Request):
+    return {"configured":admin_auth.configured(),"authenticated":bool(admin_auth.session(request.cookies.get("nas_admin","")))}
+
+@app.post("/api/admin/setup")
+def admin_setup(request: Request,payload: dict):
+    check_origin(request)
+    secret=str(opts.get("admin_setup_key",""))
+    if len(secret)<24:fail(503,"Задайте admin_setup_key (минимум 24 символа) в настройках аддона")
+    guard=login_guard(request,"__admin_setup__")
+    if admin_auth.configured():fail(409,"Администратор уже создан")
+    if not secrets.compare_digest(str(payload.get("setup_key","")),secret):
+        record_failure(guard);fail(403,"Неверный ключ первоначальной настройки")
+    try:created=admin_auth.setup(str(payload.get("password","")))
+    except ValueError as exc:fail(400,str(exc))
+    if not created:fail(409,"Администратор уже создан")
+    return {"ok":True}
+
+@app.post("/api/admin/login")
+def admin_login(request: Request,payload: dict):
+    check_origin(request)
+    guard=login_guard(request,"__admin__")
+    result=admin_auth.login(str(payload.get("password","")))
+    if result is None:
+        record_failure(guard);fail(401,"Неверный пароль")
+    with LOCK:ATTEMPTS.pop(guard,None)
+    token,csrf=result
+    response=JSONResponse({"ok":True,"csrf":csrf})
+    response.set_cookie("nas_admin",token,max_age=14400,httponly=True,
+                        secure=COOKIE_SECURE or request.url.scheme=="https",samesite="strict",path="/")
+    return response
+
+@app.post("/api/admin/logout")
+def admin_logout(request: Request,x_csrf_token: str=Header(default="")):
+    check_origin(request);admin_protected(request,x_csrf_token)
+    admin_auth.logout(request.cookies.get("nas_admin",""))
+    response=JSONResponse({"ok":True});response.delete_cookie("nas_admin",path="/")
+    return response
+
+@app.get("/api/admin/diagnostics")
+def admin_diagnostics(request: Request):
+    admin_user(request)
+    from datetime import datetime,timezone
+    cache=thumb_cache.statistics()
+    with gallery_index.LOCK,gallery_index.connect() as db:
+        totals=db.execute("SELECT COUNT(*) FROM photos").fetchone()[0]
+        owners=db.execute("SELECT COUNT(DISTINCT owner) FROM photos").fetchone()[0]
+        jobs=db.execute("SELECT COUNT(*),SUM(CASE WHEN complete=1 THEN 1 ELSE 0 END) FROM jobs").fetchone()
+    return {"service":"NAS Web","gallery_index_rows":totals,"indexed_users":owners,
+            "scan_jobs":jobs[0],"completed_jobs":jobs[1] or 0,
+            "thumbnail_cache":{"files":cache["files"],"size_mb":cache["size_mb"]},
+            "smb_host_configured":bool(HOST),"server_time":datetime.now(timezone.utc).isoformat()}
 
 @app.post("/api/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...), remember: bool = Form(False)):
