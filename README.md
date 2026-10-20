@@ -108,3 +108,5 @@ This repository is an early prototype, **not a production-ready cloud drive**.
 - Uniform blue-gray SVG icons for folders, images, video and documents.
 - MOV: native playback is tried first, with a manual FFmpeg MP4 conversion fallback. Only MOV up to 300 MB, one conversion at a time and 5-minute processing limit; long or unsupported files remain downloadable.
 - GitHub Actions checks Python and JS syntax and HTML/JS element references. Raspberry Pi hardware testing is still required; keep access LAN-only.
+
+- Large downloads and PDFs now stream directly from SMB with byte-range support, instead of waiting for a complete temporary copy on the Raspberry Pi.
