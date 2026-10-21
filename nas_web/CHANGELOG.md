@@ -1,3 +1,12 @@
+## 0.22.20
+
+- Render only the currently visible and nearby rows of the shared photo timeline instead of mounting every loaded photo tile in the browser DOM. Invisible rows become fixed-height spacers; no files, database rows or cache entries are deleted.
+- Preserve day headings, EXIF/modified sorting, selection, context menus, fullscreen preview, swipe navigation, and lazy pagination (90 images per server page).
+- Include the active date heading during scrolling and keep month/year jumps based on the complete SQLite month index rather than just rendered images.
+- Recalculate gallery row sizes on desktop/mobile width changes and when the gallery density is changed. Retain the scroll location when pages append or the viewer closes.
+- Add regression tests for 10,500 photos, varying date groups, visible range, spacer height conservation and column count changes.
+- No backend or SMB ACL changes. Gallery index, original photos, server thumbnail cache, trash and HTTPS remain untouched.
+
 ## 0.22.19
 
 - Prioritize visible gallery and file-manager thumbnails; defer offscreen images that moved away while queued and resume them when they scroll back into view. Keep the three-request client concurrency cap.
