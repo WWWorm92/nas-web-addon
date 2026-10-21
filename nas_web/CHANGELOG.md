@@ -1,3 +1,12 @@
+## 0.22.12
+
+- Fix desktop gallery navigation: Files/Photos tabs remain visible in the top bar; persistent 'Back to files' button works even when indexing details are collapsed.
+- Add the same navigation to the desktop sidebar with active-section indication; keep SMB share navigation unchanged.
+- Refresh desktop NAS Web home: a compact welcome panel for each share root, quick access to the unified photo gallery, upload, and creating a folder using existing permission-checked operations.
+- Keep mobile navigation/layout unchanged; compact desktop and tablet widths retain a visible gallery return.
+- Add CI checks for the navigation and desktop quick-action DOM contracts.
+- No changes to SMB authorization, photo files, index, gallery dates or EXIF processing.
+
 ## 0.22.11
 
 - Fix **gallery month/year picker only listing months from already-loaded photo tiles** (e.g., 360 of 10,402). New ACL-scoped `/api/gallery/months` returns all months from the persisted SQLite index with exact absolute positions in current sort order.
