@@ -260,6 +260,49 @@ jobs:
               assert g.page(a,["Photos"],0,10,"modified")[0]["name"]=="dated.jpg"
           print("Admin counts are per owner, aggregated totals are separate and dates are unchanged")
           PY
+      - name: Full library calendar and paginated month navigation tests
+        run: |
+          PYTHONPATH=nas_web python - <<'PY'
+          import tempfile
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from types import SimpleNamespace
+          from app import gallery_index as g
+          def item(name,modified):
+              return SimpleNamespace(filename=name,isDirectory=False,
+                                    file_size=120,last_write_time=modified)
+          with tempfile.TemporaryDirectory() as tmp:
+              g.DB=Path(tmp)/"gallery.sqlite3"
+              owner=g.key("reader")
+              other=g.key("other")
+              late=datetime(2024,7,1,0,30,tzinfo=timezone.utc).timestamp()
+              with g.connect() as db:
+                  g.begin(db,owner,["Photos"])
+                  g.add_folder_contents(db,owner,"Photos","",[
+                      item("new.jpg",late),
+                      item("old.jpg",1700000000),
+                      item("middle.jpg",1600000000),
+                      item("unknown.jpg",1500000000)])
+                  g.save_date(db,owner,"Photos","new.jpg","2024-07-01T00:30:00")
+                  g.save_date(db,owner,"Photos","old.jpg","2018-07-26T10:00:00")
+                  g.save_date(db,owner,"Photos","middle.jpg","2020-06-15T10:00:00")
+                  g.save_date(db,owner,"Photos","unknown.jpg",None)
+              months=g.month_index(owner,["Photos"],"taken")
+              assert [(m["month"],m["count"],m["offset"]) for m in months] == [
+                  ("2024-07",1,0),("2020-06",1,1),("2018-07",1,2),
+                  ("undated",1,3)],months
+              old=next(m for m in months if m["month"]=="2018-07")
+              assert g.page(owner,["Photos"],old["offset"],1,"taken")[0]["name"]=="old.jpg"
+              assert g.month_index(owner,["Secret"],"taken")==[]
+              assert g.month_index(other,["Photos"],"taken")==[]
+              minus_two=g.month_index(owner,["Photos"],"modified",120)
+              plus_three=g.month_index(owner,["Photos"],"modified",-180)
+              assert minus_two[0]["month"]=="2024-06",minus_two
+              assert plus_three[0]["month"]=="2024-07",plus_three
+              assert sum(m["count"] for m in months)==g.state(owner,["Photos"])["total"]
+              assert g.page(owner,["Photos"],0,1,"taken")[0]["taken"]=="2024-07-01T00:30:00"
+          print("Month picker includes unloaded years, page offsets, ACLs and browser timezone")
+          PY
       - name: Unified gallery index tests
         run: |
           PYTHONPATH=nas_web python - <<'PY'
