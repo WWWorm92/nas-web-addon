@@ -567,6 +567,18 @@ def photo_capture_dates(request: Request, payload: dict, x_csrf_token: str = Hea
 # authenticated SMB user. A single worker prevents NAS traversal storms.
 GALLERY_SCAN_LOCK = threading.Lock()
 
+@app.get("/api/gallery/months")
+def unified_gallery_months(request: Request, order: str = "taken", timezone_offset: int = 0):
+    """Navigation metadata across ALL indexed photos visible to this SMB user."""
+    u = user_for(request)
+    if order not in ("taken", "modified") or not -840 <= timezone_offset <= 840:
+        fail(400, "Некорректная сортировка или часовой пояс")
+    shares = list(u.get("shares", ()))
+    owner = gallery_index.key(u["name"])
+    months = gallery_index.month_index(owner, shares, order, timezone_offset)
+    return {"months": months, "order": order, "total": sum(x["count"] for x in months)}
+
+
 @app.get("/api/gallery")
 def unified_gallery(request: Request, offset: int = 0, limit: int = 90, order: str = "taken"):
     u = user_for(request)
