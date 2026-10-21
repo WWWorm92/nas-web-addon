@@ -1041,6 +1041,11 @@ function renderFileVirtualWindow(force=false){
   thumbQueue.length=0;photoObserver.takeRecords();
   grid.replaceChildren(frag);
   for(const img of oldImages)if(!img.isConnected)stopDetachedThumbnail(img);
+  // Requeued images may already have been intersecting before the last DOM
+  // window change; observe them again so no visible tile stays blank.
+  for(const img of grid.querySelectorAll('img[data-src]')){
+    photoObserver.unobserve(img);photoObserver.observe(img);
+  }
   updateSelection();
   pumpThumbs();
 }
