@@ -25,8 +25,8 @@ const fpath=name=>[dir,name].filter(Boolean).join('/');
 const fileUrl=(name,inline=false)=>'/api/file?'+qs({share:selected,path:fpath(name),inline:String(inline)});
 let loginGeneration=0;
 async function api(url,options={}){const r=await fetch(url,{credentials:'same-origin',...options,headers:{...(options.headers||{}),'X-CSRF-Token':csrf}});if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).detail||m}catch{}if(r.status===401&&url!=='/api/login'&&url!=='/api/me')showLogin();throw Error(m)}return r.json()}
-function showLogin(){leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
-function showApp(user){closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
+function showLogin(){resetFileManagerState();leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
+function showApp(user){resetFileManagerState();closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
 function renderShares(){el('shares').replaceChildren();for(const share of shares){const b=document.createElement('button');b.className='share'+(share===selected?' selected':'');b.append(icon('disk'),document.createTextNode(' '+share));b.onclick=()=>choose(share);el('shares').append(b)}}
 const selectedFiles=new Set();
 let selectionMode=false;
@@ -51,20 +51,38 @@ function updateSelection(){
 }
 function clearSelection(){selectedFiles.clear();selectionMode=false;updateSelection()}
 function toggleSelected(name){selectionMode=true;if(selectedFiles.has(name))selectedFiles.delete(name);else selectedFiles.add(name);updateSelection()}
+
+const folderScrollPositions=new Map();
+const folderScrollKey=(share,path)=>JSON.stringify([share,path]);
+function rememberFolderScroll(){
+  if(!allPhotosMode&&selected)folderScrollPositions.set(folderScrollKey(selected,dir),window.scrollY);
+}
+async function navigateFiles(target,{restore=false}={}){
+  if(target===dir)return;
+  rememberFolderScroll();
+  photoCacheClear();clearSelection();hideMenu();
+  dir=target;el('search').value='';
+  await refresh();
+  const targetKey=folderScrollKey(selected,target);
+  const y=restore?(folderScrollPositions.get(targetKey)||0):0;
+  if(!restore)folderScrollPositions.set(targetKey,0);
+  if(selected&&dir===target)requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'instant'}));
+}
 function renderBreadcrumb(){
   const crumb=el('crumb');crumb.replaceChildren();
   const parts=dir?dir.split('/'):[];
   const add=(label,target,last)=>{
     const btn=document.createElement('button');btn.type='button';btn.textContent=label==='.recycle'?'Корзина':label;
     if(last)btn.setAttribute('aria-current','page');
-    btn.onclick=()=>{if(dir===target)return;photoCacheClear();clearSelection();dir=target;el('search').value='';refresh()};
+    btn.onclick=()=>navigateFiles(target,{restore:true});
+    attachFolderDrop(btn,()=>({share:selected,path:target}));
     crumb.append(btn);
   };
   add(selected,'',parts.length===0);
   parts.forEach((part,i)=>{const sep=document.createElement('span');sep.className='crumbSep';sep.textContent='›';crumb.append(sep);add(part,parts.slice(0,i+1).join('/'),i===parts.length-1)});
 }
-function choose(share){leaveGlobalGallery();clearSelection();photoCacheClear();hideMenu();selected=share;dir='';el('search').value='';renderShares();refresh()}
-function enterFolder(name){leaveGlobalGallery();clearSelection();photoCacheClear();hideMenu();dir=fpath(name);el('search').value='';refresh()}
+function choose(share){rememberFolderScroll();leaveGlobalGallery();clearSelection();photoCacheClear();hideMenu();selected=share;dir='';el('search').value='';renderShares();refresh().then(()=>requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'instant'})))}
+function enterFolder(name){leaveGlobalGallery();navigateFiles(fpath(name))}
 function download(f){const a=document.createElement('a');a.href=fileUrl(f.name);a.download=f.name;a.click()}
 const isPhoto=f=>!f.directory&&imageExt.includes(ext(f.name));
 let allPhotosMode=false,allPhotos=[],allPhotoTotal=0,allPhotoStatus=null,allPhotoPageBusy=false,allPhotoScanToken=0,previousFileView='grid';
@@ -329,7 +347,7 @@ for(const id of ['desktopFilesNav','desktopGalleryBack']){
 for(const id of ['desktopPhotosNav']){
   el(id).onclick=()=>{enterGlobalGallery();window.scrollTo({top:0,behavior:'instant'})};
 }
-el('mobileHome').onclick=()=>{closeMobileSheet();leaveGlobalGallery();clearSelection();photoCacheClear();dir='';el('search').value='';refresh();window.scrollTo({top:0,behavior:'smooth'})};
+el('mobileHome').onclick=()=>{closeMobileSheet();leaveGlobalGallery();navigateFiles('',{restore:true})};
 el('mobileSearch').onclick=()=>{
  closeMobileSheet();
  const app=el('app'),gallery=allPhotosMode;
@@ -445,9 +463,8 @@ el('gallerySearchToggle').onclick=()=>{
 };
 function mobileNavigateTo(path){
  if(path===dir)return;
- photoCacheClear();clearSelection();dir=path;el('search').value='';
  el('app').classList.remove('filesSearching');
- refresh();window.scrollTo({top:0,behavior:'instant'});
+ navigateFiles(path,{restore:true});
 }
 function mobileSharesMenu(){
  openMobileSheet('Хранилища',shares.map(share=>({
@@ -1085,7 +1102,7 @@ async function uploadFiles(files){
 el('togglePassword').onclick=()=>{const password=el('password'),visible=password.type==='password';password.type=visible?'text':'password';el('togglePassword').textContent=visible?'Скрыть':'Показать';password.focus()};
 el('loginForm').onsubmit=async e=>{e.preventDefault();++loginGeneration;el('loginError').textContent='';const submit=el('submitLogin');submit.disabled=true;submit.textContent='Проверяем доступ…';try{const form=new FormData();form.set('username',el('username').value);form.set('password',el('password').value);form.set('remember',el('remember').checked?'true':'false');const user=await api('/api/login',{method:'POST',body:form});el('password').value='';showApp(user)}catch(e){el('loginError').textContent=e.message}finally{submit.disabled=false;submit.innerHTML='Войти в NAS Web <span aria-hidden="true">→</span>'}};
 el('logout').onclick=async()=>{try{await api('/api/logout',{method:'POST'})}catch{}showLogin()};
-el('up').onclick=()=>{if(dir){clearSelection();dir=dir.split('/').slice(0,-1).join('/');refresh()}};
+el('up').onclick=()=>{if(dir)navigateFiles(dir.split('/').slice(0,-1).join('/'),{restore:true})};
 el('folder').onclick=async()=>{const name=await askDialog({title:'Новая папка',text:'Папка будет создана в текущем расположении.',input:true,confirm:'Создать'});if(name)await mutate('mkdir',{path:dir,name})};
 let destinationResolve=null,destinationDir='',destinationBusy=false;
 async function showDestinationFolders(){
