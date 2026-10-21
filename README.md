@@ -178,10 +178,14 @@ button is used. Choose a **writable SMB folder** as the destination.
    choose ZIP format and split your archive into parts of at most `max_import_mb`
    (default 2048 MiB; the maximum add-on setting is 4096 MiB). On a Pi with
    limited free HA `/data` space, choose **1 GB** archive parts.
-2. In the Profile import section select all ZIP parts. NAS Web uploads one ZIP
-   at a time and streams each media entry directly to the SMB folder; it does not
-   extract the full archive to the Pi. A private local ZIP spool is still
-   required while processing that part.
+2. In the Profile import section select all ZIP parts. NAS Web sends each ZIP
+   as **1 MiB chunks**, then streams individual media entries directly to the
+   SMB folder; it does not extract the full archive to the Pi. A private local
+   ZIP spool is still required while processing that part. Network interruptions
+   are retried automatically. After a tab close or restart, choose the **same**
+   ZIP (same name, size and modification timestamp) to continue from the last
+   saved byte. Incomplete staged uploads expire after 36 hours. Do not clear
+   add-on data if you want to resume.
 3. The accompanying JSON `photoTakenTime.timestamp` is saved in NAS Web's
    gallery date index. Imported photo bytes remain unchanged. Photos without
    matching JSON metadata fall back to EXIF or SMB file modification time.
