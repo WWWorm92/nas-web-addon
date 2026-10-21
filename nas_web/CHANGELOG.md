@@ -1,3 +1,12 @@
+## 0.22.11
+
+- Fix **gallery month/year picker only listing months from already-loaded photo tiles** (e.g., 360 of 10,402). New ACL-scoped `/api/gallery/months` returns all months from the persisted SQLite index with exact absolute positions in current sort order.
+- Selecting a month or year fetches the relevant photo page even when its thumbnails have never been loaded. Lazy loading continues from that offset.
+- Include historical years and 'no capture date' in EXIF mode. File-modification month options respect browser time zone.
+- Refresh month navigation during ongoing EXIF discovery without rebuilding the photo index.
+- Preserve current EXIF and modified-date values, photo files, gallery ACLs, and user collections.
+- Add regression CI tests for unloaded historical months, gallery offsets, user isolation and time-zone boundaries.
+
 ## 0.22.10
 
 - Explain that the admin EXIF queue is aggregated across all indexed SMB users; show a separate per-user breakdown, with currently logged-in SMB user highlighted.
