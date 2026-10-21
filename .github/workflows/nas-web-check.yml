@@ -342,6 +342,86 @@ jobs:
           node --check nas_web/app/app.js
           node --check nas_web/app/admin.js
           sh -n nas_web/entrypoint.sh
+      - name: Safe recycle-bin deletion regressions
+        run: |
+          PYTHONPATH=nas_web python - <<'PY'
+          from app import trash_delete as trash
+
+          class Entry:
+              def __init__(self,name,folder=False,link=False):
+                  self.filename=name
+                  self.isDirectory=folder
+                  self.isReparsePoint=link
+
+          class SMB:
+              def __init__(self,tree):
+                  self.tree=tree
+                  self.operations=[]
+              def listPath(self,share,path):
+                  assert share=="Photo"
+                  return self.tree[path.lstrip("/")]
+              def deleteFiles(self,share,path):
+                  self.operations.append(("file",path))
+              def deleteDirectory(self,share,path):
+                  self.operations.append(("folder",path))
+
+          root=".recycle/Katya"
+          tree={
+              root:[Entry(".",True),Entry("..",True),
+                    Entry("one.jpg"),Entry("nested",True)],
+              root+"/nested":[Entry("two.jpg"),Entry("deeper",True)],
+              root+"/nested/deeper":[Entry("three.png")]
+          }
+          smb=SMB(tree)
+          files,dirs=trash.deletion_plan(smb,"Photo",root,True)
+          assert smb.operations==[], "Preflight must never delete"
+          assert set(files)=={root+"/one.jpg",root+"/nested/two.jpg",
+                             root+"/nested/deeper/three.png"}
+          assert dirs[-1]==root
+          result=trash.permanent_delete(smb,"Photo",root,True)
+          assert result==6
+          assert smb.operations[-1]==("folder","/"+root)
+          assert all(path.startswith("/.recycle/Katya") for _,path in smb.operations)
+          for bad in ["","foo","Katya/one.jpg",".recycle",
+                      ".recycle/../Photo",".recycle_bad/one.jpg"]:
+              try:trash.deletion_plan(smb,"Photo",bad,False)
+              except trash.TrashDeletionError:pass
+              else:raise AssertionError("Unsafe delete target allowed: "+bad)
+          bad_smb=SMB({root:[Entry("ok.jpg"),Entry("link",True,True)]})
+          try:trash.permanent_delete(bad_smb,"Photo",root,True)
+          except trash.TrashDeletionError:pass
+          else:raise AssertionError("Directory link allowed")
+          assert not bad_smb.operations
+          bad_smb=SMB({root:[Entry("one.jpg"),Entry("two.jpg"),Entry("three.jpg")]})
+          original=trash.MAX_ENTRIES
+          trash.MAX_ENTRIES=2
+          try:trash.permanent_delete(bad_smb,"Photo",root,True)
+          except trash.TrashDeletionError:pass
+          else:raise AssertionError("Overflow allowed")
+          finally:trash.MAX_ENTRIES=original
+          assert not bad_smb.operations
+          print("Trash-only, nested, reparse, bounded and preflight delete rules passed")
+          PY
+      - name: Trash UI and authorization contracts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          backend=Path("nas_web/app/main.py").read_text()
+          ui=Path("nas_web/app/app.js").read_text()
+          assert '@app.post("/api/trash/permanent-delete")' in backend
+          part=backend.split('@app.post("/api/trash/permanent-delete")')[1].split('@app.post("/api/delete")')[0]
+          assert "check_origin(request)" in part
+          assert "protected(request, x_csrf_token)" in part
+          assert "check_share(conn, share)" in part
+          assert "within_recycle(path)" in part
+          assert "payload.get(\"confirm\")" in part
+          assert "payload.get(\"confirm_name\")" in part
+          assert "trash_delete.permanent_delete" in part
+          assert "isTrashItemPath" in ui
+          assert "В корзину" in ui and "Удалить навсегда" in ui
+          assert "String(answer||'').toUpperCase()!=='УДАЛИТЬ'" in ui
+          print("Destructive operations require explicit trash path and confirmation")
+          PY
       - name: Desktop navigation and minimalist layout contracts
         run: |
           python - <<'PY'
