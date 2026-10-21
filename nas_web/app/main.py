@@ -1282,15 +1282,72 @@ def download_zip(request: Request, payload: dict, x_csrf_token: str = Header(def
         temporary.cleanup()
         smb_action_error("zip", exc)
 
+def _trash_root_entry(conn, share):
+    root = entry_in_folder(conn, share, "", ".recycle")
+    if root is None or not root.isDirectory or getattr(root, "isReparsePoint", False):
+        fail(409, "Корзина недоступна или не является папкой")
+    return root
+
+
+def _trash_ancestors(conn, share, path):
+    current = ""
+    for part in path.split("/")[:-1]:
+        entry = entry_in_folder(conn, share, current, part)
+        if entry is None or not entry.isDirectory:
+            fail(404, "Папка корзины не найдена")
+        if getattr(entry, "isReparsePoint", False):
+            fail(409, "Нельзя выполнять операцию через папку-ссылку")
+        current = (current + "/" if current else "") + part
+
+
+@app.post("/api/trash/restore")
+def restore_trashed_item(request: Request, payload: dict,
+                        x_csrf_token: str = Header(default="")):
+    """Restore a top-level trash item to its original SMB path."""
+    from . import trash_store
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    path = path_ok(payload.get("path", ""))
+    if not path.startswith(".recycle/") or len(path.split("/")) != 2:
+        fail(400, "Для восстановления выберите объект непосредственно в корзине")
+    share = payload.get("share", "")
+    trash_name = path.split("/", 1)[1]
+    with trash_store.OP_LOCK, smb(u) as conn:
+        check_share(conn, share)
+        try:
+            _trash_root_entry(conn, share)
+            source = entry_in_folder(conn, share, ".recycle", trash_name)
+            if source is None:
+                fail(404, "Объект отсутствует в корзине")
+            metadata = trash_store.item(share, trash_name)
+            # Old items predate origin-path tracking. Restore them to the share
+            # root rather than guessing or overwriting unrelated directories.
+            destination = path_ok(metadata["original_path"]) if metadata and metadata["original_path"] else trash_name
+            if not destination or destination.startswith(".recycle/") or destination == ".recycle":
+                fail(409, "Некорректное исходное расположение")
+            parent, _, name = destination.rpartition("/")
+            if parent:
+                # SMB rename does not create missing parent directories.
+                try:
+                    conn.listPath(share, full(parent))
+                except Exception:
+                    fail(409, "Исходная папка больше не существует. Создайте её перед восстановлением")
+            if entry_in_folder(conn, share, parent, name) is not None:
+                fail(409, "В исходной папке уже есть файл или папка с таким именем")
+            conn.rename(share, "/" + path, "/" + destination)
+            trash_store.forget(share, trash_name)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            smb_action_error("restore from recycle", exc)
+    return {"ok": True, "restored_to": destination}
+
+
 @app.post("/api/trash/permanent-delete")
 def permanently_delete_trashed_item(request: Request, payload: dict,
                                    x_csrf_token: str = Header(default="")):
-    """Explicitly delete ONE selected item within the authorized SMB share's trash.
-
-    This never permanently deletes a live path or the trash directory itself.
-    Contents are enumerated and bounded before destructive operations begin.
-    """
-    from . import trash_delete
+    """Delete one selected item inside SMB trash, including its contents."""
+    from . import trash_delete, trash_store
     check_origin(request)
     u = protected(request, x_csrf_token)
     path = path_ok(payload.get("path", ""))
@@ -1300,38 +1357,27 @@ def permanently_delete_trashed_item(request: Request, payload: dict,
     if not isinstance(directory, bool):
         fail(400, "Некорректный тип объекта")
     basename = path.rsplit("/", 1)[-1]
-    if payload.get("confirm") != "УДАЛИТЬ" or payload.get("confirm_name") != basename:
-        fail(400, "Требуется явное подтверждение удаления объекта")
-    with smb(u) as conn:
+    with trash_store.OP_LOCK, smb(u) as conn:
         share = payload.get("share", "")
         check_share(conn, share)
         parent = path.rpartition("/")[0]
         try:
-            # Verify every ancestor (including the trash root) is a real
-            # directory, not a reparse point that could lead outside trash.
-            current_parent = ""
-            for part in path.split("/")[:-1]:
-                ancestor = entry_in_folder(conn, share, current_parent, part)
-                if ancestor is None or not ancestor.isDirectory:
-                    fail(404, "Папка корзины не найдена")
-                if getattr(ancestor, "isReparsePoint", False):
-                    fail(409, "Нельзя удалять объекты через папку-ссылку")
-                current_parent = (current_parent + "/" if current_parent else "") + part
+            _trash_ancestors(conn, share, path)
             entry = entry_in_folder(conn, share, parent, basename)
             if entry is None:
-                fail(404, "Объект уже отсутствует в корзине")
+                fail(404, "Объект отсутствует в корзине")
             if bool(entry.isDirectory) != directory:
                 fail(409, "Тип объекта изменился. Обновите папку")
             if getattr(entry, "isReparsePoint", False):
                 fail(409, "Удаление папок-ссылок не поддерживается")
             count = trash_delete.permanent_delete(conn, share, path, directory)
+            if parent == ".recycle":
+                trash_store.forget(share, basename)
         except trash_delete.TrashDeletionError as exc:
             fail(409, str(exc))
         except HTTPException:
             raise
         except Exception as exc:
-            # SMB permissions are always enforced by the server. A failed
-            # operation may have removed some files before failing.
             smb_action_error("permanent trash delete (may be partial)", exc)
     return {"ok": True, "permanent": True, "deleted_entries": count}
 
@@ -1342,7 +1388,9 @@ def delete(request: Request, payload: dict, x_csrf_token: str = Header(default="
     path = path_ok(payload.get("path", ""))
     if not path:
         fail(400, "Выберите файл")
-    with smb(protected(request, x_csrf_token)) as conn:
+    from . import trash_store
+    u = protected(request, x_csrf_token)
+    with trash_store.OP_LOCK, smb(u) as conn:
         share = payload.get("share", "")
         check_share(conn, share)
         # Move the complete object into the share's recycle directory.
@@ -1374,6 +1422,13 @@ def delete(request: Request, payload: dict, x_csrf_token: str = Header(default="
                 suffix = uuid4().hex[:8]
                 trash_name = stem + " (" + suffix + ")" + ("." + ext if ext else "")
             conn.rename(share, "/" + path, "/.recycle/" + trash_name)
+            try:
+                trash_store.record_move(u, share, trash_name, path,
+                                        bool(source_entry.isDirectory))
+            except Exception:
+                # The SMB rename has succeeded. The item remains recoverable
+                # and can be registered as a legacy item on the next listing.
+                logger.exception("Unable to record recycle metadata after SMB rename")
         except HTTPException:
             raise
         except Exception as exc:
