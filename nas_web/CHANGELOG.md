@@ -1,3 +1,13 @@
+## 0.22.17
+
+- Keep already downloaded gallery thumbnail images when the photo list grows or refreshes; avoid repeated image downloads and avoid stalled loading slots after cancelled requests.
+- Increase foreground thumbnail concurrency modestly from two to three, without increasing the NAS Web SMB thumbnail render worker limit.
+- Stop EXIF-only status polling from unnecessarily recreating gallery photo cards.
+- Prioritize thumbnail requests and fullscreen originals over background EXIF scanning to reduce SMB contention.
+- Reuse the per-session SMB share tree when verifying cached-thumbnail access, while still opening EACH file and enforcing its current SMB read permission; no authentication or ACL bypass.
+- Add CI regression checks for repeated thumbnail ACL reads, stale tree invalidation, browser queue reuse, and EXIF priority.
+- Preserve gallery index, photo dates, existing photo files, trash retention, and SMB permissions.
+
 ## 0.22.16
 
 - Distinct neutral trash-can icon for the `Корзина` (`.recycle`) folder, instead of a regular blue folder.
