@@ -81,7 +81,7 @@ function renderBreadcrumb(){
   add(selected,'',parts.length===0);
   parts.forEach((part,i)=>{const sep=document.createElement('span');sep.className='crumbSep';sep.textContent='›';crumb.append(sep);add(part,parts.slice(0,i+1).join('/'),i===parts.length-1)});
 }
-function choose(share){rememberFolderScroll();leaveGlobalGallery();clearSelection();photoCacheClear();hideMenu();selected=share;dir='';el('search').value='';renderShares();refresh().then(()=>requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'instant'})))}
+function choose(share){rememberFolderScroll();leaveGlobalGallery();clearSelection();photoCacheClear();hideMenu();selected=share;dir='';el('search').value='';renderShares();refresh().then(()=>{if(selected===share&&dir==='')requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'instant'}))})}
 function enterFolder(name){leaveGlobalGallery();navigateFiles(fpath(name))}
 function download(f){const a=document.createElement('a');a.href=fileUrl(f.name);a.download=f.name;a.click()}
 const isPhoto=f=>!f.directory&&imageExt.includes(ext(f.name));
