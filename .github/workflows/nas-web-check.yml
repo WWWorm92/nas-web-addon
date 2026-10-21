@@ -423,6 +423,8 @@ jobs:
           node --check nas_web/app/app.js
           node --check nas_web/app/admin.js
           sh -n nas_web/entrypoint.sh
+      - name: Global file index and account isolation tests
+        run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_file_index.py'
       - name: Thumbnail priority and cancellation tests
         run: node nas_web/tests/thumbnail_queue.test.cjs
       - name: Virtual gallery viewport and date grouping tests
