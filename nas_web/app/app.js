@@ -62,11 +62,16 @@ async function navigateFiles(target,{restore=false}={}){
   rememberFolderScroll();
   photoCacheClear();clearSelection();hideMenu();
   dir=target;el('search').value='';
-  await refresh();
-  const targetKey=folderScrollKey(selected,target);
+  const share=selected,targetKey=folderScrollKey(share,target);
   const y=restore?(folderScrollPositions.get(targetKey)||0):0;
   if(!restore)folderScrollPositions.set(targetKey,0);
-  if(selected&&dir===target)requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'instant'}));
+  const cached=Boolean(cachedFolderList(share,target));
+  const loading=refresh();
+  if(cached&&selected===share&&dir===target)
+    requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'instant'}));
+  await loading;
+  if(selected===share&&dir===target)
+    requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'instant'}));
 }
 function renderBreadcrumb(){
   const crumb=el('crumb');crumb.replaceChildren();
@@ -993,7 +998,7 @@ function activateFileVirtual(shown){
   for(const f of shown.slice(0,metrics.cols))probe.append(createFileTile(f));
   if(!shown.slice(0,metrics.cols).some(f=>!f.directory)){
     const regular=shown.find(f=>!f.directory);
-    if(regular)probe.append(createFileTile(regular));
+    if(regular)probe.lastElementChild.replaceWith(createFileTile(regular));
   }
   grid.append(probe);
   const measured=Math.ceil(probe.getBoundingClientRect().height);
