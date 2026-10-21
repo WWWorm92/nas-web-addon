@@ -1,12 +1,9 @@
-"""Bounded planning for explicit permanent deletion *inside* an SMB recycle bin.
+"""Deletion planning for items *inside* an SMB recycle bin.
 
 Do not use for normal file deletion: those objects must go to .recycle by rename.
 This module never follows SMB directory reparse points and does not delete
-anything while it is inspecting and counting a requested subtree.
+anything until it has enumerated a selected subtree.
 """
-
-MAX_ENTRIES = 5000
-MAX_DEPTH = 64
 
 
 class TrashDeletionError(ValueError):
@@ -30,16 +27,10 @@ def deletion_plan(conn, share, path, directory):
            or "*" in bit or "?" in bit or ":" in bit for bit in path.split("/")):
         raise TrashDeletionError("Некорректный путь объекта корзины")
 
-    stack = [(path, bool(directory), 0, False)]
+    stack = [(path, bool(directory), False)]
     files, directories = [], []
-    inspected = 0
     while stack:
-        current, is_dir, depth, is_reparse = stack.pop()
-        inspected += 1
-        if inspected > MAX_ENTRIES:
-            raise TrashDeletionError("В папке слишком много объектов для безопасного удаления через браузер")
-        if depth > MAX_DEPTH:
-            raise TrashDeletionError("Слишком глубокая структура папок")
+        current, is_dir, is_reparse = stack.pop()
         if is_reparse:
             raise TrashDeletionError("Удаление папок-ссылок из корзины не поддерживается")
         if not is_dir:
@@ -55,7 +46,7 @@ def deletion_plan(conn, share, path, directory):
                 ch in name for ch in "/\\*?:\0"
             ) or any(ord(ch) < 32 for ch in name):
                 raise TrashDeletionError("Некорректное имя внутри удаляемой папки")
-            stack.append((current + "/" + name, bool(child.isDirectory), depth + 1,
+            stack.append((current + "/" + name, bool(child.isDirectory),
                           bool(getattr(child, "isReparsePoint", False))))
     return files, list(reversed(directories))
 
