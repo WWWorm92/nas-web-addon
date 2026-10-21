@@ -38,6 +38,8 @@ MAX_ENTRIES = 50000
 MAX_JSON = 1024 * 1024
 MAX_MEDIA = 4 * 1024 * 1024 * 1024
 MAX_UNCOMPRESSED = 40 * 1024 * 1024 * 1024
+TAKEOUT_CHUNK_SIZE = 1024 * 1024
+TAKEOUT_UPLOAD_TTL = 36 * 3600
 GUARD = threading.RLock()
 ACTIVE = set()
 ACCESS_CACHE = {}
@@ -81,6 +83,13 @@ def connect():
         PRIMARY KEY(owner,share,folder,sha256)
       );
       CREATE INDEX IF NOT EXISTS imported_media_source ON imported_media(owner,share,folder,source_id);
+      CREATE TABLE IF NOT EXISTS takeout_uploads (
+        id TEXT PRIMARY KEY, owner TEXT NOT NULL, share TEXT NOT NULL,
+        folder TEXT NOT NULL, filename TEXT NOT NULL, total INTEGER NOT NULL,
+        mtime INTEGER NOT NULL, offset INTEGER NOT NULL DEFAULT 0,
+        updated REAL NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS takeout_uploads_owner ON takeout_uploads(owner,updated);
     """)
     try:
         yield db
@@ -500,16 +509,180 @@ def job_update(identifier, **values):
                    (*[values[key] for key in fields], time.time(), identifier))
 
 
+
+class TakeoutOffsetMismatch(ValueError):
+    """An upload chunk came from an obsolete position; caller must query status."""
+
+
+def _takeout_part(identifier):
+    # IDs originate only from secrets.token_urlsafe and a DB owner lookup.
+    if not isinstance(identifier, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{24,48}", identifier):
+        raise ValueError("Неверный идентификатор загрузки")
+    return ARCHIVES / ("takeout-" + identifier + ".part")
+
+
+def _takeout_record(db, username, identifier):
+    row = db.execute("SELECT * FROM takeout_uploads WHERE id=? AND owner=?",
+                     (identifier, owner_of(username))).fetchone()
+    if row is None:
+        raise ValueError("Загрузка не найдена. Выберите ZIP-файл снова")
+    return row
+
+
+def _takeout_position(db, row):
+    path = _takeout_part(row["id"])
+    try:
+        actual = path.stat().st_size
+    except OSError:
+        raise ValueError("Временный файл загрузки отсутствует") from None
+    if actual > row["total"]:
+        raise ValueError("Размер временного файла повреждён")
+    if actual != row["offset"]:
+        db.execute("UPDATE takeout_uploads SET offset=?,updated=? WHERE id=?",
+                   (actual, time.time(), row["id"]))
+    return actual
+
+
+def begin_takeout_upload(username, share, folder, filename, size, mtime, max_bytes):
+    """Create or resume the identical file for one SMB user/destination."""
+    name = str(filename or "")
+    if not name.lower().endswith(".zip") or "/" in name or "\\" in name or len(name) > 200:
+        raise ValueError("Выберите ZIP-архив Google Takeout")
+    try:
+        total = int(size)
+        modified = int(mtime)
+    except (TypeError, ValueError):
+        raise ValueError("Некорректный размер архива") from None
+    if total <= 0 or total > max_bytes or modified < 0:
+        raise ValueError("ZIP превышает лимит max_import_mb или имеет неверный размер")
+    with GUARD:
+        if owner_of(username) in ACTIVE:
+            raise ValueError("Импорт этого пользователя уже выполняется")
+        ARCHIVES.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with connect() as db, db:
+            row = db.execute(
+                "SELECT * FROM takeout_uploads WHERE owner=? AND share=? AND folder=? "
+                "AND filename=? AND total=? AND mtime=? ORDER BY updated DESC LIMIT 1",
+                (owner_of(username), share, folder, name, total, modified)).fetchone()
+            if row is not None:
+                offset = _takeout_position(db, row)
+                db.execute("UPDATE takeout_uploads SET updated=? WHERE id=?",
+                           (time.time(), row["id"]))
+                return {"upload_id": row["id"], "offset": offset,
+                        "size": total, "chunk_size": TAKEOUT_CHUNK_SIZE}
+            identifier = secrets.token_urlsafe(24)
+            path = _takeout_part(identifier)
+            with path.open("xb"):
+                pass
+            db.execute(
+                "INSERT INTO takeout_uploads(id,owner,share,folder,filename,total,mtime,offset,updated)"
+                " VALUES (?,?,?,?,?,?,?,0,?)",
+                (identifier, owner_of(username), share, folder, name, total,
+                 modified, time.time()))
+            return {"upload_id": identifier, "offset": 0, "size": total,
+                    "chunk_size": TAKEOUT_CHUNK_SIZE}
+
+
+def takeout_upload_status(username, identifier):
+    with GUARD, connect() as db, db:
+        row = _takeout_record(db, username, identifier)
+        position = _takeout_position(db, row)
+        return {"upload_id": identifier, "offset": position, "size": row["total"],
+                "chunk_size": TAKEOUT_CHUNK_SIZE}
+
+
+def write_takeout_chunk(username, identifier, offset, chunk):
+    """Bounded, position-checked, replay-safe chunk append to private local disk."""
+    if not isinstance(chunk, bytes) or not (0 < len(chunk) <= TAKEOUT_CHUNK_SIZE):
+        raise ValueError("Недопустимый размер части архива")
+    try:
+        position = int(offset)
+    except (ValueError, TypeError):
+        raise ValueError("Неверная позиция загрузки") from None
+    with GUARD, connect() as db, db:
+        row = _takeout_record(db, username, identifier)
+        actual = _takeout_position(db, row)
+        if position < 0 or position + len(chunk) > row["total"]:
+            raise ValueError("Часть выходит за границы ZIP-архива")
+        path = _takeout_part(identifier)
+        if position < actual:
+            if position + len(chunk) <= actual:
+                with path.open("rb") as stream:
+                    stream.seek(position)
+                    if stream.read(len(chunk)) == chunk:
+                        return {"upload_id": identifier, "offset": actual,
+                                "size": row["total"]}
+            raise TakeoutOffsetMismatch("Позиция изменилась, запросите состояние загрузки")
+        if position != actual:
+            raise TakeoutOffsetMismatch("Пропущена часть ZIP, запросите состояние загрузки")
+        with path.open("r+b") as stream:
+            stream.seek(actual)
+            try:
+                written = stream.write(chunk)
+                if written != len(chunk):
+                    raise OSError("Incomplete chunk write")
+                stream.flush()
+            except Exception:
+                stream.truncate(actual)
+                raise
+        next_offset = actual + len(chunk)
+        db.execute("UPDATE takeout_uploads SET offset=?, updated=? WHERE id=?",
+                   (next_offset, time.time(), identifier))
+        return {"upload_id": identifier, "offset": next_offset,
+                "size": row["total"]}
+
+
+def complete_takeout_upload(username, identifier):
+    """Reserve this owner, verify complete ZIP, claim it for a worker once."""
+    with GUARD:
+        owner = owner_of(username)
+        if owner in ACTIVE:
+            raise ValueError("Импорт уже выполняется для этого пользователя")
+        with connect() as db, db:
+            row = _takeout_record(db, username, identifier)
+            position = _takeout_position(db, row)
+            if position != row["total"]:
+                raise ValueError("Архив ещё не передан полностью")
+            part = _takeout_part(identifier)
+            if not zipfile.is_zipfile(part):
+                raise ValueError("Загруженный файл не является ZIP-архивом")
+            destination = ARCHIVES / ("takeout-" + identifier + ".zip")
+            os.replace(part, destination)
+            db.execute("DELETE FROM takeout_uploads WHERE id=?", (identifier,))
+        ACTIVE.add(owner)
+        return {"archive": destination, "owner": owner,
+                "share": row["share"], "path": row["folder"],
+                "size": row["total"]}
+
+
 def cleanup_orphaned_archives():
-    """Remove private ZIP spools left behind by an add-on crash/reboot."""
+    """Purge crashed worker ZIPs; keep resumable chunks until their TTL."""
     if not ARCHIVES.is_dir():
         return
-    for entry in ARCHIVES.glob("takeout-*.zip"):
-        try:
-            if entry.is_file() and not entry.is_symlink():
-                entry.unlink()
-        except OSError:
-            LOG.warning("Unable to clean abandoned Google Takeout archive")
+    with GUARD, connect() as db, db:
+        expired = db.execute("SELECT id FROM takeout_uploads WHERE updated<?",
+                             (time.time() - TAKEOUT_UPLOAD_TTL,)).fetchall()
+        for row in expired:
+            try:
+                _takeout_part(row["id"]).unlink(missing_ok=True)
+            except OSError:
+                LOG.warning("Unable to clean abandoned Takeout part")
+            db.execute("DELETE FROM takeout_uploads WHERE id=?", (row["id"],))
+        known = {row["id"] for row in db.execute("SELECT id FROM takeout_uploads")}
+        for entry in ARCHIVES.glob("takeout-*.part"):
+            identifier = entry.name[len("takeout-"):-len(".part")]
+            if identifier not in known:
+                try:
+                    if entry.is_file() and not entry.is_symlink():
+                        entry.unlink()
+                except OSError:
+                    LOG.warning("Unable to clean orphan Takeout part")
+        for entry in ARCHIVES.glob("takeout-*.zip"):
+            try:
+                if entry.is_file() and not entry.is_symlink():
+                    entry.unlink()
+            except OSError:
+                LOG.warning("Unable to clean abandoned Takeout archive")
 
 
 def mark_interrupted():
