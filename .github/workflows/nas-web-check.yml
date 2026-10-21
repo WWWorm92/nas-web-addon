@@ -434,6 +434,10 @@ jobs:
         run: node nas_web/tests/thumbnail_queue.test.cjs
       - name: Virtual gallery viewport and date grouping tests
         run: node nas_web/tests/gallery_virtual.test.cjs
+      - name: Gallery auto-sync browser watcher regressions
+        run: node nas_web/tests/gallery_auto_sync.test.cjs
+      - name: Gallery SMB change reconciliation and persistence
+        run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_gallery_auto_sync.py'
       - name: File manager shortcut and drag-and-drop tests
         run: node nas_web/tests/file_manager_ui.test.cjs
       - name: Upload transfer progress and cancellation tests
