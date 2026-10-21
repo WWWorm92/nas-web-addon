@@ -1,3 +1,11 @@
+## 0.22.31
+
+- Move **Memories** out of the mobile "More" menu and into the top of the unified gallery on desktop and mobile, styled as a horizontally scrollable Google Photos-like Stories strip.
+- Group available "On this day" photos into story cards by number of years ago, with cover thumbnails, captions and photo counts. Respect existing user-specific SMB gallery visibility and EXIF capture dates.
+- Opening a memory card uses the existing full-screen photo viewer, filmstrip and swipe navigation without replacing the complete gallery or losing its timeline, filters, or scroll position.
+- Hide the shelf when there are no memories or when a virtual album/favorites subset is open; update it on full-gallery entry and relevant library changes.
+- Preserve the carousel's position and avoid unnecessary thumbnail reloads when virtual gallery rows redraw. Add dedicated regression tests.
+
 ## 0.22.30
 
 - Add **Google Photos imports inside each SMB user's Profile**: no new main-navigation icon or screen.

@@ -489,7 +489,6 @@ el('mobilePhotos').onclick=()=>{closeMobileSheet();enterGlobalGallery()};
 el('mobileMore').onclick=()=>openMobileSheet('Ещё',[
   {label:'Мой профиль',run:()=>openProfile()},
   {label:'★ Избранное и альбомы',run:()=>openCollections()},
-  {label:'Воспоминания',run:()=>openMemories()},
   {label:'Статистика фотографий',run:()=>openNasStats()},
   {label:'Обновить список',run:()=>allPhotosMode?el('globalGalleryRescan').click():refresh()},
   {label:'Выбрать файлы',run:()=>{leaveGlobalGallery();el('selectionModeButton').click()}},
@@ -530,16 +529,84 @@ async function openCollectionPhotos(albumId,favorites){
   message(favorites?'Избранное':'Фотографии альбома');
  }catch(e){alert(e.message)}
 }
-async function openMemories(){
- try{
-  const result=await api('/api/gallery/memories');
-  if(!result.items.length){openMobileSheet('Воспоминания',[{label:'На эту дату фотографий пока нет',run:()=>{}}]);return}
-  if(!allPhotosMode)await enterGlobalGallery();
-  allPhotoSubsetMode=true;allPhotoTimeline=[];allPhotoStartOffset=0;
-  allPhotos=result.items;allPhotoTotal=result.items.length;allPhotoNextOffset=allPhotoTotal;
-  allPhotoStatus={complete:true,total:allPhotoTotal,pending:0};
-  ++allPhotoScanToken;galleryRenderSignature='';renderAllGallery();
- }catch(e){alert(e.message)}
+// Memories now live above the gallery timeline, like Google Photos Stories.
+// Never replace allPhotos: opening a card uses the existing preview/filmstrip
+// and returns to exactly the same gallery when the viewer closes.
+let galleryMemoryGroups=[],galleryMemoriesGeneration=0,galleryMemoriesRenderedSignature='';
+function groupGalleryMemories(photos,today=new Date()){
+  const currentYear=today.getFullYear();
+  const grouped=new Map();
+  for(const photo of photos||[]){
+    const raw=String(photo.taken||'');
+    const match=/^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+    if(!match||!isPhoto(photo))continue;
+    const year=Number(match[1]),yearsAgo=currentYear-year;
+    if(yearsAgo<1||yearsAgo>100)continue;
+    if(!grouped.has(yearsAgo))grouped.set(yearsAgo,[]);
+    grouped.get(yearsAgo).push(photo);
+  }
+  return [...grouped].sort((a,b)=>a[0]-b[0]).map(([yearsAgo,items])=>({
+    yearsAgo,items,title:yearsAgo===1?'Год назад':yearsAgo+' '+(
+      yearsAgo%10===1&&yearsAgo%100!==11?'год':
+      yearsAgo%10>=2&&yearsAgo%10<=4&&!(yearsAgo%100>=12&&yearsAgo%100<=14)?'года':'лет')+' назад'
+  }));
+}
+function renderGalleryMemories(){
+  const section=el('galleryMemories'),strip=el('galleryMemoryStories');
+  const visible=allPhotosMode&&!allPhotoSubsetMode&&galleryMemoryGroups.length>0;
+  section.classList.toggle('hidden',!visible);
+  if(!visible){strip.replaceChildren();galleryMemoriesRenderedSignature='';return}
+  const signature=galleryMemoryGroups.map(g=>g.yearsAgo+'|'+g.items.length+'|'+
+    g.items[0].share+'|'+g.items[0].path+'|'+g.items[0].modified).join(';');
+  if(signature===galleryMemoriesRenderedSignature)return;
+  const previousScroll=strip.scrollLeft;
+  const fragment=document.createDocumentFragment();
+  for(const group of galleryMemoryGroups){
+    const photo=group.items[0];
+    const card=document.createElement('button');
+    card.type='button';card.className='memoryStory';
+    card.setAttribute('aria-label',group.title+' — '+group.items.length+' фото');
+    const cover=document.createElement('img');cover.loading='lazy';cover.alt='';
+    cover.src=imageURL(photo,false,photo.folder,photo.share);
+    const content=document.createElement('span');content.className='memoryStoryContent';
+    const heading=document.createElement('strong');heading.textContent=group.title;
+    const note=document.createElement('small');
+    note.textContent=group.items.length+' фото · В этот день';
+    content.append(heading,note);
+    card.append(cover,content);
+    card.onclick=()=>openMemoryStory(group.items);
+    fragment.append(card);
+  }
+  strip.replaceChildren(fragment);
+  strip.scrollLeft=previousScroll;
+  galleryMemoriesRenderedSignature=signature;
+}
+function openMemoryStory(photos){
+  if(!allPhotosMode||!photos?.length)return;
+  const f=photos[0];
+  el('preview').classList.remove('controlsHidden');
+  filmNodes.clear();
+  gallery=photos.slice();
+  previewIndex=0;
+  shownShare=f.share;shownDir=f.folder;
+  el('preview').style.display='flex';
+  document.body.style.overflow='hidden';
+  showPreview(0);
+}
+async function loadGalleryMemories(){
+  const generation=++galleryMemoriesGeneration;
+  if(!allPhotosMode||allPhotoSubsetMode)return;
+  try{
+    const data=await api('/api/gallery/memories');
+    if(generation!==galleryMemoriesGeneration||!allPhotosMode||allPhotoSubsetMode)return;
+    galleryMemoryGroups=groupGalleryMemories(data.items);
+    renderGalleryMemories();
+  }catch(err){
+    if(generation===galleryMemoriesGeneration&&allPhotosMode){
+      console.warn('Gallery memories:',err.message);
+      galleryMemoryGroups=[];renderGalleryMemories();
+    }
+  }
 }
 async function openNasStats(){
  try{
@@ -883,6 +950,7 @@ async function applyGalleryChange(){
   galleryPendingRevision=null;
   await loadGlobalPage(true);
   if(!allPhotosMode)return;
+  loadGalleryMemories();
   if(gallerySeenRevision!==null&&gallerySeenRevision>=requested){
     loadGlobalTimeline(allPhotoScanToken);
   }else{
@@ -924,6 +992,8 @@ document.addEventListener('visibilitychange',()=>{
 
 let galleryRenderSignature='';
 function leaveGlobalGallery(){
+  ++galleryMemoriesGeneration;
+  galleryMemoryGroups=[];renderGalleryMemories();
   stopGalleryWatch();
   galleryRenderSignature='';resetGalleryVirtual();clearGalleryPick();
   if(!allPhotosMode)return;
@@ -1047,6 +1117,7 @@ async function enterGlobalGallery(){
   el('globalGallerySummary').classList.remove('hidden');
   el('globalGallerySummary').classList.remove('detailsOpen');
   updateMobileNav();window.scrollTo({top:0,behavior:'instant'});render();
+  loadGalleryMemories();
   startGalleryWatch();
   await loadGlobalPage(true);
   if(allPhotosMode&&token===allPhotoScanToken){
@@ -1055,6 +1126,7 @@ async function enterGlobalGallery(){
   }
 }
 function renderAllGallery(){
+  renderGalleryMemories();
   const grid=el('entries');
   const search=el('search').value.trim().toLocaleLowerCase();
   const shown=allPhotos.filter(f=>!search||f.name.toLocaleLowerCase().includes(search)||f.folder.toLocaleLowerCase().includes(search));
