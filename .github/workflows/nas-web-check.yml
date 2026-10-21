@@ -207,13 +207,16 @@ jobs:
           from pathlib import Path
           js=Path("nas_web/app/app.js").read_text()
           py=Path("nas_web/app/main.py").read_text()
+          # Since 0.22.20, virtual rows reuse only visible thumbnails.
+          # Check current invariants, not DOM variable names from 0.22.17.
           assert "const thumbInflight=new Map()" in js
-          assert "const previousTiles=new Map(" in js
+          assert "function renderGalleryVirtualWindow(force=false)" in js
+          assert "const oldTiles=new Map(" in js
           assert "const previousImg=oldTile?.dataset.thumbSrc===requestedSrc" in js
-          assert "if(previousImg){keptImages.add(img)}" in js
-          assert "if(img&&!keptImages.has(img))stopDetachedThumbnail(img)" in js
+          assert "if(previousImg)reused.add(img)" in js
+          assert "if(!reused.has(img))stopDetachedThumbnail(img)" in js
           assert "if(completed)return" in js
-          assert "if(img.dataset.src){photoObserver.unobserve(img);photoObserver.observe(img)}" in js
+          assert "photoObserver.unobserve(img);photoObserver.observe(img)" in js
           assert "(!data.complete&&steps%20===0&&allPhotos.length<90)" in js
           assert "with foreground_thumbnail_request():" in py
           assert "wait_for_background_media_idle()" in py
