@@ -619,6 +619,11 @@ async function scanAllPhotos(token){
       if(token!==allPhotoScanToken||!allPhotosMode)return;
       allPhotoStatus=data;allPhotoTotal=data.total;
       steps++;
+      // EXIF discovery introduces dates/months that were not previously known.
+      // Refresh the full-index month list occasionally, never for each photo.
+      if(steps%100===0&&Date.now()-allPhotoTimelineCheckedAt>30000){
+        loadGlobalTimeline(token);
+      }
       if((!allPhotos.length&&data.total)||steps%8===0){
         if(allPhotos.length<90)await loadGlobalPage(true);
         else renderGlobalProgress();
@@ -983,10 +988,15 @@ el('galleryRetryDates').onclick=()=>message('Проверка дат досту�
 el('globalGalleryRescan').onclick=async()=>{
   if(!allPhotosMode)return;
   const token=++allPhotoScanToken;
+  allPhotoSubsetMode=false;allPhotoStartOffset=0;allPhotoNextOffset=0;
+  allPhotoTimeline=[];allPhotoTimelineCheckedAt=0;
   allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryRenderSignature='';
   render();
   await loadGlobalPage(true);
-  if(allPhotosMode&&token===allPhotoScanToken)scanAllPhotos(token);
+  if(allPhotosMode&&token===allPhotoScanToken){
+    loadGlobalTimeline(token);
+    scanAllPhotos(token);
+  }
 };
 el('refresh').onclick=()=>allPhotosMode?el('globalGalleryRescan').click():refresh();el('search').oninput=render;el('sort').onchange=render;
 el('gridView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='grid';localStorage.setItem('nas_view',view);render()};
