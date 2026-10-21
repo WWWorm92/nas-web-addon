@@ -1,3 +1,12 @@
+## 0.22.25
+
+- Automatically refresh the unified gallery while it is open: check the existing photo index every 45 seconds, and refresh its first page and full month timeline when file names or EXIF dates have changed.
+- Reconcile external SMB additions, deletions, renames and changed file metadata by re-listing folders every 10 minutes while the gallery is active. This is incremental metadata scanning, not a reset of the photo index and not a full read of image contents.
+- Defer automatic UI changes while browsing older photos or viewing an image so the user does not lose their scroll position; apply the pending change on returning to the top of the gallery.
+- Track a persistent revision per account, migrating existing SQLite databases in place. Unchanged listings do not trigger UI refreshes. Own browser uploads refresh the gallery immediately when the viewer is at the top.
+- Prevent accidental index deletion on temporary SMB errors, and recognize successful empty folder listings as genuine deletions. Preserve SMB authorization checks and per-account separation.
+- Add tests covering SQLite migration, EXIF preservation, external SMB changes, empty folders, failed SMB reads and safe browser auto-refresh. No changes to existing photo files or thumbnail caches.
+
 ## 0.22.24
 
 - Show the unified photo gallery in one newest-first chronological order: capture date (EXIF) when present, otherwise the file modification time. Undated PNG/JPEG/WebP/GIF photos now appear alongside dated photos instead of being sent to the end of the gallery.
