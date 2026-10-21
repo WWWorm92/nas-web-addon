@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth, pdf_frame_policy, video_posters
+from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth, pdf_frame_policy, video_posters, profiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -500,6 +500,83 @@ def me(request: Request):
     if not current_shares:
         fail(403, "У текущей сессии нет доступа к доступным SMB-папкам. Войдите заново.")
     return {"username": u["name"], "shares": current_shares, "csrf": u["csrf"]}
+
+
+# Profile identity is the authenticated Simple NAS/SMB account. A public
+# display name or avatar is never accepted as an authentication credential.
+@app.get("/api/profile")
+def profile_get(request: Request):
+    u = user_for(request)
+    return profiles.get(u["name"], u.get("shares", []))
+
+
+@app.patch("/api/profile")
+def profile_update(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    try:
+        profiles.update(u["name"], payload.get("display_name"),
+                        payload.get("avatar_color"))
+    except (ValueError, TypeError) as exc:
+        fail(400, str(exc))
+    return profiles.get(u["name"], u.get("shares", []))
+
+
+def profile_folder_location(u, payload):
+    share = name_ok(payload.get("share", ""))
+    if share not in u.get("shares", []):
+        fail(403, "Нет доступа к SMB-шаре")
+    path = path_ok(payload.get("path", ""))
+    if not path or path == ".recycle" or path.startswith(".recycle/"):
+        fail(400, "Выберите обычную папку, не корень шары и не корзину")
+    return share, path
+
+
+@app.post("/api/profile/folders")
+def profile_folder_add(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    share, path = profile_folder_location(u, payload)
+    # A folder may only be claimed after SMB verifies this very account can
+    # list it. Visibility preferences never grant read access to SMB content.
+    with smb(u) as conn:
+        check_share(conn, share)
+        try:
+            conn.listPath(share, full(path), timeout=20)
+        except Exception:
+            fail(403, "SMB не разрешил открыть эту папку")
+    try:
+        profiles.bind(u["name"], share, path)
+    except ValueError as exc:
+        fail(409, str(exc))
+    return profiles.get(u["name"], u.get("shares", []))
+
+
+@app.patch("/api/profile/folders")
+def profile_folder_visibility(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    share, path = profile_folder_location(u, payload)
+    try:
+        profiles.set_visibility(u["name"], share, path, payload.get("visible"))
+    except ValueError as exc:
+        fail(400, str(exc))
+    except PermissionError as exc:
+        fail(403, str(exc))
+    return profiles.get(u["name"], u.get("shares", []))
+
+
+@app.delete("/api/profile/folders")
+def profile_folder_remove(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    share, path = profile_folder_location(u, payload)
+    try:
+        profiles.unbind(u["name"], share, path)
+    except PermissionError as exc:
+        fail(403, str(exc))
+    return profiles.get(u["name"], u.get("shares", []))
+
 
 @app.post("/api/logout")
 def logout(request: Request, x_csrf_token: str = Header(default="")):

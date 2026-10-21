@@ -25,8 +25,8 @@ const fpath=name=>[dir,name].filter(Boolean).join('/');
 const fileUrl=(name,inline=false)=>'/api/file?'+qs({share:selected,path:fpath(name),inline:String(inline)});
 let loginGeneration=0,videoUser='';
 async function api(url,options={}){const r=await fetch(url,{credentials:'same-origin',...options,headers:{...(options.headers||{}),'X-CSRF-Token':csrf}});if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).detail||m}catch{}if(r.status===401&&url!=='/api/login'&&url!=='/api/me')showLogin();throw Error(m)}return r.json()}
-function showLogin(){videoUser='';resetFileManagerState();leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
-function showApp(user){videoUser=String(user.username||'').toLocaleLowerCase();resetFileManagerState();closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
+function showLogin(){closeProfile();videoUser='';resetFileManagerState();leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
+function showApp(user){videoUser=String(user.username||'').toLocaleLowerCase();resetFileManagerState();closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();refreshProfile().catch(err=>console.warn('Profile:',err.message));if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
 function renderShares(){el('shares').replaceChildren();for(const share of shares){const b=document.createElement('button');b.className='share'+(share===selected?' selected':'');b.append(icon('disk'),document.createTextNode(' '+share));b.onclick=()=>choose(share);el('shares').append(b)}}
 const selectedFiles=new Set();
 let selectionMode=false;
@@ -487,6 +487,7 @@ el('mobileAdd').onclick=()=>openMobileSheet('Добавить',[
 ]);
 el('mobilePhotos').onclick=()=>{closeMobileSheet();enterGlobalGallery()};
 el('mobileMore').onclick=()=>openMobileSheet('Ещё',[
+  {label:'Мой профиль',run:()=>openProfile()},
   {label:'★ Избранное и альбомы',run:()=>openCollections()},
   {label:'Воспоминания',run:()=>openMemories()},
   {label:'Статистика фотографий',run:()=>openNasStats()},
@@ -625,6 +626,7 @@ el('filesSortToggle').onclick=()=>openMobileSheet('Сортировка',[
  {label:'По размеру',run:()=>{el('sort').value='size';render()}}
 ]);
 el('filesSettingsToggle').onclick=()=>openMobileSheet('Файлы',[
+ {label:'Мой профиль',run:()=>openProfile()},
  {label:'▦ Плитки',run:()=>el('gridView').click()},
  {label:'☰ Список',run:()=>el('listView').click()},
  {label:'☑ Выбрать файлы',run:()=>el('selectionModeButton').click()},
@@ -2032,6 +2034,138 @@ work.addEventListener('drop',e=>{
   const files=[...e.dataTransfer.files];
   if(files.length)uploadFiles(files);
 });
+
+// User profiles are linked to the SMB login, not to an editable display name.
+// Folder bindings affect only the gallery queries; SMB ACLs stay authoritative.
+const PROFILE_COLORS=['#4b80db','#64748b','#7a72cf','#208b91','#ad698d','#bd834b'];
+let profileData=null,profileColor=PROFILE_COLORS[0];
+function profileNotice(text){el('profileMessage').textContent=text}
+function profileInitial(name){return Array.from(String(name||'?').trim())[0]?.toLocaleUpperCase()||'?'}
+function updateProfileAvatar(){
+  const name=profileData?.display_name||videoUser||'?';
+  for(const id of ['profileAvatar','profileBigAvatar']){
+    el(id).textContent=profileInitial(name);
+    el(id).style.backgroundColor=profileData?.avatar_color||PROFILE_COLORS[0];
+  }
+  if(profileData)el('who').textContent=profileData.display_name;
+}
+async function refreshProfile(){
+  const data=await api('/api/profile');
+  if(!csrf)return;
+  profileData=data;
+  profileColor=data.avatar_color;
+  updateProfileAvatar();
+  renderProfile();
+  return data;
+}
+function renderProfile(){
+  if(!profileData)return;
+  el('profileLogin').textContent=profileData.username;
+  el('profileName').value=profileData.display_name;
+  const palette=el('profileColors');palette.replaceChildren();
+  for(const color of PROFILE_COLORS){
+    const button=document.createElement('button');button.type='button';
+    button.className='profileColor'+(color===profileColor?' selected':'');
+    button.style.backgroundColor=color;button.dataset.color=color;
+    button.setAttribute('aria-label','Цвет '+color);
+    button.setAttribute('aria-pressed',String(color===profileColor));
+    button.onclick=()=>{
+      profileColor=color;
+      for(const b of palette.children){
+        b.classList.toggle('selected',b.dataset.color===color);
+        b.setAttribute('aria-pressed',String(b.dataset.color===color));
+      }
+      el('profileBigAvatar').style.backgroundColor=color;
+    };
+    palette.append(button);
+  }
+  const list=el('profileFolders');list.replaceChildren();
+  if(!(profileData.folders||[]).length){
+    const empty=document.createElement('p');empty.className='profileHint';
+    empty.textContent='Пока нет привязанных папок. Откройте нужную папку в разделе «Файлы», затем нажмите «Привязать».';
+    list.append(empty);
+  }
+  for(const folder of profileData.folders||[]){
+    const row=document.createElement('div');row.className='profileFolder';
+    const info=document.createElement('div');info.className='profileFolderInfo';
+    const label=document.createElement('strong');label.textContent=folder.path.split('/').at(-1);
+    const sub=document.createElement('small');
+    sub.textContent=folder.share+' / '+folder.path+' · '+(folder.visible?'В общей галерее':'Скрыта для всех');
+    info.append(label,sub);
+    const actions=document.createElement('div');actions.className='profileFolderActions';
+    const toggle=document.createElement('button');toggle.type='button';
+    toggle.textContent=folder.visible?'Скрыть фото':'Показать фото';
+    toggle.setAttribute('aria-label',(folder.visible?'Скрыть':'Показать')+' фотографии из '+folder.path+' для всех');
+    toggle.onclick=async()=>{
+      toggle.disabled=true;
+      try{
+        profileData=await collectionPost('/api/profile/folders',{
+          share:folder.share,path:folder.path,visible:!folder.visible
+        },'PATCH');
+        renderProfile();
+        profileNotice(folder.visible?'Папка скрыта в галерее у всех пользователей':'Папка снова видна в общей галерее');
+        if(allPhotosMode&&!allPhotoSubsetMode){
+          await loadGlobalPage(true);loadGlobalTimeline(allPhotoScanToken);
+        }
+      }catch(err){profileNotice('Ошибка: '+err.message)}
+      finally{toggle.disabled=false}
+    };
+    const remove=document.createElement('button');remove.type='button';
+    remove.className='profileDanger';remove.textContent='Отвязать';
+    remove.onclick=async()=>{
+      if(!confirm('Отвязать папку '+folder.path+'? Её фотографии снова будут видны всем, кому разрешает SMB.'))return;
+      try{
+        profileData=await collectionPost('/api/profile/folders',{share:folder.share,path:folder.path},'DELETE');
+        renderProfile();profileNotice('Привязка удалена, файлы не изменены');
+        if(allPhotosMode&&!allPhotoSubsetMode){
+          await loadGlobalPage(true);loadGlobalTimeline(allPhotoScanToken);
+        }
+      }catch(err){profileNotice('Ошибка: '+err.message)}
+    };
+    actions.append(toggle,remove);row.append(info,actions);list.append(row);
+  }
+  const canBind=!allPhotosMode&&!!selected&&!!dir&&!dir.startsWith('.recycle');
+  el('profileBindFolder').disabled=!canBind;
+  el('profileHint').textContent=canBind
+    ?'Открыта папка '+selected+' / '+dir+'. После привязки только этот профиль сможет скрывать её фотографии.'
+    :'Для привязки откройте нужную папку в разделе «Файлы», затем вернитесь в профиль.';
+}
+function closeProfile(){
+  el('profileOverlay').classList.add('hidden');
+}
+async function openProfile(){
+  closeMobileSheet();
+  el('profileOverlay').classList.remove('hidden');
+  profileNotice('');
+  try{await refreshProfile()}catch(e){profileNotice('Не удалось открыть профиль: '+e.message)}
+}
+el('profileTrigger').onclick=openProfile;
+el('profileClose').onclick=closeProfile;
+el('profileOverlay').addEventListener('click',e=>{
+  if(e.target===el('profileOverlay'))closeProfile();
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&!el('profileOverlay').classList.contains('hidden'))closeProfile();
+});
+el('profileForm').onsubmit=async e=>{
+  e.preventDefault();const button=el('profileSave');button.disabled=true;
+  try{
+    profileData=await collectionPost('/api/profile',{
+      display_name:el('profileName').value,avatar_color:profileColor
+    },'PATCH');
+    updateProfileAvatar();renderProfile();profileNotice('Профиль сохранён');
+  }catch(err){profileNotice('Ошибка сохранения: '+err.message)}
+  finally{button.disabled=false}
+};
+el('profileBindFolder').onclick=async()=>{
+  if(allPhotosMode||!dir||!selected)return;
+  const share=selected,path=dir;
+  try{
+    profileData=await collectionPost('/api/profile/folders',{share,path});
+    renderProfile();profileNotice('Папка '+path+' привязана. Её можно скрыть из фотогалереи.');
+  }catch(err){profileNotice('Не удалось привязать папку: '+err.message)}
+};
+
 const theme=localStorage.getItem('nas_theme')||'dark';document.documentElement.dataset.theme=theme;el('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('nas_theme',t)};
 const startupLoginGeneration=loginGeneration;
 api('/api/me').then(user=>{if(loginGeneration===startupLoginGeneration)showApp(user)}).catch(()=>{if(loginGeneration===startupLoginGeneration)showLogin()});
