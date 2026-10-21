@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth, pdf_frame_policy
+from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth, pdf_frame_policy, video_posters
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -943,6 +943,55 @@ def _thumbnail_response(request: Request, share: str, path: str, v: str, large: 
     except Exception as exc:
         logger.warning("Thumbnail unavailable: %s", type(exc).__name__)
         fail(403, "Нет доступа или ошибка чтения SMB")
+
+@app.get("/api/video-poster")
+def video_poster(request: Request, share: str, path: str, v: str = ""):
+    """Low-cost best-effort poster; cache entries never bypass live SMB ACL."""
+    u = user_for(request)
+    p = path_ok(path)
+    name_ok(share)
+    if not p or not video_posters.is_supported(p):
+        fail(404, "Unsupported video")
+    if share not in u.get("shares", []):
+        fail(403, "Нет доступа")
+    key = thumb_cache.key_for(u["name"], share, p, v[:80] + ":video-poster")
+    try:
+        # Even cached images must pass a fresh SMB read-permission check.
+        with smb(u) as conn:
+            check_share(conn, share)
+            conn.can_read(share, "/" + p)
+            size = conn.file_size(share, "/" + p)
+        cached = thumb_cache.get(key)
+        if cached is not None:
+            return Response(cached, media_type="image/webp",
+                            headers={"X-Thumbnail-Cache": "HIT"})
+        if video_posters.blocked(key):
+            fail(415, "Кадр видео недоступен")
+        with video_posters.WORKERS:
+            cached = thumb_cache.get(key)
+            if cached is None:
+                if video_posters.blocked(key):
+                    fail(415, "Кадр видео недоступен")
+                # The SMB connection is closed before FFmpeg starts. Only a
+                # small source prefix is staged in memory, never the whole file.
+                wait_for_photo_transfer()
+                with smb(u) as conn:
+                    check_share(conn, share)
+                    conn.can_read(share, "/" + p)
+                    prefix = video_posters.read_prefix(conn, share, p, size)
+                cached = video_posters.extract_prefix(prefix)
+                thumb_cache.put(key, cached)
+        return Response(cached, media_type="image/webp",
+                        headers={"X-Thumbnail-Cache": "MISS"})
+    except video_posters.PosterUnavailable:
+        video_posters.mark_unavailable(key)
+        fail(415, "Кадр видео недоступен")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Video poster unavailable: %s", type(exc).__name__)
+        fail(403, "Нет доступа или ошибка чтения видео")
+
 
 @app.get("/api/mov-mp4")
 def converted_mov(request: Request, share: str, path: str, v: str = ""):
