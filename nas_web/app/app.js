@@ -25,7 +25,7 @@ const fpath=name=>[dir,name].filter(Boolean).join('/');
 const fileUrl=(name,inline=false)=>'/api/file?'+qs({share:selected,path:fpath(name),inline:String(inline)});
 let loginGeneration=0,videoUser='';
 async function api(url,options={}){const r=await fetch(url,{credentials:'same-origin',...options,headers:{...(options.headers||{}),'X-CSRF-Token':csrf}});if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).detail||m}catch{}if(r.status===401&&url!=='/api/login'&&url!=='/api/me')showLogin();throw Error(m)}return r.json()}
-function showLogin(){closeProfile();videoUser='';resetFileManagerState();leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
+function showLogin(){closeProfile();profileData=null;googleImportDestination=null;googlePickerWaiting=false;videoUser='';resetFileManagerState();leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
 function showApp(user){videoUser=String(user.username||'').toLocaleLowerCase();resetFileManagerState();closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();refreshProfile().catch(err=>console.warn('Profile:',err.message));if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
 function renderShares(){el('shares').replaceChildren();for(const share of shares){const b=document.createElement('button');b.className='share'+(share===selected?' selected':'');b.append(icon('disk'),document.createTextNode(' '+share));b.onclick=()=>choose(share);el('shares').append(b)}}
 const selectedFiles=new Set();
@@ -2273,6 +2273,7 @@ el('profileBindFolder').onclick=openProfilePicker;
 
 // All import controls live INSIDE the existing user profile, not the app shell.
 let googleImportDestination=null,googlePickerWaiting=false,googleImportBusy=false;
+let googlePickerPollAfter=0;
 let googleStatusRequestBusy=false;
 function importNotice(text){el('profileImportMessage').textContent=text}
 function renderImportDestination(){
@@ -2305,6 +2306,8 @@ async function refreshGoogleImport(){
   try{
     const status=await api('/api/import/google/status');
     const {configured,connected}=status;
+    if(connected&&status.picker_active)googlePickerWaiting=true;
+    if(!connected)googlePickerWaiting=false;
     el('profileGoogleState').textContent=!configured
       ?'Для Picker не настроен OAuth в аддоне'
       :connected?'Google подключён':'Google не подключён';
@@ -2320,7 +2323,11 @@ async function refreshGoogleImport(){
       cards.append(empty);
     }
     if(googlePickerWaiting&&connected){
+      el('profilePickerActions').classList.remove('hidden');
+      if(Date.now()<googlePickerPollAfter)return;
       const result=await api('/api/import/google/picker/status');
+      const waitMs=Math.max(6000,Math.min(60000,Number.parseFloat(result.poll_interval||'6s')*1000||6000));
+      googlePickerPollAfter=Date.now()+waitMs;
       if(result.active){
         el('profileGooglePickerLink').href=result.picker_uri;
         el('profileGooglePickerStatus').textContent=result.ready
@@ -2361,6 +2368,7 @@ el('profileGooglePickerStart').onclick=async()=>{
     const result=await api('/api/import/google/picker/start',{method:'POST'});
     if(!result.picker_uri?.startsWith('https://'))throw Error('Не получена ссылка Google');
     googlePickerWaiting=true;
+    googlePickerPollAfter=0;
     el('profilePickerActions').classList.remove('hidden');
     el('profileGooglePickerLink').href=result.picker_uri;
     el('profileGooglePickerStatus').textContent='Откройте Google Фото, отметьте фотографии и подтвердите выбор';
