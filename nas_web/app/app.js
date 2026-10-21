@@ -320,11 +320,9 @@ const desktopReturnToFiles=()=>{
 for(const id of ['desktopFilesNav','sidebarFilesNav','desktopGalleryBack']){
   el(id).onclick=desktopReturnToFiles;
 }
-for(const id of ['desktopPhotosNav','sidebarPhotosNav','quickOpenPhotos']){
+for(const id of ['desktopPhotosNav','sidebarPhotosNav']){
   el(id).onclick=()=>{enterGlobalGallery();window.scrollTo({top:0,behavior:'instant'})};
 }
-el('quickUpload').onclick=()=>el('upload').click();
-el('quickNewFolder').onclick=()=>el('folder').click();
 el('mobileHome').onclick=()=>{closeMobileSheet();leaveGlobalGallery();clearSelection();photoCacheClear();dir='';el('search').value='';refresh();window.scrollTo({top:0,behavior:'smooth'})};
 el('mobileSearch').onclick=()=>{
  closeMobileSheet();
@@ -498,15 +496,7 @@ function updateDesktopWorkspace(){
   for(const id of ['desktopPhotosNav','sidebarPhotosNav']){
     const b=el(id);b.classList.toggle('navSelected',gallery);b.setAttribute('aria-current',gallery?'page':'false');
   }
-  const panel=el('desktopHomeOverview');
-  // The overview is intended for the root of each accessible SMB share.
-  // Never cover photos, nested folders, or operations in progress.
-  const home=!gallery&&!dir&&!!selected;
-  panel.classList.toggle('hidden',!home);
-  if(home){
-    el('homeOverviewTitle').textContent='Хранилище «'+selected+'»';
-    el('homeOverviewDescription').textContent='Файлы, папки и фотографии в одном месте. Выберите папку или быстрое действие.';
-  }
+
 }
 function updateMobileNav(){
   const photos=el('mobilePhotos');
