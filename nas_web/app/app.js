@@ -1038,64 +1038,171 @@ function chooseUploadDestination(files){
   });
 }
 const uploadQueue=[];
+let uploadBatchBusy=false,uploadPaintAt=0;
+const uploadCanCancel=job=>['queued','preparing','sending'].includes(job.stage);
+function uploadEta(seconds){
+  if(!Number.isFinite(seconds)||seconds<0)return '…';
+  const n=Math.ceil(seconds);
+  if(n<60)return n+' с';
+  if(n<3600)return Math.floor(n/60)+' мин '+n%60+' с';
+  return Math.floor(n/3600)+' ч '+Math.ceil(n%3600/60)+' мин';
+}
+function uploadTick(job,loaded,total,now){
+  if(!(total>0)||!(job.bytes>=0))return;
+  const sent=Math.min(job.bytes,Math.round(job.bytes*Math.max(0,Math.min(1,loaded/total))));
+  if(!job.sampleAt){job.sampleAt=now;job.sampleBytes=sent}
+  else if(now-job.sampleAt>=400){
+    const instant=Math.max(0,sent-job.sampleBytes)*1000/(now-job.sampleAt);
+    job.speed=job.speed>0?job.speed*.55+instant*.45:instant;
+    job.sampleAt=now;job.sampleBytes=sent;
+  }
+  job.sent=sent;
+  job.progress=Math.min(99,Math.floor(100*sent/Math.max(1,job.bytes)));
+  job.remaining=job.speed>0?(job.bytes-sent)/job.speed:null;
+}
+function uploadDescription(job){
+  if(job.stage==='queued')return 'Ожидание · '+size(job.bytes);
+  if(job.stage==='preparing')return 'Подготовка · '+size(job.bytes);
+  if(job.stage==='saving')return 'Отправлено · сохраняем на NAS…';
+  if(job.stage==='done')return 'Готово · '+size(job.bytes);
+  if(job.stage==='canceled')return 'Отменено';
+  if(job.stage==='failed')return 'Ошибка: '+(job.error||'неизвестная');
+  const parts=['Передача',job.progress+'%',size(job.sent||0)+' / '+size(job.bytes)];
+  if(job.speed>0&&job.sent<job.bytes)parts.push('≈ '+size(job.speed)+'/с','осталось '+uploadEta(job.remaining));
+  return parts.join(' · ');
+}
+function notifyUploadJobs(force=false){
+  const now=performance.now();
+  if(!force&&now-uploadPaintAt<180)return;
+  uploadPaintAt=now;
+  el('app').classList.toggle('nasUploadsActive',uploadBatchBusy);
+  const active=uploadQueue.filter(uploadCanCancel).length;
+  el('uploadCenterButton').textContent=active?'⇧ Загрузки: '+active:'⇧ Центр загрузок';
+  document.dispatchEvent(new Event('nas-upload-progress'));
+}
+function setUploadStage(job,stage,progress=job.progress){
+  job.stage=stage;job.progress=progress;notifyUploadJobs(true);
+}
+function cancelUploadJob(job){
+  if(job.stage==='queued'||job.stage==='preparing'){setUploadStage(job,'canceled');return true}
+  if(job.stage==='sending'&&job.xhr){job.xhr.abort();return true}
+  return false; // When SMB saving starts, an abort cannot guarantee rollback.
+}
 function showUploadCenter(){
-  const overlay=document.createElement('div');overlay.className='transferOverlay';
+  if(document.querySelector('.nasUploadCenter'))return;
+  const overlay=document.createElement('div');overlay.className='transferOverlay nasUploadCenter';
   const panel=document.createElement('div');panel.className='transferPanel';
   const title=document.createElement('h3');title.textContent='Центр загрузок';
+  const hint=document.createElement('small');hint.className='nasUploadHint';
+  hint.textContent='После отправки файл ещё сохраняется на NAS. На этом этапе отмена недоступна.';
   const list=document.createElement('div');list.className='transferList';
-  const close=document.createElement('button');close.textContent='Закрыть';close.onclick=()=>dismiss();
+  const controls=document.createElement('div');controls.className='nasUploadActions';
+  const cancelAll=document.createElement('button');cancelAll.type='button';cancelAll.textContent='Отменить отправку всех';
+  cancelAll.onclick=()=>{for(const job of uploadQueue)cancelUploadJob(job)};
+  const close=document.createElement('button');close.type='button';close.textContent='Закрыть';close.onclick=()=>dismiss();
+  controls.append(cancelAll,close);
   function paint(){
-    list.replaceChildren();
+    const scroll=list.scrollTop;list.replaceChildren();
     for(const job of uploadQueue.slice(-30).reverse()){
-      const row=document.createElement('div');row.className='transferRow';
-      const name=document.createElement('strong');name.textContent=job.name;
-      const state=document.createElement('small');state.textContent=job.status+' · '+job.progress+'%';
-      const meter=document.createElement('progress');meter.max=100;meter.value=job.progress;
-      row.append(name,state,meter);list.append(row);
+      const row=document.createElement('div');row.className='transferRow nasUploadRow';
+      const name=document.createElement('strong');name.textContent=job.name;name.title=job.name;
+      const label=document.createElement('small');label.textContent=uploadDescription(job);
+      const progress=document.createElement('progress');progress.max=100;progress.value=job.progress;
+      progress.setAttribute('aria-label','Загрузка '+job.name);
+      row.append(name,label,progress);
+      if(uploadCanCancel(job)){
+        const cancel=document.createElement('button');cancel.type='button';cancel.className='nasUploadCancel';
+        cancel.textContent='Отменить';cancel.onclick=()=>cancelUploadJob(job);
+        row.append(cancel);
+      }
+      list.append(row);
     }
+    list.scrollTop=scroll;cancelAll.disabled=!uploadQueue.some(uploadCanCancel);
   }
-  const dismiss=()=>{document.removeEventListener('nas-upload-progress',refresh);overlay.remove()};
-  panel.append(title,list,close);overlay.append(panel);overlay.onclick=e=>{if(e.target===overlay)dismiss()};
+  const dismiss=()=>{document.removeEventListener('nas-upload-progress',paint);overlay.remove()};
+  panel.append(title,hint,list,controls);overlay.append(panel);
+  overlay.onclick=e=>{if(e.target===overlay)dismiss()};
   document.body.append(overlay);paint();
-  const refresh=()=>{if(overlay.isConnected)paint()};
-  document.addEventListener('nas-upload-progress',refresh);
+  document.addEventListener('nas-upload-progress',paint);
 }
-function updateUploadJob(job,status,progress){
-  job.status=status;job.progress=progress;
-  document.dispatchEvent(new Event('nas-upload-progress'));
+function uploadOne(file,target,job){
+  return new Promise((resolve,reject)=>{
+    if(job.stage==='canceled'){reject(new DOMException('Отменено','AbortError'));return}
+    const xhr=new XMLHttpRequest(),form=new FormData();
+    job.xhr=xhr;
+    form.set('share',target.share);form.set('path',target.path);form.set('file',file);
+    xhr.open('POST','/api/upload');xhr.withCredentials=true;
+    xhr.setRequestHeader('X-CSRF-Token',csrf);
+    xhr.upload.onprogress=e=>{
+      if(job.stage!=='sending'||!e.lengthComputable)return;
+      uploadTick(job,e.loaded,e.total,performance.now());
+      el('progressFill').style.width=job.progress+'%';notifyUploadJobs();
+    };
+    xhr.upload.onload=()=>{
+      if(job.stage!=='sending')return;
+      job.sent=job.bytes;job.speed=0;job.remaining=null;
+      setUploadStage(job,'saving',99);
+      el('progressFill').style.width='99%';
+    };
+    xhr.onload=()=>{
+      job.xhr=null;
+      if(xhr.status>=200&&xhr.status<300){resolve();return}
+      let reason='HTTP '+xhr.status;
+      try{reason=JSON.parse(xhr.responseText).detail||reason}catch{}
+      reject(Error(String(reason)));
+    };
+    xhr.onerror=()=>{job.xhr=null;reject(Error('Сетевая ошибка'))};
+    xhr.onabort=()=>{
+      job.xhr=null;setUploadStage(job,'canceled');
+      reject(new DOMException('Отменено','AbortError'));
+    };
+    setUploadStage(job,'sending',0);xhr.send(form);
+  });
 }
-function uploadOne(file,target,job){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();const data=new FormData();data.set('share',target.share);data.set('path',target.path);data.set('file',file);xhr.open('POST','/api/upload');xhr.withCredentials=true;xhr.setRequestHeader('X-CSRF-Token',csrf);xhr.upload.onprogress=e=>{if(e.lengthComputable){const progress=Math.round(e.loaded/e.total*100);el('progressFill').style.width=progress+'%';updateUploadJob(job,'Передача',progress)}};xhr.onload=()=>xhr.status>=200&&xhr.status<300?resolve():reject(Error('HTTP '+xhr.status));xhr.onerror=()=>reject(Error('Сетевая ошибка'));xhr.send(data)})}
 async function uploadFiles(files){
   if(!shares.length||!files.length)return;
-  const target=await chooseUploadDestination(files);
+  if(uploadBatchBusy){message('Дождитесь завершения текущей загрузки');showUploadCenter();return}
+  uploadBatchBusy=true;
+  let target=null,success=0,failed=0;
+  try{
+    target=await chooseUploadDestination(files);
+    if(!target)return;
+    const jobs=files.map(file=>({name:file.name,bytes:file.size,stage:'queued',progress:0,
+      sent:0,speed:0,remaining:null,sampleAt:0,sampleBytes:0,xhr:null,error:''}));
+    uploadQueue.push(...jobs);
+    if(uploadQueue.length>100)uploadQueue.splice(0,uploadQueue.length-100);
+    const bar=el('uploadProgress');bar.classList.remove('hidden');
+    notifyUploadJobs(true);showUploadCenter();
+    try{
+      for(let i=0;i<files.length;i++){
+        const job=jobs[i];
+        if(job.stage==='canceled')continue;
+        setUploadStage(job,'preparing',0);
+        message('Загрузка в '+target.share+'/'+target.path+': '+job.name);
+        el('progressFill').style.width='0';
+        try{
+          await uploadOne(files[i],target,job);
+          success++;setUploadStage(job,'done',100);
+        }catch(e){
+          if(job.stage==='canceled'||e.name==='AbortError')setUploadStage(job,'canceled');
+          else{failed++;job.error=e.message;setUploadStage(job,'failed')}
+        }
+      }
+    }finally{bar.classList.add('hidden')}
+  }finally{uploadBatchBusy=false;notifyUploadJobs(true)}
   if(!target)return;
-  const bar=el('uploadProgress');bar.classList.remove('hidden');
-  let success=0;
-  const jobs=files.map(file=>({name:file.name,status:'Ожидание',progress:0}));
-  uploadQueue.push(...jobs);
-  document.dispatchEvent(new Event('nas-upload-progress'));
-  for(let i=0;i<files.length;i++){
-    const file=files[i],job=jobs[i];updateUploadJob(job,'Подготовка',0);
-    message('Загрузка в '+target.share+'/'+target.path+': '+file.name);
-    el('progressFill').style.width='0';
-    try{await uploadOne(file,target,job);success++;updateUploadJob(job,'Готово',100)}catch(e){updateUploadJob(job,'Ошибка: '+e.message,job.progress);alert('Ошибка загрузки '+file.name+': '+e.message)}
-  }
-  bar.classList.add('hidden');
   const destination=target.share+'/'+target.path;
   if(allPhotosMode&&success)await loadGlobalPage(true);
-  else if(target.share===selected&&target.path===dir)await refresh();
-  message('Загружено '+success+' из '+files.length+' в '+destination);
+  else if(target.share===selected&&target.path===dir&&success)await refresh();
+  message('Загружено '+success+' из '+files.length+' в '+destination+
+    (failed?' · Ошибок: '+failed+' (см. центр загрузок)':''));
   if(success){
-    const open=await askDialog({
-      title:'Загрузка завершена',
+    const open=await askDialog({title:'Загрузка завершена',
       text:'Загружено '+success+' из '+files.length+' в '+destination+'. Открыть папку?',
-      confirm:'Открыть папку'
-    });
+      confirm:'Открыть папку'});
     if(open){
-      leaveGlobalGallery();
-      selected=target.share;dir=target.path;
-      el('search').value='';renderShares();
-      await refresh();
+      leaveGlobalGallery();selected=target.share;dir=target.path;
+      el('search').value='';renderShares();await refresh();
     }
   }
 }

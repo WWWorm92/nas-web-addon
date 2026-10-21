@@ -1,3 +1,11 @@
+## 0.22.22
+
+- Improve the upload center with transfer speed, estimated remaining time and bytes sent, plus a separate server-side SMB saving state. Do not show completion until /api/upload responds successfully.
+- Allow canceling queued files and in-flight browser upload requests, with per-file and cancel-all controls. No deceptive cancellation after the upload body was fully sent, when SMB write may already be running.
+- Make the upload center accessible in both file browser and gallery on desktop/mobile while files are being uploaded. Throttle progress UI refresh and prevent competing upload batches.
+- Keep existing SMB permissions, server upload endpoint, photo/EXIF index, gallery and on-disk files untouched.
+- Add tests for upload progress, cancellation safety and successful/error responses.
+
 ## 0.22.21
 
 - Improve desktop file manager without changing its layout: Ctrl+A selects visible files, Ctrl+C and Ctrl+X copy/cut selected files into an in-app buffer, and Ctrl+V copies or moves them into the open folder. The buffer is kept only for the current authenticated page session; the system clipboard is untouched.

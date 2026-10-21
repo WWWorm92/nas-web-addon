@@ -432,6 +432,8 @@ jobs:
         run: node nas_web/tests/gallery_virtual.test.cjs
       - name: File manager shortcut and drag-and-drop tests
         run: node nas_web/tests/file_manager_ui.test.cjs
+      - name: Upload transfer progress and cancellation tests
+        run: node nas_web/tests/upload_center.test.cjs
       - name: Recycle, restore, and 14-day retention regressions
         run: |
           PYTHONPATH=nas_web python - <<'PY'
