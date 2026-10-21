@@ -1,3 +1,12 @@
+## 0.22.26
+
+- Virtualize folders containing more than 160 files in the file manager (grid and list layouts). Render only nearby rows while retaining the complete folder metadata for selection, sorting, file actions and navigation. Reuse mounted tile nodes and re-observe lazy thumbnails after a scroll update.
+- Measure the browser's actual file row height and responsive columns to preserve scroll range. Update the virtual viewport on scroll and on window/container resize. Keep the independent full-photo gallery virtualizer intact.
+- Speed up returning to recently opened folders using a bounded 12-entry, 15-second browser-memory cache of folder metadata. Every open still issues a fresh authenticated SMB list request, and revoked/inaccessible folders are cleared on error. Cache and pending requests are invalidated across sign-in and sign-out.
+- Prevent stale responses from an earlier folder request from replacing the current directory. Restore saved scroll positions immediately for a cached parent folder and after authoritative SMB refresh.
+- Add regression tests for 10,000-file folders, virtual spacer height, grid/mobile layouts, bounded cache, cross-share isolation and live SMB revalidation.
+- No changes to SMB backend, ACLs, photo indexing, recycle bin, login sessions, HTTPS, or stored files.
+
 ## 0.22.25
 
 - Automatically refresh the unified gallery while it is open: check the existing photo index every 45 seconds, and refresh its first page and full month timeline when file names or EXIF dates have changed.
