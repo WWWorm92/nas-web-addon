@@ -19,6 +19,7 @@ from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, 
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse, RedirectResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
+from starlette.requests import ClientDisconnect
 
 logger = logging.getLogger('nasweb')
 from collections import deque
@@ -717,44 +718,101 @@ def google_picker_import(request: Request, payload: dict,
     return {"job_id": job, "total": len(items)}
 
 
-@app.post("/api/import/google/takeout")
-async def google_takeout_upload(request: Request, share: str, path: str,
-                                x_csrf_token: str = Header(default="")):
+# Takeout archives now upload in small independently retriable requests.
+# This works around mobile/proxy interruptions that previously raised
+# ClientDisconnect during a single multi-gigabyte request.
+def _takeout_max_size():
+    return max(1, min(4096, int(opts.get("max_import_mb", 2048)))) * 1024 * 1024
+
+
+@app.post("/api/import/google/takeout/start")
+def google_takeout_start(request: Request, payload: dict,
+                         x_csrf_token: str = Header(default="")):
     check_origin(request)
     u = protected(request, x_csrf_token)
-    share, folder = _import_folder(u, share, path)
-    max_bytes = max(1, min(4096, int(opts.get("max_import_mb", 2048)))) * 1024 * 1024
+    share, folder = _import_folder(u, payload.get("share", ""), payload.get("path", ""))
     try:
-        owner = google_photos_import.reserve(u["name"])
+        return google_photos_import.begin_takeout_upload(
+            u["name"], share, folder, payload.get("name", ""),
+            payload.get("size"), payload.get("mtime", 0), _takeout_max_size())
     except ValueError as exc:
         fail(409, str(exc))
-    google_photos_import.ARCHIVES.mkdir(mode=0o700, parents=True, exist_ok=True)
-    archive = None
+
+
+@app.get("/api/import/google/takeout/status")
+def google_takeout_transfer_status(request: Request, upload_id: str):
+    u = user_for(request)
     try:
-        # Raw request stream, NOT Multipart UploadFile: a multi-GB Takeout ZIP
-        # must not be materialized twice by Starlette's multipart parser.
-        fd, filename = tempfile.mkstemp(prefix="takeout-", suffix=".zip",
-                                         dir=google_photos_import.ARCHIVES)
-        archive = Path(filename)
-        amount = 0
-        with os.fdopen(fd, "wb") as output:
-            async for chunk in request.stream():
-                amount += len(chunk)
-                if amount > max_bytes:
-                    fail(413, "Архив больше лимита max_import_mb; экспортируйте Takeout частями")
-                output.write(chunk)
-        if not zipfile.is_zipfile(archive):
-            fail(400, "Нужен ZIP-архив Google Takeout")
+        return google_photos_import.takeout_upload_status(u["name"], upload_id)
+    except ValueError as exc:
+        fail(404, str(exc))
+
+
+@app.put("/api/import/google/takeout/chunk")
+async def google_takeout_chunk(request: Request, upload_id: str, offset: int,
+                               x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    declared = request.headers.get("content-length")
+    if declared:
+        try:
+            if int(declared) > google_photos_import.TAKEOUT_CHUNK_SIZE:
+                fail(413, "Часть архива слишком большая")
+        except ValueError:
+            fail(400, "Некорректный Content-Length")
+    received = bytearray()
+    try:
+        async for piece in request.stream():
+            received.extend(piece)
+            if len(received) > google_photos_import.TAKEOUT_CHUNK_SIZE:
+                fail(413, "Часть архива слишком большая")
+    except ClientDisconnect:
+        # A client/proxy can disappear while a chunk is in transit. No bytes
+        # were written, so the browser can check the saved offset and retry.
+        logger.info("Google Takeout: client disconnected during a chunk")
+        fail(400, "Передача части архива прервана, можно повторить")
+    try:
+        return google_photos_import.write_takeout_chunk(
+            u["name"], upload_id, offset, bytes(received))
+    except google_photos_import.TakeoutOffsetMismatch as exc:
+        fail(409, str(exc))
+    except ValueError as exc:
+        fail(400, str(exc))
+
+
+@app.post("/api/import/google/takeout/finish")
+def google_takeout_finish(request: Request, payload: dict,
+                          x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    identifier = payload.get("upload_id", "")
+    # Validate the user's current SMB permissions again, not just those saved
+    # at upload creation. A stale session cannot bypass the current share ACL.
+    try:
+        destination = google_photos_import.takeout_upload_status(u["name"], identifier)
+        # Read the original target exclusively through an owner-scoped DB row.
+        with google_photos_import.connect() as db:
+            record = google_photos_import._takeout_record(db, u["name"], identifier)
+            share, folder = _import_folder(u, record["share"], record["folder"])
+        claimed = google_photos_import.complete_takeout_upload(u["name"], identifier)
+    except ValueError as exc:
+        fail(409, str(exc))
+    archive = claimed["archive"]
+    try:
         job = google_photos_import.new_job(u["name"], "takeout", share, folder)
         threading.Thread(target=_import_worker, args=(u, job, share, folder),
                          kwargs={"archive": archive}, daemon=True,
                          name="nasweb-takeout-import").start()
-        return {"job_id": job, "size": amount}
+        return {"job_id": job, "size": claimed["size"]}
     except Exception:
-        if archive is not None:
-            archive.unlink(missing_ok=True)
-        google_photos_import.release(owner)
+        archive.unlink(missing_ok=True)
+        google_photos_import.release(claimed["owner"])
         raise
+
+
+@app.post("/api/import/google/takeout")
+def google_takeout_legacy(request: Request):
+    fail(410, "Откройте обновлённую страницу NAS Web для загрузки Takeout частями")
 
 
 @app.post("/api/logout")
