@@ -106,6 +106,8 @@ jobs:
         run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_profiles.py'
       - name: Google Photos import and OAuth regression tests
         run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_google_photos_import.py'
+      - name: Large Takeout option range and profile UI contract
+        run: node nas_web/tests/large_takeout_limit.test.cjs
       - name: Resumable Google Takeout upload regression
         run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_takeout_resumable.py'
       - name: Takeout browser-side disconnect resume
