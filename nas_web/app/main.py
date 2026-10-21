@@ -359,34 +359,7 @@ def admin_diagnostics(request: Request):
                 OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp')""",
                 (time.time(),)).fetchone()[0]
         unique=db.execute("SELECT COUNT(*) FROM (SELECT 1 FROM photos GROUP BY share,path,size,modified)").fetchone()[0]
-        # The gallery status is per SMB user; the admin overview is across
-        # ALL indexes. Expose separate totals without exposing usernames or
-        # granting SMB file access to the administrator.
-        per_owner=db.execute("""
-            SELECT owner,COUNT(*) AS total,
-              SUM(CASE WHEN taken IS NOT NULL THEN 1 ELSE 0 END) AS dated,
-              SUM(CASE WHEN exif_checked=0 AND
-                (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR
-                 lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')
-                THEN 1 ELSE 0 END) AS pending,
-              SUM(CASE WHEN exif_checked=1 AND taken IS NULL AND
-                (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR
-                 lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')
-                THEN 1 ELSE 0 END) AS checked_without_date
-            FROM photos GROUP BY owner
-            ORDER BY owner
-        """).fetchall()
-        per_owner_denied={
-            row["owner"]:row["count"] for row in db.execute("""
-                SELECT p.owner,COUNT(*) AS count FROM exif_denied d
-                JOIN photos p ON p.owner=d.owner AND p.share=d.share
-                  AND p.path=d.path AND p.size=d.size AND p.modified=d.modified
-                WHERE p.exif_checked=0 AND d.retry_after>?
-                  AND (lower(p.name) LIKE '%.jpg' OR lower(p.name) LIKE '%.jpeg'
-                    OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp')
-                GROUP BY p.owner
-            """,(time.time(),)).fetchall()
-        }
+        per_owner=gallery_index.summaries_by_owner(db)
     try:
         current_owner=gallery_index.key(user_for(request)["name"])
     except HTTPException:
@@ -394,11 +367,11 @@ def admin_diagnostics(request: Request):
     owner_rows=sorted(per_owner,key=lambda row:(row["owner"]!=current_owner,row["owner"]))
     user_indexes=[]
     for index,row in enumerate(owner_rows,1):
-        blocked=per_owner_denied.get(row["owner"],0)
+        blocked=row["blocked"]
         user_indexes.append({
             "label":"Текущий SMB-пользователь" if row["owner"]==current_owner else f"Индекс пользователя {index}",
             "current":row["owner"]==current_owner,
-            "photos":row["total"],"dated":row["dated"],
+            "photos":row["photos"],"dated":row["dated"],
             "checked_without_date":row["checked_without_date"],
             "pending":row["pending"],
             "blocked":blocked,"actionable":max(0,row["pending"]-blocked)
