@@ -7,6 +7,7 @@ import os
 import secrets
 import tempfile
 import threading
+import zipfile
 import time
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
@@ -14,8 +15,8 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth, pdf_frame_policy, video_posters, profiles
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
+from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth, pdf_frame_policy, video_posters, profiles, google_photos_import
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse, RedirectResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
 
@@ -576,6 +577,177 @@ def profile_folder_remove(request: Request, payload: dict, x_csrf_token: str = H
     except PermissionError as exc:
         fail(403, str(exc))
     return profiles.get(u["name"], u.get("shares", []))
+
+
+
+# Photo import is scoped to the active SMB profile and never changes Simple NAS
+# users or their ACLs. OAuth secrets are loaded from private HA add-on options.
+def _import_folder(u, share, path):
+    return profile_folder_location(u, {"share": share, "path": path})
+
+
+def _import_worker(user, job_id, share, folder, archive=None, picked=None):
+    owner = google_photos_import.owner_of(user["name"])
+    try:
+        with smb(user) as conn:
+            check_share(conn, share)
+            # Always validate the SMB target before writing. A read-only folder
+            # will fail at storeFile; no fallback administrative account exists.
+            conn.listPath(share, full(folder), timeout=30)
+            if picked is None:
+                result = google_photos_import.process_takeout(
+                    archive, conn, user["name"], share, folder, job_id)
+            else:
+                result = google_photos_import.process_picked(
+                    picked, conn, user["name"], opts, share, folder, job_id)
+        google_photos_import.job_update(job_id, status="completed",
+                                       detail="Импорт завершён" +
+                                              (" с ошибками" if result["failed"] else ""))
+        if picked is not None:
+            try:
+                google_photos_import.delete_picker(user["name"], opts)
+            except Exception:
+                logger.info("Google Photos Picker session cleanup unavailable")
+    except Exception as exc:
+        logger.warning("Google Photos import interrupted: %s", type(exc).__name__)
+        google_photos_import.job_update(job_id, status="failed",
+                                       detail="Импорт прерван: " + type(exc).__name__)
+    finally:
+        if archive is not None:
+            try:
+                archive.unlink(missing_ok=True)
+            except OSError:
+                pass
+        google_photos_import.release(owner)
+
+
+@app.get("/api/import/google/status")
+def google_import_status(request: Request):
+    u = user_for(request)
+    return {"configured": google_photos_import.configured(opts),
+            "connected": google_photos_import.is_connected(
+                google_photos_import.owner_of(u["name"])),
+            "jobs": google_photos_import.jobs(u["name"])}
+
+
+@app.post("/api/import/google/oauth/start")
+def google_oauth_start(request: Request, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    try:
+        url = google_photos_import.oauth_url(u["name"], opts)
+    except ValueError as exc:
+        fail(400, str(exc))
+    return {"url": url}
+
+
+@app.get("/api/import/google/oauth/callback")
+def google_oauth_callback(state: str = "", code: str = "", error: str = ""):
+    # SameSite=Strict SMB session cookies are intentionally NOT sent after a
+    # cross-site Google redirect. A one-time, short-lived state binds this
+    # callback to the user who originally initiated OAuth from their profile.
+    if error:
+        return RedirectResponse("/?nas_google=denied", status_code=303)
+    try:
+        google_photos_import.finish_oauth(state, code, opts)
+    except Exception as exc:
+        logger.warning("Google OAuth callback rejected: %s", type(exc).__name__)
+        return RedirectResponse("/?nas_google=failed", status_code=303)
+    return RedirectResponse("/?nas_google=connected", status_code=303)
+
+
+@app.post("/api/import/google/disconnect")
+def google_import_disconnect(request: Request, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    google_photos_import.disconnect(u["name"])
+    return {"ok": True}
+
+
+@app.post("/api/import/google/picker/start")
+def google_picker_start(request: Request, x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    try:
+        return google_photos_import.create_picker(u["name"], opts)
+    except ValueError as exc:
+        fail(400, str(exc))
+
+
+@app.get("/api/import/google/picker/status")
+def google_picker_status(request: Request):
+    u = user_for(request)
+    try:
+        return google_photos_import.picker_status(u["name"], opts)
+    except ValueError as exc:
+        fail(400, str(exc))
+
+
+@app.post("/api/import/google/picker/import")
+def google_picker_import(request: Request, payload: dict,
+                         x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    share, folder = _import_folder(u, payload.get("share", ""), payload.get("path", ""))
+    try:
+        items = google_photos_import.picked_items(u["name"], opts)
+    except ValueError as exc:
+        fail(400, str(exc))
+    if not items:
+        fail(400, "В Google Фото не выбрано ни одного файла")
+    try:
+        owner = google_photos_import.reserve(u["name"])
+    except ValueError as exc:
+        fail(409, str(exc))
+    try:
+        job = google_photos_import.new_job(u["name"], "picker", share, folder)
+        threading.Thread(target=_import_worker, args=(u, job, share, folder),
+                         kwargs={"picked": items}, daemon=True,
+                         name="nasweb-picker-import").start()
+    except Exception:
+        google_photos_import.release(owner)
+        raise
+    return {"job_id": job, "total": len(items)}
+
+
+@app.post("/api/import/google/takeout")
+async def google_takeout_upload(request: Request, share: str, path: str,
+                                x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    share, folder = _import_folder(u, share, path)
+    max_bytes = max(1, min(4096, int(opts.get("max_import_mb", 2048)))) * 1024 * 1024
+    try:
+        owner = google_photos_import.reserve(u["name"])
+    except ValueError as exc:
+        fail(409, str(exc))
+    google_photos_import.ARCHIVES.mkdir(mode=0o700, parents=True, exist_ok=True)
+    archive = None
+    try:
+        # Raw request stream, NOT Multipart UploadFile: a multi-GB Takeout ZIP
+        # must not be materialized twice by Starlette's multipart parser.
+        fd, filename = tempfile.mkstemp(prefix="takeout-", suffix=".zip",
+                                         dir=google_photos_import.ARCHIVES)
+        archive = Path(filename)
+        amount = 0
+        with os.fdopen(fd, "wb") as output:
+            async for chunk in request.stream():
+                amount += len(chunk)
+                if amount > max_bytes:
+                    fail(413, "Архив больше лимита max_import_mb; экспортируйте Takeout частями")
+                output.write(chunk)
+        if not zipfile.is_zipfile(archive):
+            fail(400, "Нужен ZIP-архив Google Takeout")
+        job = google_photos_import.new_job(u["name"], "takeout", share, folder)
+        threading.Thread(target=_import_worker, args=(u, job, share, folder),
+                         kwargs={"archive": archive}, daemon=True,
+                         name="nasweb-takeout-import").start()
+        return {"job_id": job, "size": amount}
+    except Exception:
+        if archive is not None:
+            archive.unlink(missing_ok=True)
+        google_photos_import.release(owner)
+        raise
 
 
 @app.post("/api/logout")
