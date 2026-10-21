@@ -1296,6 +1296,16 @@ def permanently_delete_trashed_item(request: Request, payload: dict,
         check_share(conn, share)
         parent = path.rpartition("/")[0]
         try:
+            # Verify every ancestor (including the trash root) is a real
+            # directory, not a reparse point that could lead outside trash.
+            current_parent = ""
+            for part in path.split("/")[:-1]:
+                ancestor = entry_in_folder(conn, share, current_parent, part)
+                if ancestor is None or not ancestor.isDirectory:
+                    fail(404, "Папка корзины не найдена")
+                if getattr(ancestor, "isReparsePoint", False):
+                    fail(409, "Нельзя удалять объекты через папку-ссылку")
+                current_parent = (current_parent + "/" if current_parent else "") + part
             entry = entry_in_folder(conn, share, parent, basename)
             if entry is None:
                 fail(404, "Объект уже отсутствует в корзине")
