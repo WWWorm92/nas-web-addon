@@ -496,12 +496,23 @@ def logout(request: Request, x_csrf_token: str = Header(default="")):
 
 @app.get("/api/list")
 def list_files(request: Request, share: str, path: str = ""):
-    with smb(user_for(request)) as conn:
+    from . import trash_store
+    u = user_for(request)
+    folder = path_ok(path)
+    with smb(u) as conn:
         check_share(conn, share)
         try:
-            files = conn.listPath(share, full(path), timeout=30)
+            files = conn.listPath(share, full(folder), timeout=30)
         except Exception:
             fail(403, "Не удалось прочитать папку")
+    if folder == ".recycle":
+        # Legacy items have no recorded original path. Give them a fresh,
+        # explicit 14-day retention period on their first authenticated view.
+        with trash_store.OP_LOCK:
+            try:
+                trash_store.register_legacy(u, share, files)
+            except Exception:
+                logger.exception("Unable to register existing recycle-bin items")
     return {"items": [{"name": f.filename, "directory": f.isDirectory, "size": f.file_size,
                        "modified": f.last_write_time} for f in files if f.filename not in (".", "..")]}
 
