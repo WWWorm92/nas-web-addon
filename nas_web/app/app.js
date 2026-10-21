@@ -786,7 +786,14 @@ async function renameItem(f){const name=await askDialog({title:'Переимен
 const isTrashItemPath=path=>path.startsWith('.recycle/')&&path.length>'.recycle/'.length;
 async function restoreItem(f){
   if(dir!=='.recycle')return;
-  await mutate('trash/restore',{path:fpath(f.name)});
+  try{
+    const data=await api('/api/trash/restore',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({share:selected,path:fpath(f.name)})
+    });
+    await refresh();
+    message('Восстановлено: '+data.restored_to);
+  }catch(e){alert(e.message)}
 }
 async function deleteItem(f){
   const path=fpath(f.name),insideTrash=isTrashItemPath(path);
