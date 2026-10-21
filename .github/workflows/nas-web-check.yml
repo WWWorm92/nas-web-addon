@@ -441,7 +441,10 @@ jobs:
           assert 'TRASH_CLEANUP_STOP.wait(3600)' in main
           assert "check_origin(request)" in main
           assert 'check_share(conn, share)' in main
-          assert 'trash_store.forget(share, trash_name)' in main
+          assert 'trash_store.forget(share, root_name)' in main
+          assert 'trash_store.forget(share, basename)' in main
+          assert 'path.split("/")' in main
+          assert "dir.startsWith('.recycle/')" in js
           assert "isTrashItemPath" in js
           assert "trash:'<path" in js
           assert "restoreItem(f)" in js and "trash/restore" in js
