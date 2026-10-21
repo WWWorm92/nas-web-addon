@@ -185,7 +185,14 @@
  .desktopQuickAction small{display:none}
  .desktopQuickArrow{display:none}
 }
-@media(max-width:760px){
+@media(min-width:701px) and (max-width:760px){
+ /* Tablet/compact desktop must also have a way out of the gallery. */
+ .desktopTopNav{display:flex;align-items:center;gap:4px;margin-right:auto;padding:3px;background:var(--panel2);border-radius:11px}
+ .desktopNavBtn{background:transparent;border:0;border-radius:9px;padding:8px 10px;min-height:38px;font-size:12px}
+ .desktopNavBtn.navSelected{background:var(--accentbg);color:var(--accent)}
+ #app.globalGalleryOpen .desktopGalleryBack{display:inline-flex;align-items:center;min-height:38px}
+}
+@media(max-width:700px){
  .desktopTopNav,.sidebarQuickLinks,.desktopGalleryBack,#desktopHomeOverview{display:none!important}
 }
 
