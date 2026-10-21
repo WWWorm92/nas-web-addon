@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth
+from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth, file_index
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -514,6 +514,121 @@ def logout(request: Request, x_csrf_token: str = Header(default="")):
     r.delete_cookie("nas_session", path="/")
     r.delete_cookie("nas_remember", path="/")
     return r
+
+
+# Global filename search: a separate SQLite index, never reset gallery/EXIF data.
+SEARCH_BACKGROUND_LOCK = threading.Lock()
+SEARCH_BACKGROUND = {}
+
+
+def _search_background(u, owner, shares):
+    deadline = time.monotonic() + 4 * 3600
+    try:
+        with smb(u) as conn:
+            while time.monotonic() < deadline:
+                row = file_index.pending(owner, shares)
+                if row is None:
+                    file_index.finish_if_done(owner, shares)
+                    return
+                share, folder = row["share"], row["path"]
+                try:
+                    # Scanning only filename metadata; yield to thumbnails and photos.
+                    wait_for_background_media_idle()
+                    check_share(conn, share)
+                    entries = conn.listPath(share, full(folder), timeout=20)
+                except Exception as exc:
+                    logger.info("Search index: inaccessible SMB folder skipped (%s)", type(exc).__name__)
+                    file_index.record_folder(owner, share, folder, failed=True)
+                else:
+                    file_index.record_folder(owner, share, folder, entries)
+                time.sleep(0.08)
+        logger.info("Search index worker stopped after scan deadline")
+    except Exception:
+        logger.exception("Search indexing failed")
+    finally:
+        with SEARCH_BACKGROUND_LOCK:
+            SEARCH_BACKGROUND.pop(owner, None)
+
+
+@app.get("/api/search/status")
+def search_index_status(request: Request):
+    u = user_for(request)
+    owner = gallery_index.key(u["name"])
+    shares = tuple(u.get("shares", ()))
+    with SEARCH_BACKGROUND_LOCK:
+        worker = SEARCH_BACKGROUND.get(owner)
+        busy = worker is not None and worker.is_alive()
+    return {"busy": busy, **file_index.state(owner, shares)}
+
+
+@app.post("/api/search/index")
+def search_index_run(request: Request, refresh: bool = False,
+                     x_csrf_token: str = Header(default="")):
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    owner = gallery_index.key(u["name"])
+    shares = tuple(u.get("shares", ()))
+    if not shares:
+        fail(403, "Нет доступных SMB-папок")
+    with SEARCH_BACKGROUND_LOCK:
+        active = SEARCH_BACKGROUND.get(owner)
+        if active is not None and active.is_alive():
+            if refresh:
+                fail(409, "Индексирование файлов уже выполняется")
+        else:
+            if refresh:
+                file_index.refresh(owner, shares)
+            status = file_index.state(owner, shares)
+            if status["pending"]:
+                worker = threading.Thread(target=_search_background,
+                                          args=(dict(u),owner,shares),daemon=True,
+                                          name="nas-file-search-index")
+                SEARCH_BACKGROUND[owner] = worker
+                worker.start()
+    return file_index.state(owner, shares)
+
+
+@app.get("/api/search/files")
+def search_files(request: Request, q: str = "", kind: str = "all",
+                 offset: int = 0, limit: int = 20):
+    u = user_for(request)
+    q = q.strip()
+    if len(q) < 2 or len(q) > 120 or kind not in ("all","folder","photo","video","document"):
+        fail(400, "Введите от 2 до 120 символов и корректный тип файлов")
+    if offset < 0 or offset > 150000 or not (1 <= limit <= 40):
+        fail(400, "Некорректная страница поиска")
+    shares = tuple(u.get("shares", ()))
+    owner = gallery_index.key(u["name"])
+    if not shares:return {"items":[],"next_offset":offset,"has_more":False}
+    # A path seen in an old index is NEVER sufficient authorization. Verify
+    # current SMB access for every returned file or folder.
+    candidates = file_index.search(owner,shares,q,kind,offset,limit*3)
+    items = []
+    scanned = 0
+    try:
+        with smb(u) as conn:
+            for hit in candidates:
+                scanned += 1
+                try:
+                    check_share(conn,hit["share"])
+                    if hit["directory"]:
+                        # A directory is searchable only when it can be listed.
+                        conn.listPath(hit["share"],full(hit["path"]),timeout=12)
+                    else:
+                        conn.can_read(hit["share"],full(hit["path"]))
+                except Exception:
+                    continue
+                hit.pop("name_fold",None)
+                items.append(hit)
+                if len(items) >= limit:
+                    break
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Search SMB access verification failed: %s",type(exc).__name__)
+        fail(502,"Не удалось проверить доступ к найденным файлам")
+    return {"items":items,"next_offset":offset+scanned,
+            "has_more":len(candidates)==limit*3 or scanned<len(candidates)}
 
 @app.get("/api/list")
 def list_files(request: Request, share: str, path: str = ""):
