@@ -674,6 +674,29 @@ button:active{transform:scale(.975)}
 .profilePickFolders p{color:var(--muted);font-size:12px;margin:10px 0}
 .profilePickActions{display:flex;justify-content:flex-end;gap:8px;margin-top:5px}
 .profilePickActions button{flex:1;font-size:12px;min-height:44px}.profilePickActions button:disabled{opacity:.45;cursor:not-allowed}
+.profileImport{margin-top:24px;border-top:1px solid var(--border);padding-top:8px}
+.profileImport h3{font-size:17px;margin:15px 0 6px}
+.profileImportHeading p,.profileImportMethod p{font-size:12px;color:var(--muted);line-height:1.55;margin:0}
+.profileImportDestination{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px;border:1px solid var(--border);border-radius:12px;margin:16px 0}
+.profileImportDestination>div{min-width:0;display:flex;flex-direction:column;gap:4px}
+.profileImportDestination small{font-size:11px;color:var(--muted)}
+.profileImportDestination strong{font-size:12px;overflow-wrap:anywhere}
+.profileImportDestination button{font-size:12px;flex-shrink:0}
+.profileImportMethod{background:var(--panel2);border:1px solid var(--border);border-radius:13px;padding:14px;margin-top:10px;display:flex;flex-direction:column;gap:12px}
+.profileImportMethod strong{font-size:14px}
+.profileImportUpload{display:flex;align-items:center;justify-content:center;cursor:pointer;padding:12px;background:var(--accentbg);color:var(--accent);font-size:13px;font-weight:700;border:1px dashed var(--accent);border-radius:10px;min-height:44px}
+.profileImportOAuth{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.profileImportOAuth span{font-size:12px;color:var(--muted);margin-right:auto}
+.profileImportOAuth button,.profileImportMethod>button{font-size:12px;min-height:43px}
+.profileGooglePickerActions{display:flex;flex-direction:column;gap:9px;font-size:12px}
+.profileGooglePickerActions a{color:var(--accent);font-size:13px;overflow-wrap:anywhere}
+.profileGooglePickerActions span{color:var(--muted)}
+.profileGooglePickerActions button{min-height:44px}
+.profileImportJobs{margin-top:17px}.profileImportJobs>strong{font-size:13px}
+.profileImportJob{margin-top:8px;padding:10px;border-radius:9px;background:var(--panel2);font-size:12px;line-height:1.55;overflow-wrap:anywhere}
+.profileImportUploadProgress{display:flex;flex-direction:column;gap:7px;font-size:11px;color:var(--muted)}
+.profileImportUploadProgress progress{width:100%;height:8px;accent-color:var(--accent)}
+@media(max-width:450px){.profileImportDestination{align-items:stretch;flex-direction:column}.profileImportDestination button{width:100%}}
 @media(max-width:700px){#profileOverlay{padding:0;align-items:flex-end}.profilePanel{width:100%;max-height:94dvh;border-radius:22px 22px 0 0;padding:20px 18px calc(24px + env(safe-area-inset-bottom))}.profileFolder{flex-direction:column;align-items:stretch}.profileFolderActions{justify-content:flex-start}.profileFolderActions button{flex:1}}
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><label class="rememberRow" for="remember"><input id="remember" type="checkbox"><span>Запомнить меня <small>на 90 дней</small></span></label><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
@@ -721,6 +744,36 @@ button:active{transform:scale(.975)}
         <button type="button" id="profilePickConfirm" class="primary" disabled>Привязать эту папку</button>
       </div>
     </div>
+
+    <section class="profileImport" aria-labelledby="profileImportTitle">
+      <div class="profileImportHeading">
+        <h3 id="profileImportTitle">Импорт из Google Фото</h3>
+        <p>Фотографии сохраняются в выбранную SMB-папку и появляются в галерее. Файлы в Google Фото не удаляются.</p>
+      </div>
+      <div class="profileImportDestination">
+        <div><small>Папка назначения</small><strong id="profileImportPath">Не выбрана</strong></div>
+        <button id="profileImportChoose" type="button">Выбрать папку</button>
+      </div>
+      <div class="profileImportMethod">
+        <div><strong>Google Takeout</strong><p>Перенос всей библиотеки через ZIP-архивы, включая даты из JSON-метаданных. Можно выбрать несколько частей экспорта.</p></div>
+        <label class="profileImportUpload" for="profileTakeoutFiles">↑ Загрузить ZIP-архивы
+          <input id="profileTakeoutFiles" type="file" accept=".zip,application/zip" multiple hidden>
+        </label>
+        <div class="profileImportUploadProgress hidden" id="profileImportUploadProgress"><span id="profileImportUploadText">Загрузка архива…</span><progress id="profileImportUploadBar" max="100" value="0"></progress></div>
+      </div>
+      <div class="profileImportMethod">
+        <div><strong>Google Photos Picker</strong><p>Выбери отдельные фотографии в Google. Для подключения нужен Google OAuth Client ID и Secret в настройках аддона.</p></div>
+        <div class="profileImportOAuth"><span id="profileGoogleState">Проверяем подключение…</span><button id="profileGoogleConnect" type="button">Подключить Google</button><button id="profileGoogleDisconnect" type="button" class="hidden">Отключить</button></div>
+        <button id="profileGooglePickerStart" type="button" disabled>Выбрать фотографии в Google</button>
+        <div id="profilePickerActions" class="profileGooglePickerActions hidden">
+          <a id="profileGooglePickerLink" target="_blank" rel="noopener noreferrer">Открыть окно выбора Google Фото ↗</a>
+          <span id="profileGooglePickerStatus">Ожидаем завершения выбора…</span>
+          <button id="profileGoogleImportPicked" type="button" disabled>Импортировать выбранное</button>
+        </div>
+      </div>
+      <div class="profileImportJobs"><strong>Последние импорты</strong><div id="profileImportJobsList"></div></div>
+      <p id="profileImportMessage" class="profileMessage" role="status" aria-live="polite"></p>
+    </section>
     <p id="profileMessage" class="profileMessage" role="status" aria-live="polite"></p>
   </section>
 </div>
