@@ -636,9 +636,36 @@ button:active{transform:scale(.975)}
  .photoStage .videoPlayback video{width:100%;max-height:calc(100% - 75px)}
  .photoStage .videoQuickActions button{min-height:42px;min-width:72px}
 }
+
+/* Personal profiles and global photo-folder visibility. */
+.profileTrigger{display:inline-flex;align-items:center;gap:8px;border:0;background:transparent;padding:5px 7px;min-height:42px;border-radius:12px}
+.profileAvatar{width:33px;height:33px;display:grid;place-items:center;border-radius:12px;background:#4b80db;color:white;font-size:14px;font-weight:780;flex-shrink:0}
+.profileAvatar.big{width:64px;height:64px;border-radius:19px;font-size:28px}
+#profileOverlay{position:fixed;inset:0;z-index:90;background:#02060bbc;display:flex;align-items:center;justify-content:center;padding:16px}
+.profilePanel{background:var(--panel);border:1px solid var(--border);border-radius:22px;padding:24px;width:min(540px,100%);max-height:min(92dvh,900px);overflow-y:auto;box-shadow:0 25px 90px #0006}
+.profileHeading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.profileHeading h2{margin:3px 0 18px;font-size:23px}.profileKicker{color:var(--accent);font-size:10px;letter-spacing:1.6px;font-weight:750;margin:0}
+.profileHeading button{border:0;background:var(--panel2);min-width:40px;min-height:40px}
+.profileIdentity{display:flex;align-items:center;gap:15px;margin-bottom:18px}
+.profileIdentity strong{font-size:17px}.profileIdentity p{margin:5px 0 0;color:var(--muted);font-size:12px}
+#profileForm{display:flex;flex-direction:column;gap:9px;border-bottom:1px solid var(--border);padding-bottom:20px}
+#profileForm label,.profileLabel{font-size:12px;color:var(--muted);font-weight:650;margin:5px 0 0}
+#profileName{width:100%;min-height:44px}
+#profileSave{margin-top:7px;align-self:flex-start}
+.profileColors{display:flex;gap:10px;margin:3px 0 0}.profileColor{width:32px;height:32px;min-height:32px;border-radius:50%;border:2px solid transparent;padding:0}
+.profileColor.selected{outline:2px solid var(--text);outline-offset:3px}
+.profileFoldersHeading h3{font-size:17px;margin:20px 0 5px}.profileFoldersHeading p,.profileHint{color:var(--muted);font-size:12px;line-height:1.5;margin:0 0 14px}
+.profileFolders{display:flex;flex-direction:column;gap:8px}
+.profileFolder{display:flex;gap:12px;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:12px;padding:12px;min-width:0}
+.profileFolderInfo{min-width:0}.profileFolderInfo strong{display:block;font-size:13px;overflow-wrap:anywhere}.profileFolderInfo small{display:block;color:var(--muted);margin-top:4px;font-size:11px}
+.profileFolderActions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.profileFolderActions button{min-height:35px;padding:6px 9px;font-size:12px}
+.profileFolderActions .profileDanger{color:var(--danger)}
+.profileBindFolder{margin-top:14px;width:100%;border-style:dashed}
+.profileMessage{color:var(--accent);font-size:12px;min-height:16px;margin:12px 0 0}
+@media(max-width:700px){#profileOverlay{padding:0;align-items:flex-end}.profilePanel{width:100%;max-height:94dvh;border-radius:22px 22px 0 0;padding:20px 18px calc(24px + env(safe-area-inset-bottom))}.profileFolder{flex-direction:column;align-items:stretch}.profileFolderActions{justify-content:flex-start}.profileFolderActions button{flex:1}}
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><label class="rememberRow" for="remember"><input id="remember" type="checkbox"><span>Запомнить меня <small>на 90 дней</small></span></label><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
-<div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><nav class="desktopTopNav" aria-label="Разделы NAS Web"><button id="desktopFilesNav" class="desktopNavBtn navSelected" type="button"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 11h16M4 17h16"/><path d="M7 4v14M17 4v14" opacity=".32"/></svg></span> Файлы</button><button id="desktopPhotosNav" class="desktopNavBtn" type="button"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 3.5 3.5 3-3L21 18"/></svg></span> Фото</button></nav><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div><button id="desktopGalleryBack" class="desktopGalleryBack" type="button">← Вернуться к файлам</button></div>
+<div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><nav class="desktopTopNav" aria-label="Разделы NAS Web"><button id="desktopFilesNav" class="desktopNavBtn navSelected" type="button"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 11h16M4 17h16"/><path d="M7 4v14M17 4v14" opacity=".32"/></svg></span> Файлы</button><button id="desktopPhotosNav" class="desktopNavBtn" type="button"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 3.5 3.5 3-3L21 18"/></svg></span> Фото</button></nav><div class="topRight"><button id="profileTrigger" class="profileTrigger" type="button" aria-label="Мой профиль"><span id="profileAvatar" class="profileAvatar">?</span><span id="who"></span></button><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div><button id="desktopGalleryBack" class="desktopGalleryBack" type="button">← Вернуться к файлам</button></div>
 
 <div id="mobileGalleryHeader" class="mobileGalleryHeader"><strong>Фото</strong><div><button id="gallerySearchToggle" type="button" aria-label="Поиск фотографий">⌕</button><button id="gallerySettingsToggle" type="button" aria-label="Настройки галереи"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="var(--bg)"/><circle cx="16" cy="12" r="2" fill="var(--bg)"/><circle cx="10" cy="18" r="2" fill="var(--bg)"/></svg></button></div></div>
 <div id="gallerySettingsPanel" class="gallerySettingsPanel hidden"><div class="gallerySettingsTitle">Настройки галереи <button id="gallerySettingsClose" type="button" aria-label="Закрыть настройки">✕</button></div><div id="gallerySettingsContent"><button type="button" id="galleryRetryDates" class="hidden" aria-hidden="true" tabindex="-1">Повторно проверить даты (без сброса)</button></div></div>
@@ -656,6 +683,22 @@ button:active{transform:scale(.975)}
     <div class="mobileSheetHandle" aria-hidden="true"></div>
     <div class="mobileSheetHeading"><h2 id="mobileSheetTitle">Действия</h2><button type="button" id="mobileSheetClose" aria-label="Закрыть меню">✕</button></div>
     <div id="mobileSheetActions" class="mobileSheetActions"></div>
+  </section>
+</div>
+<div id="profileOverlay" class="hidden" role="presentation">
+  <section class="profilePanel" role="dialog" aria-modal="true" aria-labelledby="profileHeading">
+    <div class="profileHeading"><div><p class="profileKicker">NAS WEB · ЛИЧНЫЙ КАБИНЕТ</p><h2 id="profileHeading">Мой профиль</h2></div><button id="profileClose" type="button" aria-label="Закрыть профиль">✕</button></div>
+    <form id="profileForm">
+      <div class="profileIdentity"><span id="profileBigAvatar" class="profileAvatar big">?</span><div><strong id="profileLogin"></strong><p>Учётная запись Simple NAS</p></div></div>
+      <label for="profileName">Отображаемое имя</label><input id="profileName" maxlength="60" required autocomplete="nickname" placeholder="Как к вам обращаться">
+      <p class="profileLabel">Цвет аватара</p><div id="profileColors" class="profileColors" role="group" aria-label="Цвет аватара"></div>
+      <button class="primary" id="profileSave" type="submit">Сохранить профиль</button>
+    </form>
+    <div class="profileFoldersHeading"><div><h3>Мои папки</h3><p>Привязка определяет, кто управляет видимостью фотографий из папки. Файлы и SMB-права не меняются.</p></div></div>
+    <div id="profileFolders" class="profileFolders"></div>
+    <button id="profileBindFolder" type="button" class="profileBindFolder">＋ Привязать открытую папку</button>
+    <p id="profileHint" class="profileHint">Чтобы привязать новую папку, сначала откройте её в файловом менеджере.</p>
+    <p id="profileMessage" class="profileMessage" role="status" aria-live="polite"></p>
   </section>
 </div>
 <div id="destinationOverlay" class="hidden" role="presentation"><section class="destinationBox" role="dialog" aria-modal="true" aria-labelledby="destinationTitle"><h2 id="destinationTitle">Выберите папку назначения</h2><select id="destinationShare" aria-label="SMB-шара"></select><div id="destinationPath" class="destinationPath"></div><div id="destinationFolders" class="destinationFolders"></div><p id="destinationError" role="alert"></p><div class="destinationActions"><button id="destinationCancel" type="button">Отмена</button><button id="destinationApply" type="button" class="primary">Копировать сюда</button></div></section></div>
