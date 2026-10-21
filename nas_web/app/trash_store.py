@@ -91,6 +91,8 @@ def record_move(user, share, trash_name, original_path, directory, now=None):
                 directory=excluded.directory,
                 owner=excluded.owner
         """, (share,trash_name,original_path,now,int(bool(directory)),owner))
+        db.execute("DELETE FROM cleanup_credentials WHERE owner NOT IN "
+                   "(SELECT DISTINCT owner FROM trash_items)")
 
 
 def register_legacy(user, share, entries, now=None):
