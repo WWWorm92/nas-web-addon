@@ -28,11 +28,11 @@ async function load(){try{
  $('userStats').textContent=(s.user_indexes||[]).map((u,i)=>
    (u.current?'Текущий SMB-пользователь':u.label||('Индекс '+(i+1)))+
    ': '+u.photos.toLocaleString('ru')+' фото'+
-   '\\n  с EXIF-датой: '+u.dated.toLocaleString('ru')+
-   '\\n  проверено без даты: '+u.checked_without_date.toLocaleString('ru')+
-   '\\n  ожидают EXIF: '+u.actionable.toLocaleString('ru')+
+   '\n  с EXIF-датой: '+u.dated.toLocaleString('ru')+
+   '\n  проверено без даты: '+u.checked_without_date.toLocaleString('ru')+
+   '\n  ожидают EXIF: '+u.actionable.toLocaleString('ru')+
    (u.blocked?' (нет SMB-доступа: '+u.blocked.toLocaleString('ru')+')':'')
- ).join('\\n\\n')||'Нет пользовательских индексов';
+ ).join('\n\n')||'Нет пользовательских индексов';
  await events();
  }catch(e){msg(e.message)}
 }
