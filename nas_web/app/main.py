@@ -1385,39 +1385,49 @@ def stop_trash_cleanup():
 @app.post("/api/trash/restore")
 def restore_trashed_item(request: Request, payload: dict,
                         x_csrf_token: str = Header(default="")):
-    """Restore a top-level trash item to its original SMB path."""
-    from . import trash_store
+    """Restore an SMB trash file or folder to its previous path."""
+    from . import trash_store, trash_delete
     check_origin(request)
     u = protected(request, x_csrf_token)
     path = path_ok(payload.get("path", ""))
-    if not path.startswith(".recycle/") or len(path.split("/")) != 2:
-        fail(400, "Для восстановления выберите объект непосредственно в корзине")
+    if not trash_delete.within_recycle(path):
+        fail(400, "Выберите объект внутри корзины")
     share = payload.get("share", "")
-    trash_name = path.split("/", 1)[1]
+    parts = path.split("/")
+    root_name = parts[1]
+    basename = parts[-1]
+    parent = path.rpartition("/")[0]
     with trash_store.OP_LOCK, smb(u) as conn:
         check_share(conn, share)
         try:
-            _trash_root_entry(conn, share)
-            source = entry_in_folder(conn, share, ".recycle", trash_name)
+            _trash_ancestors(conn, share, path)
+            source = entry_in_folder(conn, share, parent, basename)
             if source is None:
                 fail(404, "Объект отсутствует в корзине")
-            metadata = trash_store.item(share, trash_name)
-            # Old items predate origin-path tracking. Restore them to the share
-            # root rather than guessing or overwriting unrelated directories.
-            destination = path_ok(metadata["original_path"]) if metadata and metadata["original_path"] else trash_name
+            if getattr(source, "isReparsePoint", False):
+                fail(409, "Восстановление папок-ссылок не поддерживается")
+            metadata = trash_store.item(share, root_name)
+            # For tracked trash, retain the entire original relative path,
+            # including for a file inside a deleted folder. Old untracked
+            # entries have no known origin and return to the share root.
+            original = metadata["original_path"] if metadata else None
+            destination = (
+                path_ok(original + ("/" + "/".join(parts[2:]) if len(parts)>2 else ""))
+                if original else basename
+            )
             if not destination or destination.startswith(".recycle/") or destination == ".recycle":
                 fail(409, "Некорректное исходное расположение")
-            parent, _, name = destination.rpartition("/")
-            if parent:
-                # SMB rename does not create missing parent directories.
+            target_parent, _, name = destination.rpartition("/")
+            if target_parent:
                 try:
-                    conn.listPath(share, full(parent))
+                    conn.listPath(share, full(target_parent))
                 except Exception:
-                    fail(409, "Исходная папка больше не существует. Создайте её перед восстановлением")
-            if entry_in_folder(conn, share, parent, name) is not None:
-                fail(409, "В исходной папке уже есть файл или папка с таким именем")
+                    fail(409, "Исходная папка больше не существует. Сначала восстановите её или создайте")
+            if entry_in_folder(conn, share, target_parent, name) is not None:
+                fail(409, "В папке назначения уже есть объект с таким именем")
             conn.rename(share, "/" + path, "/" + destination)
-            trash_store.forget(share, trash_name)
+            if len(parts) == 2:
+                trash_store.forget(share, root_name)
         except HTTPException:
             raise
         except Exception as exc:
