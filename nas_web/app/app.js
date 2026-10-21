@@ -528,7 +528,13 @@ menu.append(menuButton(isTrashItemPath(fpath(f.name))?'Удалить навсе
 menu.classList.remove('hidden');const rect=button.getBoundingClientRect(),mw=210,mh=220;menu.style.left=Math.max(8,Math.min(rect.left,innerWidth-mw-8))+'px';menu.style.top=(rect.bottom+mh>innerHeight?Math.max(8,rect.top-mh):rect.bottom+5)+'px'}
 function sortedFiltered(){let a=items.filter(f=>f.name.toLocaleLowerCase().includes(el('search').value.trim().toLocaleLowerCase()));const sort=el('sort').value;a.sort((x,y)=>Number(y.directory)-Number(x.directory)||(sort==='new'?Number(y.modified||0)-Number(x.modified||0):sort==='size'?Number(y.size)-Number(x.size):x.name.localeCompare(y.name,'ru')));return a}
 // Limit simultaneous thumbnail requests so phones don't saturate the NAS.
-const thumbQueue=[];let activeThumbs=0;const THUMB_CONCURRENCY=2;
+const thumbQueue=[];let activeThumbs=0;const THUMB_CONCURRENCY=3;
+const thumbInflight=new Map();
+function stopDetachedThumbnail(img){
+  photoObserver.unobserve(img);
+  const cancel=thumbInflight.get(img);
+  if(cancel){cancel();img.removeAttribute('src')}
+}
 function pumpThumbs(){
   if(previewIndex>=0)return; // Give foreground photo transfer bandwidth priority.
   while(activeThumbs<THUMB_CONCURRENCY && thumbQueue.length){
@@ -536,7 +542,14 @@ function pumpThumbs(){
     const img=thumbQueue.shift();
     if(!img.isConnected||!img.dataset.src)continue;
     activeThumbs++;
-    const done=()=>{activeThumbs--;pumpThumbs()};
+    let completed=false;
+    const done=()=>{
+      if(completed)return;
+      completed=true;thumbInflight.delete(img);
+      activeThumbs=Math.max(0,activeThumbs-1);
+      pumpThumbs();
+    };
+    thumbInflight.set(img,done);
     img.addEventListener('load',done,{once:true});
     img.addEventListener('error',done,{once:true});
     img.src=img.dataset.src;
@@ -709,7 +722,11 @@ function renderAllGallery(){
   }
   galleryRenderSignature=signature;thumbQueue.length=0;
   setGalleryColumns(galleryColumns);photoObserver.takeRecords();
-  for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);
+  // Reuse already loaded/in-flight <img> nodes during EXIF updates or paging.
+  // Recreating them used to cause every visible thumbnail to be fetched again.
+  const previousTiles=new Map([...grid.querySelectorAll('.galleryPhoto[data-photo-id]')]
+    .map(tile=>[tile.dataset.photoId,tile]));
+  const keptImages=new Set();
   grid.replaceChildren();grid.classList.remove('list');grid.classList.add('galleryMode');
   if(!allPhotos.length&&!allPhotoStatus){for(let i=0;i<12;i++){const sk=document.createElement('div');sk.className='photoSkeleton';grid.append(sk)}}
   el('galleryYears').classList.remove('hidden');
@@ -731,14 +748,27 @@ function renderAllGallery(){
     tile.addEventListener('touchend',()=>clearTimeout(hold));tile.addEventListener('touchcancel',()=>clearTimeout(hold));
     tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openPreview(f)}};
     const thumb=document.createElement('div');thumb.className='thumb';
-    const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';
-    img.onload=()=>img.classList.add('photoLoaded');
-    img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};
-    img.dataset.src=imageURL(f,false,f.folder,f.share);
+    const requestedSrc=imageURL(f,false,f.folder,f.share);
+    const oldTile=previousTiles.get(galleryId(f));
+    const previousImg=oldTile?.dataset.thumbSrc===requestedSrc?oldTile.querySelector('.thumb img'):null;
+    const img=previousImg||document.createElement('img');
+    if(previousImg){keptImages.add(img)}
+    else{
+      img.loading='lazy';img.decoding='async';img.alt='';
+      img.onload=()=>img.classList.add('photoLoaded');
+      img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};
+      img.dataset.src=requestedSrc;
+    }
+    tile.dataset.thumbSrc=requestedSrc;
     thumb.append(img);tile.append(thumb);
     // The source folder remains available in the photo details panel.
 
-    grid.append(tile);photoObserver.observe(img);
+    grid.append(tile);
+    if(img.dataset.src)photoObserver.observe(img);
+  }
+  for(const tile of previousTiles.values()){
+    const img=tile.querySelector('.thumb img');
+    if(img&&!keptImages.has(img))stopDetachedThumbnail(img);
   }
   renderGalleryYears(shown);updateGalleryPick();
   const status=allPhotoStatus;
