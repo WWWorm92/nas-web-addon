@@ -5,7 +5,7 @@ const source=fs.readFileSync('nas_web/app/app.js','utf8');
 const start=source.indexOf('// Poll lightweight gallery metadata while it is open.');
 const end=source.indexOf("let galleryRenderSignature='';",start);
 assert.ok(start>0&&end>start,'Watcher code exists');
-let revision=1,reloads=0,timelines=0,progress=0;
+let revision=1,reloads=0,timelines=0,progress=0,memoryUpdates=0;
 const events={};
 const browser={scrollY:1800,addEventListener:(type,fn)=>{events[type]=fn}};
 const page={hidden:false,addEventListener:(type,fn)=>{events[type]=fn}};
@@ -25,6 +25,7 @@ const env={
    watcher.setSeen(revision);
  },
  loadGlobalTimeline:async()=>{timelines++},
+ loadGalleryMemories:async()=>{memoryUpdates++},
  renderGlobalProgress:()=>{progress++}
 };
 const f=new Function(...Object.keys(env),source.slice(start,end)+
@@ -46,6 +47,7 @@ async function run(){
  await new Promise(resolve=>setTimeout(resolve,0));
  assert.equal(reloads,1);
  assert.equal(timelines,1);
+ assert.equal(memoryUpdates,1,'Refresh memory stories when photo index changes');
  assert.equal(watcher.getPending(),null);
  assert.equal(watcher.getSeen(),2);
  watcher.stopGalleryWatch();
