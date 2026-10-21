@@ -757,6 +757,7 @@ async function jumpToGlobalMonth(monthKey){
   const token=++allPhotoScanToken;
   allPhotoStartOffset=month.offset;allPhotoNextOffset=month.offset;
   allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryRenderSignature='';
+  resetGalleryVirtual();window.scrollTo({top:0,behavior:'instant'});
   render();
   while(allPhotoPageBusy&&allPhotosMode&&token===allPhotoScanToken){
     await new Promise(resolve=>setTimeout(resolve,80));
@@ -781,6 +782,7 @@ async function setGlobalGalleryOrder(order){
  allPhotoTimeline=[];allPhotoTimelineCheckedAt=0;
  allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryRenderSignature='';
  if(!allPhotosMode)return;
+ resetGalleryVirtual();window.scrollTo({top:0,behavior:'instant'});
  render();
  while(allPhotoPageBusy&&allPhotosMode&&token===allPhotoScanToken){
    await new Promise(resolve=>setTimeout(resolve,80));
@@ -862,7 +864,7 @@ async function enterGlobalGallery(){
   el('crumb').textContent='Все фотографии';
   el('globalGallerySummary').classList.remove('hidden');
   el('globalGallerySummary').classList.remove('detailsOpen');
-  updateMobileNav();render();
+  updateMobileNav();window.scrollTo({top:0,behavior:'instant'});render();
   await loadGlobalPage(true);
   if(allPhotosMode&&token===allPhotoScanToken){
     loadGlobalTimeline(token);
@@ -1230,7 +1232,7 @@ el('globalGalleryRescan').onclick=async()=>{
     scanAllPhotos(token);
   }
 };
-el('refresh').onclick=()=>allPhotosMode?el('globalGalleryRescan').click():refresh();el('search').oninput=render;el('sort').onchange=render;
+el('refresh').onclick=()=>allPhotosMode?el('globalGalleryRescan').click():refresh();el('search').oninput=()=>{if(allPhotosMode)window.scrollTo({top:0,behavior:'instant'});render()};el('sort').onchange=render;
 el('gridView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='grid';localStorage.setItem('nas_view',view);render()};
 el('listView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='list';localStorage.setItem('nas_view',view);render()};
 el('galleryView').onclick=()=>enterGlobalGallery();
