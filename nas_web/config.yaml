@@ -1,6 +1,6 @@
 name: NAS Web
 slug: nas_web
-version: "0.22.32"
+version: "0.22.33"
 description: SMB browser for Simple NAS (local testing only)
 startup: services
 boot: auto
@@ -22,7 +22,7 @@ options:
   google_client_id: ""
   google_client_secret: ""
   google_redirect_uri: ""
-  max_import_mb: 2048
+  max_import_mb: 8192
 schema:
   smb_host: str
   smb_port: port
@@ -33,4 +33,4 @@ schema:
   google_client_id: str?
   google_client_secret: str?
   google_redirect_uri: str?
-  max_import_mb: int(1,4096)
+  max_import_mb: int(1,32768)

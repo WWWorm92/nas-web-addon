@@ -1,3 +1,12 @@
+## 0.22.33
+
+- Allow **large Google Takeout ZIP files** up to 32 GiB per archive (configurable `max_import_mb: int(1,32768)`); new add-on installs default to 8192 MiB (8 GiB), enough for a 6.5 GB Takeout ZIP.
+- Before creating or resuming a ZIP upload, check actual free space on the add-on's **/data** volume, leaving 512 MiB headroom. If insufficient, return an actionable message instead of filling the Raspberry Pi storage. This is distinct from available SMB share space.
+- Display the current configured ZIP limit and usable temporary storage capacity inside **Profile → Google Takeout**; prevalidate oversized files before starting a transfer.
+- Distinguish invalid ZIP metadata from the configured size cap and disk space errors. Give users the specific `max_import_mb` setting and recommended values.
+- Preserve the resumable 1 MiB chunk mechanism and automatic temporary-file cleanup from 0.22.32. Add 6.5 GiB acceptance and low-space regression tests.
+- **Existing installations:** Home Assistant retains the previously saved `max_import_mb` option (often 2048), even after upgrading. Change this option to `8192` or `10240` in the NAS Web add-on configuration and restart before retrying large archives.
+
 ## 0.22.32
 
 - Fix Google Takeout ZIP uploads failing with `starlette.requests.ClientDisconnect` when browsers, proxies or mobile networks interrupt a large one-request transfer.

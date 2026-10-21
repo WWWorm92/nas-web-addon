@@ -5,6 +5,7 @@ import tempfile
 import time
 import unittest
 import zipfile
+from unittest.mock import patch
 from pathlib import Path
 
 from app import google_photos_import as imp
@@ -32,6 +33,34 @@ class ResumableTakeoutTests(unittest.TestCase):
 
     def new(self,size,username="alice",filename="Google Photos.zip",mtime=123,max_bytes=4096):
         return imp.begin_takeout_upload(username,"Photo","Photos",filename,size,mtime,max_bytes)
+
+    def test_large_6_point_5_gib_zip_passes_size_limit(self):
+        # Metadata is sufficient: don't allocate an actual multi-GiB file.
+        large_bytes=int(6.5*(1024**3))
+        disk={"free":12*1024**3,"total":32*1024**3,
+              "reserve":imp.TAKEOUT_SPOOL_RESERVE}
+        with patch.object(imp,"takeout_storage_info",return_value=disk):
+            session=self.new(large_bytes,max_bytes=8192*1024**2)
+            self.assertEqual(session["size"],large_bytes)
+            self.assertEqual(session["offset"],0)
+            self.assertTrue(imp._takeout_part(session["upload_id"]).exists())
+            resumed=self.new(large_bytes,max_bytes=8192*1024**2)
+            self.assertEqual(resumed["upload_id"],session["upload_id"])
+
+    def test_large_zip_low_spool_space_returns_actionable_error(self):
+        large_bytes=int(6.5*(1024**3))
+        disk={"free":3*1024**3,"total":8*1024**3,
+              "reserve":imp.TAKEOUT_SPOOL_RESERVE}
+        with patch.object(imp,"takeout_storage_info",return_value=disk):
+            with self.assertRaisesRegex(ValueError,"свободного места") as ctx:
+                self.new(large_bytes,max_bytes=8192*1024**2)
+        self.assertIn("/data",str(ctx.exception))
+        self.assertEqual(list(imp.ARCHIVES.glob("*.part")),[])
+
+    def test_size_limit_error_names_setting_and_can_be_raised(self):
+        large_bytes=int(6.5*(1024**3))
+        with self.assertRaisesRegex(ValueError,"max_import_mb"):
+            self.new(large_bytes,max_bytes=4096*1024**2)
 
     def test_restart_resume_replay_and_complete(self):
         payload=self.archive()
