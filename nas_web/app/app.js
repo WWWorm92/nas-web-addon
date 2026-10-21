@@ -730,8 +730,70 @@ const galleryVirtualResize=new ResizeObserver(()=>{
 });
 galleryVirtualResize.observe(el('entries'));
 
+
+// Poll lightweight gallery metadata while it is open. Completed indexes only
+// relist SMB folders periodically; no thumbnails or EXIF are scanned again.
+let galleryWatchTimer=null,galleryWatchBusy=false,galleryWatchEpoch=0;
+let gallerySeenRevision=null,galleryPendingRevision=null;
+const GALLERY_WATCH_INTERVAL=45000;
+function stopGalleryWatch(){
+  ++galleryWatchEpoch;
+  if(galleryWatchTimer!==null)clearInterval(galleryWatchTimer);
+  galleryWatchTimer=null;galleryWatchBusy=false;
+  gallerySeenRevision=null;galleryPendingRevision=null;
+}
+function galleryCanRefreshInPlace(){
+  return allPhotosMode&&!allPhotoSubsetMode&&previewIndex<0&&
+    window.scrollY<200&&!allPhotoPageBusy;
+}
+async function applyGalleryChange(){
+  if(galleryPendingRevision===null||!galleryCanRefreshInPlace())return;
+  const requested=galleryPendingRevision;
+  galleryPendingRevision=null;
+  await loadGlobalPage(true);
+  if(!allPhotosMode)return;
+  if(gallerySeenRevision!==null&&gallerySeenRevision>=requested){
+    loadGlobalTimeline(allPhotoScanToken);
+  }else{
+    galleryPendingRevision=requested;
+  }
+}
+async function watchGalleryChanges(){
+  if(!allPhotosMode||document.hidden||galleryWatchBusy)return;
+  galleryWatchBusy=true;
+  const epoch=galleryWatchEpoch;
+  try{
+    const status=await api('/api/gallery/scan',{method:'POST'});
+    if(!allPhotosMode||epoch!==galleryWatchEpoch)return;
+    allPhotoStatus=status;allPhotoTotal=status.total;
+    const revision=Number(status.revision);
+    if(Number.isFinite(revision)){
+      if(gallerySeenRevision===null)gallerySeenRevision=revision;
+      else if(revision!==gallerySeenRevision)galleryPendingRevision=revision;
+    }
+    if(galleryPendingRevision!==null)await applyGalleryChange();
+    else renderGlobalProgress();
+  }catch(err){
+    if(allPhotosMode&&epoch===galleryWatchEpoch)
+      console.warn('Gallery background sync:',err.message);
+  }finally{
+    if(epoch===galleryWatchEpoch)galleryWatchBusy=false;
+  }
+}
+function startGalleryWatch(){
+  stopGalleryWatch();
+  galleryWatchTimer=setInterval(watchGalleryChanges,GALLERY_WATCH_INTERVAL);
+}
+window.addEventListener('scroll',()=>{
+  if(galleryPendingRevision!==null&&galleryCanRefreshInPlace())applyGalleryChange();
+},{passive:true});
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden&&allPhotosMode)watchGalleryChanges();
+});
+
 let galleryRenderSignature='';
 function leaveGlobalGallery(){
+  stopGalleryWatch();
   galleryRenderSignature='';resetGalleryVirtual();clearGalleryPick();
   if(!allPhotosMode)return;
   if(previewIndex>=0)closePreview();
@@ -789,6 +851,8 @@ async function loadGlobalPage(reset=false){
     const data=await api('/api/gallery?'+qs({offset:start,limit:90,timezone_offset:String(new Date().getTimezoneOffset())}));
     if(!allPhotosMode||token!==allPhotoScanToken||allPhotoSubsetMode)return;
     allPhotoStatus=data;allPhotoTotal=data.total;
+    if(reset&&Number.isFinite(Number(data.revision)))
+      gallerySeenRevision=Number(data.revision);
     allPhotoNextOffset=start+data.items.length;
     if(reset)allPhotos=data.items;else{
       const known=new Set(allPhotos.map(f=>f.share+'|'+f.path));
@@ -852,6 +916,7 @@ async function enterGlobalGallery(){
   el('globalGallerySummary').classList.remove('hidden');
   el('globalGallerySummary').classList.remove('detailsOpen');
   updateMobileNav();window.scrollTo({top:0,behavior:'instant'});render();
+  startGalleryWatch();
   await loadGlobalPage(true);
   if(allPhotosMode&&token===allPhotoScanToken){
     loadGlobalTimeline(token);
@@ -1162,8 +1227,14 @@ async function uploadFiles(files){
   }finally{uploadBatchBusy=false;notifyUploadJobs(true)}
   if(!target)return;
   const destination=target.share+'/'+target.path;
-  if(allPhotosMode&&success)await loadGlobalPage(true);
-  else if(target.share===selected&&target.path===dir&&success)await refresh();
+  if(allPhotosMode&&success){
+    if(galleryCanRefreshInPlace()){
+      await loadGlobalPage(true);
+      loadGlobalTimeline(allPhotoScanToken);
+    }else{
+      galleryPendingRevision=(gallerySeenRevision??0)+1;
+    }
+  }else if(target.share===selected&&target.path===dir&&success)await refresh();
   message('Загружено '+success+' из '+files.length+' в '+destination+
     (failed?' · Ошибок: '+failed+' (см. центр загрузок)':''));
   if(success){
