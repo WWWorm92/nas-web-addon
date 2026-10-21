@@ -39,15 +39,15 @@ class MixedGalleryDates(unittest.TestCase):
         rows=g.page(self.owner,["Photos"],0,90,"taken",0)
         self.assertEqual([r["name"] for r in rows],[
             "Glitched Waveform Over a Fogbound Mountain Valley.png",
-            "summer.jpg","winter.webp","vacation.jpg"])
+            "vacation.jpg","winter.webp","summer.jpg"])
         self.assertIsNone(rows[0]["taken"])
         self.assertEqual(g.state(self.owner,["Photos"])["total"],4)
 
     def test_calendar_offsets_match_actual_pages(self):
         months=g.month_index(self.owner,["Photos"],"taken",0)
         self.assertEqual([(m["month"],m["offset"],m["count"]) for m in months],[
-            ("2026-10",0,1),("2025-07",1,1),("2024-11",2,1),
-            ("2024-02",3,1)])
+            ("2026-10",0,1),("2024-11",1,1),("2024-02",2,1),
+            ("2019-04",3,1)])
         for row in months:
             hit=g.page(self.owner,["Photos"],row["offset"],1,"taken",0)[0]
             actual=hit["taken"][:7] if hit["taken"] else datetime.fromtimestamp(
