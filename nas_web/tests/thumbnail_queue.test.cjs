@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('nas_web/app/app.js', 'utf8');
 const start = source.indexOf('// Limit simultaneous thumbnail requests');
-const end = source.indexOf("let galleryRenderSignature='';", start);
+const end = source.indexOf('/* Keep only visible gallery rows', start);
 assert.ok(start !== -1 && end > start, 'scheduler markers present');
 const starts = [];
 class MockIntersectionObserver {
