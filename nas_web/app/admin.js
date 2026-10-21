@@ -11,12 +11,12 @@ $('create').onclick=async()=>{try{await req('/api/admin/setup',{setup_key:$('key
 $('enter').onclick=async()=>{try{const r=await req('/api/admin/login',{password:$('password').value});csrf=r.csrf;$('password').value='';$('login').hidden=true;$('dashboard').hidden=false;msg('');await load()}catch(e){msg(e.message)}};
 async function load(){try{
  const s=await req('/api/admin/diagnostics');
- $('stats').textContent='Уникальных файлов в индексе: '+s.unique_photo_files.toLocaleString('ru')+
+ $('stats').textContent='Уникальных файлов по SMB-пути: '+s.unique_photo_files.toLocaleString('ru')+
  '\nЗаписей по пользователям: '+s.gallery_index_rows.toLocaleString('ru')+
  '\nОбщий размер записей: '+fmt(s.gallery_index_bytes)+' (возможны дубли)'+
  '\nЗаписей с EXIF-датой: '+s.gallery_dated.toLocaleString('ru')+
  '\nЗаписей проверено без даты: '+s.checked_exif_without_date.toLocaleString('ru')+
- '\nEXIF ждут проверки: '+s.pending_exif_available.toLocaleString('ru')+
+ '\nEXIF ждут проверки (все пользователи): '+s.pending_exif_available.toLocaleString('ru')+
  '\nEXIF недоступны по SMB (пауза 24 ч): '+s.pending_exif_denied.toLocaleString('ru')+
  '\nВсего ещё без проверки: '+s.pending_exif.toLocaleString('ru')+
  '\nПользователей в индексе: '+s.indexed_users+
@@ -25,6 +25,14 @@ async function load(){try{
  '\nКэш миниатюр: '+s.thumbnail_cache.files+' файлов · '+s.thumbnail_cache.size_mb+' МБ'+
  '\nСвободно в хранилище аддона: '+fmt(s.data_disk.free)+
  '\nВремя сервера: '+s.server_time;
+ $('userStats').textContent=(s.user_indexes||[]).map((u,i)=>
+   (u.current?'Текущий SMB-пользователь':u.label||('Индекс '+(i+1)))+
+   ': '+u.photos.toLocaleString('ru')+' фото'+
+   '\\n  с EXIF-датой: '+u.dated.toLocaleString('ru')+
+   '\\n  проверено без даты: '+u.checked_without_date.toLocaleString('ru')+
+   '\\n  ожидают EXIF: '+u.actionable.toLocaleString('ru')+
+   (u.blocked?' (нет SMB-доступа: '+u.blocked.toLocaleString('ru')+')':'')
+ ).join('\\n\\n')||'Нет пользовательских индексов';
  await events();
  }catch(e){msg(e.message)}
 }
