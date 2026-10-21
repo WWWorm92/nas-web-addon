@@ -125,6 +125,70 @@
  #app:not(.globalGalleryOpen) .items:not(.galleryMode) .details{padding:5px 10px}
  #app:not(.globalGalleryOpen) .items:not(.galleryMode) .more{min-height:44px}
 }
+
+/* 0.22.12: desktop work area and always-visible navigation */
+.desktopTopNav,.sidebarQuickLinks,.desktopHomeOverview,.desktopGalleryBack{display:none}
+@media(min-width:761px){
+ #app .top{height:70px;min-height:70px;padding:0 26px;gap:28px}
+ .desktopTopNav{display:flex;align-items:center;gap:5px;margin-right:auto;
+   padding:4px;background:var(--panel2);border:1px solid var(--border);border-radius:13px}
+ .desktopNavBtn{background:transparent;border:1px solid transparent;display:flex;align-items:center;gap:8px;
+   color:var(--muted);font-size:13px;font-weight:650;min-height:38px;padding:8px 17px;border-radius:10px}
+ .desktopNavBtn.navSelected{color:var(--accent);background:var(--accentbg);border-color:var(--border)}
+ .desktopNavBtn:hover:not(.navSelected){color:var(--text);background:var(--panel)}
+ #app .sidebar{width:236px;padding:25px 12px}
+ .sidebarQuickLinks{display:flex;flex-direction:column;gap:5px;margin-bottom:23px;
+   padding-bottom:23px;border-bottom:1px solid var(--border)}
+ .sidebarQuickLinks .sidebarTitle{margin-bottom:7px}
+ .sidebarSectionButton{display:flex;align-items:center;gap:11px;width:100%;min-height:44px;
+   text-align:left;border:1px solid transparent;background:transparent;color:var(--muted);
+   padding:10px 13px;border-radius:12px;font-weight:650}
+ .sidebarSectionButton:hover{background:var(--panel2);color:var(--text)}
+ .sidebarSectionButton.navSelected{background:var(--accentbg);color:var(--accent);border-color:var(--border)}
+ .sidebarLinkIcon{font-size:20px;width:26px;line-height:1;text-align:center}
+ #app .workspace{padding:28px clamp(22px,3vw,46px);max-width:1800px}
+ #app .head{align-items:center;min-height:44px}
+ #app .head .path{font-size:24px;letter-spacing:-.55px}
+ #app .eyebrow{display:block;font-size:10px;font-weight:800;letter-spacing:1.35px;
+   color:var(--muted);margin:0 0 5px}
+ .desktopGalleryBack{min-height:39px;border:1px solid var(--border);border-radius:11px;
+   background:var(--panel2);padding:8px 15px;font-size:13px;font-weight:650;
+   align-items:center;gap:8px}
+ #app.globalGalleryOpen .desktopGalleryBack{display:inline-flex}
+ #app.globalGalleryOpen .desktopGalleryBack:hover{background:var(--accentbg);color:var(--accent)}
+ #app.globalGalleryOpen .globalGallerySummary:not(.detailsOpen) .globalGalleryActions{display:none}
+ #app .desktopHomeOverview:not(.hidden){display:block;background:linear-gradient(115deg,var(--accentbg) 0%,var(--panel) 50%,var(--panel) 100%);
+   border:1px solid var(--border);border-radius:20px;padding:25px 26px 19px;
+   margin:21px 0 20px;box-shadow:0 8px 26px #0000000a}
+ .desktopOverviewKicker{font-size:10px;font-weight:800;letter-spacing:1.4px;color:var(--accent)}
+ .desktopOverviewIntro h2{font-size:25px;line-height:1.25;letter-spacing:-.65px;margin:8px 0}
+ .desktopOverviewIntro p{font-size:13px;line-height:1.5;color:var(--muted);margin:0 0 19px}
+ .desktopQuickActions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+ .desktopQuickAction{display:flex;align-items:center;gap:11px;min-width:0;min-height:82px;
+   padding:12px 13px;text-align:left;background:var(--bg);border:1px solid var(--border);
+   border-radius:15px;transition:border-color .18s,transform .18s,background-color .18s}
+ .desktopQuickAction:hover{border-color:var(--accent);background:var(--panel2);transform:translateY(-1px)}
+ .desktopQuickIcon{display:grid;place-items:center;flex:0 0 39px;width:39px;height:39px;
+   border-radius:12px;background:var(--accentbg);color:var(--accent);font-size:23px}
+ .desktopQuickAction>span:nth-child(2){min-width:0}
+ .desktopQuickAction strong{display:block;font-size:13px;font-weight:750;line-height:1.35}
+ .desktopQuickAction small{display:block;margin-top:4px;color:var(--muted);font-size:11px;line-height:1.35}
+ .desktopQuickArrow{margin-left:auto;align-self:flex-start;font-size:14px;color:var(--muted)}
+ #app:not(.globalGalleryOpen) .controls{margin:17px 0 15px}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .item{border:1px solid var(--border);border-radius:15px;overflow:hidden}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .item:hover{border-color:var(--accent)}
+ #app:not(.globalGalleryOpen) .items:not(.galleryMode) .folderTile .thumb{background:var(--panel2)}
+}
+@media(min-width:761px) and (max-width:1120px){
+ .desktopQuickActions{gap:7px}
+ .desktopQuickAction{gap:8px;padding:10px}
+ .desktopQuickAction small{display:none}
+ .desktopQuickArrow{display:none}
+}
+@media(max-width:760px){
+ .desktopTopNav,.sidebarQuickLinks,.desktopGalleryBack,#desktopHomeOverview{display:none!important}
+}
+
 </style><style>
 #login{background:radial-gradient(ellipse 55% 50% at 50% 0%,#21395555,transparent 85%),var(--bg)}.authShell{width:min(430px,100%)}.authLogo{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:32px;font-size:23px;font-weight:780;letter-spacing:-.8px}.authAccent{color:var(--accent)}.loginCard{width:100%;border-radius:20px;padding:36px;background:var(--panel);box-shadow:0 25px 100px #0002}.authHeading h1{margin:10px 0;font-size:28px;font-weight:750;letter-spacing:-.7px}.authEyebrow{letter-spacing:2px;font-size:10px;color:var(--accent);font-weight:750}.authHeading .sub{margin:0;line-height:1.65}.loginCard form{gap:10px;margin-top:28px}.loginCard form label{font-size:12px;font-weight:650;color:var(--muted);margin-top:7px}.loginCard form input{min-height:48px;background:var(--bg);border-radius:10px}.passwordBox{display:flex;position:relative}.passwordBox input{padding-right:98px}.loginCard form .passwordBox{display:flex;align-items:center;gap:8px;min-width:0}.loginCard form .passwordBox input{flex:1;min-width:0;width:auto;padding-right:12px}.loginCard form .passwordBox button{position:static;flex:0 0 auto;width:auto;min-height:42px;border:0;background:transparent;font-size:12px;color:var(--accent);padding:7px 8px}.loginCard form button.primary{margin-top:13px;min-height:49px;display:flex;align-items:center;justify-content:center;gap:12px}.authFooter{text-align:center;margin-top:24px;color:var(--muted);font-size:11px}.loginCard #loginError{margin:12px 0 0}#dialogOverlay{position:fixed;inset:0;z-index:70;background:#0009;display:flex;align-items:center;justify-content:center;padding:16px}.dialogBox{width:min(420px,100%);border:1px solid var(--border);border-radius:20px;background:var(--panel);padding:25px;box-shadow:0 24px 90px #0005}.dialogIcon{background:var(--accentbg);color:var(--accent);width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:23px}.dialogBox h2{font-size:19px;margin:18px 0 8px}.dialogBox p{font-size:13px;line-height:1.6;color:var(--muted);margin:0 0 18px;overflow-wrap:anywhere}.dialogBox input{width:100%;margin:0 0 18px;min-height:46px}.dialogActions{display:flex;justify-content:flex-end;gap:9px}.dialogActions button{min-width:105px}.dialogActions .dangerConfirm{background:#a53b43;color:white;border-color:#a53b43}@media(max-width:650px){.authShell{max-width:430px}.loginCard{padding:27px 22px}.authLogo{margin-bottom:24px}.dialogBox{border-radius:18px}.dialogActions button{min-height:46px;flex:1}}
 </style><style>
