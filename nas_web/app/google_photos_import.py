@@ -479,6 +479,20 @@ def job_update(identifier, **values):
                    (*[values[key] for key in fields], time.time(), identifier))
 
 
+def mark_interrupted():
+    """Worker threads cannot survive an HA add-on restart.
+
+    Retain imported-media fingerprints and gallery dates, but mark incomplete
+    jobs honestly. Re-uploading an archive safely skips already copied media.
+    """
+    with connect() as db, db:
+        db.execute(
+            "UPDATE import_jobs SET status='interrupted', "
+            "detail='Аддон перезапущен: повторно загрузите архив для продолжения' "
+            "WHERE status IN ('queued','running')"
+        )
+
+
 def jobs(username):
     # Expired running status is not assumed successful after an addon restart.
     owner = owner_of(username)
