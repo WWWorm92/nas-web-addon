@@ -583,6 +583,7 @@ def profile_folder_remove(request: Request, payload: dict, x_csrf_token: str = H
 @app.on_event("startup")
 def recover_google_import_jobs():
     google_photos_import.mark_interrupted()
+    google_photos_import.cleanup_orphaned_archives()
 
 
 # Photo import is scoped to the active SMB profile and never changes Simple NAS
