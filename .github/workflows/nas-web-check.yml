@@ -342,87 +342,113 @@ jobs:
           node --check nas_web/app/app.js
           node --check nas_web/app/admin.js
           sh -n nas_web/entrypoint.sh
-      - name: Safe recycle-bin deletion regressions
+      - name: Recycle, restore, and 14-day retention regressions
         run: |
           PYTHONPATH=nas_web python - <<'PY'
-          from app import trash_delete as trash
+          import tempfile
+          import time
+          from pathlib import Path
+          from types import SimpleNamespace
+          from cryptography.fernet import Fernet
+          from app import trash_delete as trash, trash_store as store
 
           class Entry:
-              def __init__(self,name,folder=False,link=False):
+              def __init__(self,name,directory=False,link=False):
                   self.filename=name
-                  self.isDirectory=folder
+                  self.isDirectory=directory
                   self.isReparsePoint=link
 
-          class SMB:
+          class FakeSMB:
               def __init__(self,tree):
                   self.tree=tree
-                  self.operations=[]
+                  self.ops=[]
               def listPath(self,share,path):
                   assert share=="Photo"
                   return self.tree[path.lstrip("/")]
               def deleteFiles(self,share,path):
-                  self.operations.append(("file",path))
+                  self.ops.append(("file",path))
               def deleteDirectory(self,share,path):
-                  self.operations.append(("folder",path))
+                  self.ops.append(("dir",path))
 
           root=".recycle/Katya"
           tree={
               root:[Entry(".",True),Entry("..",True),
-                    Entry("one.jpg"),Entry("nested",True)],
-              root+"/nested":[Entry("two.jpg"),Entry("deeper",True)],
-              root+"/nested/deeper":[Entry("three.png")]
+                    Entry("first.jpg"),Entry("nested",True)],
+              root+"/nested":[Entry("second.jpg"),Entry("deep",True)],
+              root+"/nested/deep":[Entry("third.jpg")]
           }
-          smb=SMB(tree)
+          smb=FakeSMB(tree)
           files,dirs=trash.deletion_plan(smb,"Photo",root,True)
-          assert smb.operations==[], "Preflight must never delete"
-          assert set(files)=={root+"/one.jpg",root+"/nested/two.jpg",
-                             root+"/nested/deeper/three.png"}
+          assert len(files)==3 and len(dirs)==3 and not smb.ops
           assert dirs[-1]==root
-          result=trash.permanent_delete(smb,"Photo",root,True)
-          assert result==6
-          assert smb.operations[-1]==("folder","/"+root)
-          assert all(path.startswith("/.recycle/Katya") for _,path in smb.operations)
-          for bad in ["","foo","Katya/one.jpg",".recycle",
-                      ".recycle/../Photo",".recycle_bad/one.jpg"]:
+          assert trash.permanent_delete(smb,"Photo",root,True)==6
+          assert smb.ops[-1]==("dir","/"+root)
+          assert all(path.startswith("/.recycle/Katya") for _,path in smb.ops)
+          for bad in ("", ".recycle", "Photo/x", ".recycle/../Photo",
+                      ".recycle_trick/x", ".recycle/test:stream"):
               try:trash.deletion_plan(smb,"Photo",bad,False)
               except trash.TrashDeletionError:pass
-              else:raise AssertionError("Unsafe delete target allowed: "+bad)
-          bad_smb=SMB({root:[Entry("ok.jpg"),Entry("link",True,True)]})
-          try:trash.permanent_delete(bad_smb,"Photo",root,True)
+              else:raise AssertionError("Unsafe path accepted: "+bad)
+          link=FakeSMB({root:[Entry("file.jpg"),Entry("link",True,True)]})
+          try:trash.permanent_delete(link,"Photo",root,True)
           except trash.TrashDeletionError:pass
-          else:raise AssertionError("Directory link allowed")
-          assert not bad_smb.operations
-          bad_smb=SMB({root:[Entry("one.jpg"),Entry("two.jpg"),Entry("three.jpg")]})
-          original=trash.MAX_ENTRIES
-          trash.MAX_ENTRIES=2
-          try:trash.permanent_delete(bad_smb,"Photo",root,True)
-          except trash.TrashDeletionError:pass
-          else:raise AssertionError("Overflow allowed")
-          finally:trash.MAX_ENTRIES=original
-          assert not bad_smb.operations
-          print("Trash-only, nested, reparse, bounded and preflight delete rules passed")
+          else:raise AssertionError("Directory symlink accepted")
+          assert not link.ops
+          # No extra user-imposed cap of 5,000 entries or 64 levels.
+          big=FakeSMB({root:[Entry("f"+str(i)+".jpg") for i in range(5100)]})
+          assert len(trash.deletion_plan(big,"Photo",root,True)[0])==5100
+          assert not big.ops
+
+          with tempfile.TemporaryDirectory() as tmp:
+              store.DB=Path(tmp)/"trash.sqlite3"
+              key=Fernet.generate_key()
+              store._cipher=lambda: Fernet(key)
+              user={"name":"Katya","password":"test secret","shares":["Photo"]}
+              old=1234567890.
+              store.record_move(user,"Photo","summer.jpg","Katya/2018/summer.jpg",False,now=old)
+              legacy=[Entry("old-folder",True),Entry("summer.jpg")]
+              store.register_legacy(user,"Photo",legacy,now=old+1000)
+              tracked=store.item("Photo","summer.jpg")
+              unknown=store.item("Photo","old-folder")
+              assert tracked["original_path"]=="Katya/2018/summer.jpg"
+              assert tracked["deleted_at"]==old
+              assert unknown["original_path"] is None
+              assert unknown["deleted_at"]==old+1000
+              assert store.due(old+store.RETENTION_SECONDS-1)==[]
+              expired=store.due(old+store.RETENTION_SECONDS)
+              assert len(expired)==1 and expired[0]["trash_name"]=="summer.jpg"
+              assert store.credentials(expired[0])=={
+                  "name":"Katya","password":"test secret"}
+              store.forget("Photo","summer.jpg")
+              assert store.item("Photo","summer.jpg") is None
+              assert store.item("Photo","old-folder") is not None
+              store.forget("Photo","old-folder")
+              with store.connect() as db:
+                  assert not db.execute("SELECT 1 FROM cleanup_credentials").fetchone()
+          print("Recycle restoration metadata, unlimited folders and 14-day retention passed")
           PY
-      - name: Trash UI and authorization contracts
+      - name: Recycle API and UI contracts
         run: |
           python - <<'PY'
           from pathlib import Path
-          backend=Path("nas_web/app/main.py").read_text()
-          ui=Path("nas_web/app/app.js").read_text()
-          assert '@app.post("/api/trash/permanent-delete")' in backend
-          part=backend.split('@app.post("/api/trash/permanent-delete")')[1].split('@app.post("/api/delete")')[0]
-          assert "check_origin(request)" in part
-          assert "protected(request, x_csrf_token)" in part
-          assert "check_share(conn, share)" in part
-          assert "within_recycle(path)" in part
-          assert "payload.get(\"confirm\")" in part
-          assert "payload.get(\"confirm_name\")" in part
-          assert "trash_delete.permanent_delete" in part
-          assert 'for part in path.split("/")[:-1]' in part
-          assert '"isReparsePoint"' in part
-          assert "isTrashItemPath" in ui
-          assert "В корзину" in ui and "Удалить навсегда" in ui
-          assert "String(answer||'').toUpperCase()!=='УДАЛИТЬ'" in ui
-          print("Destructive operations require explicit trash path and confirmation")
+          main=Path("nas_web/app/main.py").read_text()
+          js=Path("nas_web/app/app.js").read_text()
+          assert '@app.post("/api/trash/restore")' in main
+          assert '@app.post("/api/trash/permanent-delete")' in main
+          assert 'record_move(u, share, trash_name, path' in main
+          assert 'register_legacy(u, share, files)' in main
+          assert 'def _trash_cleanup_worker():' in main
+          assert 'TRASH_CLEANUP_STOP.wait(3600)' in main
+          assert "check_origin(request)" in main
+          assert 'check_share(conn, share)' in main
+          assert 'trash_store.forget(share, trash_name)' in main
+          assert "isTrashItemPath" in js
+          assert "trash:'<path" in js
+          assert "restoreItem(f)" in js and "trash/restore" in js
+          assert "УДАЛИТЬ" not in js
+          assert "input:!!f.directory" not in js
+          assert "MAX_ENTRIES" not in Path("nas_web/app/trash_delete.py").read_text()
+          print("Trash restoration, automatic expiration and simple deletion confirmed")
           PY
       - name: Desktop navigation and minimalist layout contracts
         run: |
