@@ -30,8 +30,8 @@ class ResumableTakeoutTests(unittest.TestCase):
             z.writestr("Takeout/Google Photos/img.jpg",b"image contents")
         return buffer.getvalue()
 
-    def new(self,size,username="alice",filename="Google Photos.zip",mtime=123):
-        return imp.begin_takeout_upload(username,"Photo","Photos",filename,size,mtime,4096)
+    def new(self,size,username="alice",filename="Google Photos.zip",mtime=123,max_bytes=4096):
+        return imp.begin_takeout_upload(username,"Photo","Photos",filename,size,mtime,max_bytes)
 
     def test_restart_resume_replay_and_complete(self):
         payload=self.archive()
@@ -96,7 +96,7 @@ class ResumableTakeoutTests(unittest.TestCase):
             self.new(0)
         with self.assertRaises(ValueError):
             self.new(1,filename="../other.zip")
-        a=self.new(2 * imp.TAKEOUT_CHUNK_SIZE)
+        a=self.new(2 * imp.TAKEOUT_CHUNK_SIZE,max_bytes=3*imp.TAKEOUT_CHUNK_SIZE)
         with self.assertRaises(ValueError):
             imp.write_takeout_chunk("alice",a["upload_id"],0,b"x"*(imp.TAKEOUT_CHUNK_SIZE+1))
         self.assertEqual(imp.takeout_upload_status("alice",a["upload_id"])["offset"],0)
