@@ -1300,6 +1300,88 @@ def _trash_ancestors(conn, share, path):
         current = (current + "/" if current else "") + part
 
 
+TRASH_CLEANUP_STOP = threading.Event()
+TRASH_CLEANUP_THREAD = None
+
+
+def _trash_cleanup_once():
+    """Clean up entries 14+ days after being added to NAS Web's recycle bin.
+
+    Runs without a browser session: credentials are stored encrypted by
+    trash_store at deletion or first authenticated visit to a legacy bin.
+    No other SMB share paths are ever cleaned.
+    """
+    from . import trash_store, trash_delete
+    for record in trash_store.due():
+        if TRASH_CLEANUP_STOP.is_set():
+            break
+        username_password = trash_store.credentials(record)
+        if username_password is None:
+            logger.warning("Trash retention: encrypted SMB credential is unavailable")
+            continue
+        name, share = record["trash_name"], record["share"]
+        path = ".recycle/" + name
+        with trash_store.OP_LOCK:
+            current = trash_store.item(share, name)
+            if current is None or current["deleted_at"] != record["deleted_at"]:
+                continue
+            try:
+                user = dict(username_password, shares=[share])
+                with smb(user) as conn:
+                    check_share(conn, share)
+                    root = entry_in_folder(conn, share, "", ".recycle")
+                    if root is None:
+                        trash_store.forget(share, name)
+                        continue
+                    if not root.isDirectory or getattr(root, "isReparsePoint", False):
+                        logger.warning("Trash retention: recycle directory unavailable")
+                        continue
+                    entry = entry_in_folder(conn, share, ".recycle", name)
+                    if entry is None:
+                        trash_store.forget(share, name)
+                        continue
+                    if getattr(entry, "isReparsePoint", False):
+                        logger.warning("Trash retention: refusing directory link")
+                        continue
+                    trash_delete.permanent_delete(conn, share, path, bool(entry.isDirectory))
+                    trash_store.forget(share, name)
+                    logger.info("Trash retention: expired item removed from SMB recycle bin")
+            except trash_delete.TrashDeletionError:
+                logger.warning("Trash retention: unsafe SMB object skipped")
+            except Exception as exc:
+                logger.warning("Trash retention: SMB cleanup will retry: %s", type(exc).__name__)
+
+
+def _trash_cleanup_worker():
+    # Run shortly after startup and once an hour while NAS Web is running.
+    if TRASH_CLEANUP_STOP.wait(30):
+        return
+    while not TRASH_CLEANUP_STOP.is_set():
+        try:
+            _trash_cleanup_once()
+        except Exception:
+            logger.exception("Trash retention cleanup failed")
+        if TRASH_CLEANUP_STOP.wait(3600):
+            break
+
+
+@app.on_event("startup")
+def start_trash_cleanup():
+    global TRASH_CLEANUP_THREAD
+    from . import trash_store
+    with trash_store.connect():
+        pass
+    TRASH_CLEANUP_STOP.clear()
+    TRASH_CLEANUP_THREAD = threading.Thread(target=_trash_cleanup_worker,
+        name="nas-trash-retention", daemon=True)
+    TRASH_CLEANUP_THREAD.start()
+
+
+@app.on_event("shutdown")
+def stop_trash_cleanup():
+    TRASH_CLEANUP_STOP.set()
+
+
 @app.post("/api/trash/restore")
 def restore_trashed_item(request: Request, payload: dict,
                         x_csrf_token: str = Header(default="")):
