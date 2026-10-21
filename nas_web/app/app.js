@@ -674,7 +674,7 @@ function renderGalleryVirtualWindow(force=false){
     }else{
       const line=document.createElement('div');line.className='galleryVirtualRow';
       line.style.setProperty('--virtual-cols',String(v.cols));
-      line.style.setProperty('--virtual-gap',v.gap+'px');
+      line.style.setProperty('--virtual-gap',v.columnGap+'px');
       for(const f of row.photos){
         const tile=document.createElement('article');tile.className='item galleryPhoto';tile.tabIndex=0;tile.role='button';
         tile.title=f.share+' / '+f.path;tile.dataset.photoId=galleryId(f);
