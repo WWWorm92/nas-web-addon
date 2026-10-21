@@ -508,12 +508,12 @@ function updateMobileNav(){
 function hideMenu(){el('fileMenu').classList.add('hidden');el('fileMenu').replaceChildren()}
 function menuButton(text,fn,danger=false){const btn=document.createElement('button');btn.textContent=text;if(danger)btn.classList.add('danger');btn.onclick=()=>{hideMenu();fn()};return btn}
 function openMenu(f,button){
-const inTrashRoot=dir==='.recycle';
+const inTrash=dir==='.recycle'||dir.startsWith('.recycle/');
 if(isMobileLayout()){
   const actions=[];
   if(f.directory)actions.push({label:'▱ Открыть папку',run:()=>enterFolder(f.name)});
   else{if(canPreview(f))actions.push({label:'▣ Просмотреть',run:()=>openPreview(f)});actions.push({label:'↓ Скачать',run:()=>download(f)})}
-  if(inTrashRoot)actions.push({label:'↶ Восстановить',run:()=>restoreItem(f)});
+  if(inTrash)actions.push({label:'↶ Восстановить',run:()=>restoreItem(f)});
   actions.push({label:'✎ Переименовать',run:()=>renameItem(f)});
   actions.push({label:'□ Выделить',run:()=>toggleSelected(f.name)});
   actions.push({label:'× '+(isTrashItemPath(fpath(f.name))?'Удалить навсегда':'В корзину'),danger:true,run:()=>deleteItem(f)});
@@ -522,7 +522,7 @@ if(isMobileLayout()){
 const menu=el('fileMenu');menu.replaceChildren();
 if(f.directory)menu.append(menuButton('Открыть',()=>enterFolder(f.name)));
 else{if(canPreview(f))menu.append(menuButton('Просмотреть',()=>openPreview(f)));menu.append(menuButton('Скачать',()=>download(f)))}
-if(inTrashRoot)menu.append(menuButton('↶ Восстановить',()=>restoreItem(f)));
+if(inTrash)menu.append(menuButton('↶ Восстановить',()=>restoreItem(f)));
 menu.append(menuButton('Переименовать',()=>renameItem(f)));
 menu.append(menuButton(isTrashItemPath(fpath(f.name))?'Удалить навсегда':'В корзину',()=>deleteItem(f),true));
 menu.classList.remove('hidden');const rect=button.getBoundingClientRect(),mw=210,mh=220;menu.style.left=Math.max(8,Math.min(rect.left,innerWidth-mw-8))+'px';menu.style.top=(rect.bottom+mh>innerHeight?Math.max(8,rect.top-mh):rect.bottom+5)+'px'}
@@ -785,7 +785,7 @@ function askDialog({title,text,initial='',input=false,confirm='Продолжи�
 async function renameItem(f){const name=await askDialog({title:'Переименовать',text:'Введите новое имя файла или папки.',initial:f.name,input:true,confirm:'Сохранить'});if(name&&name!==f.name)await mutate('rename',{path:fpath(f.name),name})}
 const isTrashItemPath=path=>path.startsWith('.recycle/')&&path.length>'.recycle/'.length;
 async function restoreItem(f){
-  if(dir!=='.recycle')return;
+  if(dir!=='.recycle'&&!dir.startsWith('.recycle/'))return;
   try{
     const data=await api('/api/trash/restore',{
       method:'POST',headers:{'Content-Type':'application/json'},
