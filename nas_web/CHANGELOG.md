@@ -1,3 +1,9 @@
+## 0.22.14
+
+- Remove duplicated desktop sidebar section links ('My files' / 'All photos'); navigation lives only in the top Files/Photos tabs.
+- Keep the SMB shares listed in the left sidebar, visible gallery return control, and all file actions.
+- Mobile layout, photos, index, EXIF dates and SMB access permissions are unchanged.
+
 ## 0.22.13
 
 - Remove only the redundant desktop 'NAS WEB · МОЁ ОБЛАКО' overview card and its repeated quick action buttons.
