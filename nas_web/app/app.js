@@ -23,10 +23,10 @@ const canPreview=f=>!f.directory&&(imageExt.includes(ext(f.name))||videoExt.incl
 const size=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?(n/1048576).toFixed(1)+' MB':(n/1073741824).toFixed(2)+' GB';
 const fpath=name=>[dir,name].filter(Boolean).join('/');
 const fileUrl=(name,inline=false)=>'/api/file?'+qs({share:selected,path:fpath(name),inline:String(inline)});
-let loginGeneration=0;
+let loginGeneration=0,videoUser='';
 async function api(url,options={}){const r=await fetch(url,{credentials:'same-origin',...options,headers:{...(options.headers||{}),'X-CSRF-Token':csrf}});if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).detail||m}catch{}if(r.status===401&&url!=='/api/login'&&url!=='/api/me')showLogin();throw Error(m)}return r.json()}
-function showLogin(){resetFileManagerState();leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
-function showApp(user){resetFileManagerState();closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
+function showLogin(){videoUser='';resetFileManagerState();leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
+function showApp(user){videoUser=String(user.username||'').toLocaleLowerCase();resetFileManagerState();closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
 function renderShares(){el('shares').replaceChildren();for(const share of shares){const b=document.createElement('button');b.className='share'+(share===selected?' selected':'');b.append(icon('disk'),document.createTextNode(' '+share));b.onclick=()=>choose(share);el('shares').append(b)}}
 const selectedFiles=new Set();
 let selectionMode=false;
@@ -298,8 +298,106 @@ function resetZoom(){zoom=1;panX=0;panY=0}
 function setZoom(scale,cx=0,cy=0){const img=el('previewBody').querySelector('img');if(!img)return;const prev=zoom;zoom=Math.max(1,Math.min(5,scale));if(zoom===1){panX=panY=0}else if(prev!==zoom){panX+=(cx-panX)*(1-prev/zoom);panY+=(cy-panY)*(1-prev/zoom)}drawZoom()}
 function drawZoom(){const img=el('previewBody').querySelector('img');if(!img)return;const bound=el('photoStage').getBoundingClientRect(),w=(img.naturalWidth||bound.width),h=(img.naturalHeight||bound.height),fit=Math.min(bound.width/w,bound.height/h),cw=w*fit,ch=h*fit;panX=Math.max(-Math.max(0,(cw*zoom-bound.width)/2),Math.min(Math.max(0,(cw*zoom-bound.width)/2),panX));panY=Math.max(-Math.max(0,(ch*zoom-bound.height)/2),Math.min(Math.max(0,(ch*zoom-bound.height)/2),panY));img.style.transform='translate('+panX+'px,'+panY+'px) scale('+zoom+')'}
 function openPreview(f){el('preview').classList.remove('controlsHidden');if(f.directory)return enterFolder(f.name);filmNodes.clear();if(!canPreview(f))return download(f);shownShare=f.share||selected;shownDir=f.folder!==undefined?f.folder:dir;const photos=isPhoto(f);gallery=photos?(allPhotosMode?allPhotos:view==='gallery'?photoGalleryItems():items.filter(isPhoto)):[f];previewIndex=Math.max(0,gallery.findIndex(x=>x===f||(x.name===f.name&&x.share===f.share&&x.folder===f.folder)));el('preview').style.display='flex';document.body.style.overflow='hidden';showPreview(0)}
-function closePreview(){clearTimeout(tapTimer);el('preview').classList.remove('controlsHidden');viewerSerial++;clearOriginal();for(const job of photoFetches.values())job.controller.abort();photoFetches.clear();clearTimeout(preloadTimer);el('previewBody').replaceChildren();el('preview').style.display='none';el('filmstrip').replaceChildren();previewIndex=-1;gallery=[];filmNodes.clear();resetZoom();document.body.style.overflow='';pumpThumbs()}
-function showPreview(direction=0){if(previewIndex<0||!gallery.length)return;if(direction)swipeDirection=Math.sign(direction);const serial=++viewerSerial,f=gallery[previewIndex],box=el('previewBody');shownShare=f.share||shownShare;shownDir=f.folder!==undefined?f.folder:shownDir;clearOriginal();clearTimeout(preloadTimer);resetZoom();box.replaceChildren();el('viewerSpinner').textContent='Загрузка…';el('previewCounter').textContent=(previewIndex+1)+' / '+gallery.length;el('previewTitle').textContent=f.name;el('viewerSpinner').classList.toggle('hidden',!isPhoto(f));el('photoStage').style.touchAction=isPhoto(f)?'none':'auto';let node;if(isPhoto(f)){node=document.createElement('img');node.alt=f.name;node.draggable=false;node.className='arriving';node.style.setProperty('--slide',direction>0?'30px':direction<0?'-30px':'0px');node.onload=()=>{if(serial!==viewerSerial)return;el('viewerSpinner').classList.add('hidden');drawZoom()};node.onerror=()=>{if(serial===viewerSerial)el('viewerSpinner').textContent='Изображение недоступно'};const photoId=photoKey(f),cachedPhoto=photoCacheGet(photoId);
+function closePreview(){el('previewBody').querySelector('video')?._nasSavePosition?.();el('previewBody').querySelector('video')?.pause();clearTimeout(tapTimer);el('preview').classList.remove('controlsHidden');viewerSerial++;clearOriginal();for(const job of photoFetches.values())job.controller.abort();photoFetches.clear();clearTimeout(preloadTimer);el('previewBody').replaceChildren();el('preview').style.display='none';el('filmstrip').replaceChildren();previewIndex=-1;gallery=[];filmNodes.clear();resetZoom();document.body.style.overflow='';pumpThumbs()}
+
+/* Device-local video playback positions: per SMB user, path and file version.
+ * Only small metadata stored in the browser; video data remains on the NAS. */
+const VIDEO_PROGRESS_KEY='nasweb-video-positions-v1';
+function videoIsTrackable(f){
+  return ['mp4','m4v','mov','webm'].includes(ext(f.name));
+}
+function videoPositionKey(f,share,folder){
+  return JSON.stringify([videoUser,share,[folder,f.name].filter(Boolean).join('/'),
+    Number(f.size)||0,Number(f.modified)||0]);
+}
+function videoSavedPositions(){
+  try{
+    const data=JSON.parse(localStorage.getItem(VIDEO_PROGRESS_KEY)||'{}');
+    return data&&typeof data==='object'&&!Array.isArray(data)?data:{};
+  }catch{return {}}
+}
+function videoStoredPosition(key){
+  const record=videoSavedPositions()[key];
+  if(!record||!Number.isFinite(record.time)||!Number.isFinite(record.updated)||
+     Date.now()-record.updated>60*86400000)return 0;
+  return record.time;
+}
+function videoWritePosition(key,time,duration,ended=false){
+  if(!key)return;
+  const saved=videoSavedPositions();
+  if(ended||!Number.isFinite(time)||!Number.isFinite(duration)||
+     time<10||time>duration-10)delete saved[key];
+  else saved[key]={time:Math.floor(time),updated:Date.now()};
+  const records=Object.entries(saved).filter(([,v])=>v&&Date.now()-v.updated<60*86400000)
+    .sort((a,b)=>b[1].updated-a[1].updated).slice(0,150);
+  try{localStorage.setItem(VIDEO_PROGRESS_KEY,JSON.stringify(Object.fromEntries(records)))}catch{}
+}
+function videoTime(seconds){
+  if(!Number.isFinite(seconds))return '0:00';
+  const n=Math.floor(Math.max(0,seconds));
+  return (n>=3600?Math.floor(n/3600)+':':'')+
+    String(Math.floor(n/60)%60).padStart(n>=3600?2:1,'0')+':'+
+    String(n%60).padStart(2,'0');
+}
+function setupVideoPlayback(video,f){
+  const wrap=document.createElement('div');wrap.className='videoPlayback';
+  const label=document.createElement('div');label.className='videoPlaybackStatus hidden';
+  label.setAttribute('role','status');
+  const quick=document.createElement('div');quick.className='videoQuickActions';
+  function button(caption,title,run){
+    const btn=document.createElement('button');btn.type='button';
+    btn.textContent=caption;btn.title=title;btn.setAttribute('aria-label',title);
+    btn.onclick=run;quick.append(btn);return btn;
+  }
+  const seek=seconds=>{
+    if(!Number.isFinite(video.duration)||video.duration<=0)return;
+    video.currentTime=Math.min(Math.max(0,video.currentTime+seconds),video.duration);
+  };
+  button('↶ 10','Назад на 10 секунд',()=>seek(-10));
+  button('10 ↷','Вперёд на 10 секунд',()=>seek(10));
+  button('⛶','Полный экран',()=>{
+    if(video.requestFullscreen)video.requestFullscreen().catch(()=>{});
+    else if(video.webkitEnterFullscreen)video.webkitEnterFullscreen();
+  });
+  wrap.append(video,label,quick);
+  const key=videoPositionKey(f,shownShare,shownDir);
+  let lastPersist=0;
+  function save(force=false){
+    if(!force&&Date.now()-lastPersist<5000)return;
+    if(!Number.isFinite(video.duration)||video.duration<=0)return;
+    lastPersist=Date.now();
+    videoWritePosition(key,video.currentTime,video.duration,video.ended);
+  }
+  video._nasSavePosition=()=>save(true);
+  video.addEventListener('timeupdate',()=>save());
+  video.addEventListener('pause',()=>save(true));
+  video.addEventListener('ended',()=>videoWritePosition(key,0,video.duration,true));
+  video.addEventListener('loadedmetadata',()=>{
+    const previous=videoStoredPosition(key);
+    if(previous>=10&&Number.isFinite(video.duration)&&previous<video.duration-10){
+      // Seek; leave play/pause to the user's gesture and browser policy.
+      try{video.currentTime=previous}catch{return}
+      label.replaceChildren();
+      const notice=document.createElement('span');
+      notice.textContent='Продолжено с '+videoTime(previous);
+      const restart=document.createElement('button');restart.type='button';
+      restart.textContent='С начала';
+      restart.onclick=()=>{
+        video.currentTime=0;videoWritePosition(key,0,video.duration,true);
+        label.classList.add('hidden');
+      };
+      label.append(notice,restart);label.classList.remove('hidden');
+    }
+  });
+  if(ext(f.name)!=='mov'){
+    video.addEventListener('error',()=>{
+      const text='Не удалось воспроизвести видео. Возможно, браузер не поддерживает кодек. Оригинал можно скачать.';
+      label.replaceChildren();label.textContent=text;label.classList.remove('hidden');
+    });
+  }
+  return wrap;
+}
+function showPreview(direction=0){if(previewIndex<0||!gallery.length)return;if(direction)swipeDirection=Math.sign(direction);const serial=++viewerSerial,f=gallery[previewIndex],box=el('previewBody');shownShare=f.share||shownShare;shownDir=f.folder!==undefined?f.folder:shownDir;box.querySelector('video')?._nasSavePosition?.();box.querySelector('video')?.pause();clearOriginal();clearTimeout(preloadTimer);resetZoom();box.replaceChildren();el('viewerSpinner').textContent='Загрузка…';el('previewCounter').textContent=(previewIndex+1)+' / '+gallery.length;el('previewTitle').textContent=f.name;el('viewerSpinner').classList.toggle('hidden',!isPhoto(f));el('photoStage').style.touchAction=isPhoto(f)?'none':'auto';let node;if(isPhoto(f)){node=document.createElement('img');node.alt=f.name;node.draggable=false;node.className='arriving';node.style.setProperty('--slide',direction>0?'30px':direction<0?'-30px':'0px');node.onload=()=>{if(serial!==viewerSerial)return;el('viewerSpinner').classList.add('hidden');drawZoom()};node.onerror=()=>{if(serial===viewerSerial)el('viewerSpinner').textContent='Изображение недоступно'};const photoId=photoKey(f),cachedPhoto=photoCacheGet(photoId);
 node.src=cachedPhoto||imageURL(f,false);
 for(const [key,job] of photoFetches){if(key!==photoId){job.controller.abort();photoFetches.delete(key)}}
 if(cachedPhoto){photoPrefetch(serial)}
@@ -312,7 +410,33 @@ else {
     decoded.src=url;
   }).catch(err=>{if(serial===viewerSerial&&err.name!=='AbortError')el('viewerSpinner').textContent='Оригинал недоступен'});
 }
-}else if(ext(f.name)==='pdf'){node=document.createElement('iframe');node.title=f.name;node.src=fileUrl(f.name,true)}else{node=document.createElement(['mp3','ogg'].includes(ext(f.name))?'audio':'video');node.controls=true;node.playsInline=true;node.preload='metadata';node.src='/api/video?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/')});if(ext(f.name)==='mov'){let fallbackOffered=false;node.addEventListener('error',()=>{if(serial!==viewerSerial||fallbackOffered)return;fallbackOffered=true;const hint=document.createElement('div');hint.className='videoFallback';const p=document.createElement('p');p.textContent='Браузер не смог воспроизвести MOV. Можно преобразовать его в совместимый MP4 (первый запуск может занять несколько минут).';const btn=document.createElement('button');btn.textContent='Открыть как MP4';btn.onclick=()=>{btn.disabled=true;p.textContent='Подготавливаем MP4 на Raspberry Pi. Первый запуск может быть долгим…';node.addEventListener('error',()=>{p.textContent='Не удалось преобразовать видео. Возможно, файл слишком большой или кодек не поддерживается. Оригинал можно скачать кнопкой сверху.'},{once:true});node.addEventListener('loadeddata',()=>hint.remove(),{once:true});node.src='/api/mov-mp4?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/'),v:String(f.modified||0)+'-'+String(f.size||0)});node.load();node.play().catch(()=>{});btn.remove()};hint.append(p,btn);box.append(hint)},{once:true})}}box.append(node);renderFilmstrip()}
+}else if(ext(f.name)==='pdf'){node=document.createElement('iframe');node.title=f.name;node.src=fileUrl(f.name,true)}else{
+const audio=['mp3','ogg'].includes(ext(f.name));
+node=document.createElement(audio?'audio':'video');
+node.controls=true;node.playsInline=true;node.preload='metadata';
+const visual=audio?node:setupVideoPlayback(node,f);
+if(ext(f.name)==='mov'){
+  let fallbackOffered=false;
+  node.addEventListener('error',()=>{
+    if(serial!==viewerSerial||fallbackOffered)return;
+    fallbackOffered=true;
+    const hint=document.createElement('div');hint.className='videoFallback';
+    const p=document.createElement('p');
+    p.textContent='Браузер не смог воспроизвести MOV. Можно преобразовать его в совместимый MP4 (первый запуск может занять несколько минут).';
+    const btn=document.createElement('button');btn.type='button';btn.textContent='Открыть как MP4';
+    btn.onclick=()=>{
+      btn.disabled=true;p.textContent='Подготавливаем MP4 на Raspberry Pi. Первый запуск может быть долгим…';
+      node.addEventListener('error',()=>{p.textContent='Не удалось преобразовать видео. Возможно, файл слишком большой или кодек не поддерживается. Оригинал можно скачать кнопкой сверху.'},{once:true});
+      node.addEventListener('loadeddata',()=>hint.remove(),{once:true});
+      node.src='/api/mov-mp4?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/'),v:String(f.modified||0)+'-'+String(f.size||0)});
+      node.load();node.play().catch(()=>{});btn.remove();
+    };
+    hint.append(p,btn);box.append(hint);
+  },{once:true});
+}
+box.append(visual);
+node.src='/api/video?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/')});
+}if(node.tagName==='IFRAME'||node.tagName==='IMG')box.append(node);renderFilmstrip()}
 function renderFilmstrip(){const strip=el('filmstrip');if(gallery.length<2){strip.classList.add('hidden');return}strip.classList.remove('hidden');const from=Math.max(0,previewIndex-5),to=Math.min(gallery.length,previewIndex+6),fragment=document.createDocumentFragment();for(let i=from;i<to;i++){const f=gallery[i];let b=filmNodes.get(i);if(!b){b=document.createElement('button');b.type='button';b.setAttribute('aria-label','Фотография '+(i+1)+' из '+gallery.length);if(isPhoto(f)){const img=document.createElement('img');img.loading='lazy';img.alt='';img.src=imageURL(f,false,f.folder!==undefined?f.folder:shownDir,f.share||shownShare);b.append(img)}else{const mark=document.createElement('span');mark.textContent='▣';b.append(mark)}b.onclick=()=>{if(previewIndex!==i){const movement=i>previewIndex?1:-1;previewIndex=i;showPreview(movement)}};filmNodes.set(i,b)}b.classList.toggle('active',i===previewIndex);fragment.append(b)}strip.replaceChildren(fragment);const active=strip.querySelector('button.active');if(active)requestAnimationFrame(()=>active.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'}))}
 function stepPreview(offset){if(zoom>1||!gallery.length)return;const next=previewIndex+offset;if(next<0||next>=gallery.length)return;previewIndex=next;showPreview(offset)}
 function isMobileLayout(){return window.matchMedia('(max-width:760px)').matches}
@@ -1075,7 +1199,19 @@ tile.addEventListener('touchmove',e=>{if(e.touches.length&&Math.hypot(e.touches[
 tile.addEventListener('touchend',()=>clearTimeout(pressTimer));tile.addEventListener('touchcancel',()=>clearTimeout(pressTimer));
 tile.addEventListener('contextmenu',e=>{if(e.target.closest('.more'))return;e.preventDefault();openMenu(f,tile)});
 tile.addEventListener('click',e=>{if(longPressed){e.stopImmediatePropagation();longPressed=false}},true);
-const check=document.createElement('button');check.type='button';check.className='selectionCheck';check.title='Выделить '+f.name;check.setAttribute('aria-label','Выделить '+f.name);check.onclick=e=>{e.stopPropagation();toggleSelected(f.name)};tile.append(check);const thumb=document.createElement('div');thumb.className='thumb';thumb.title=f.directory?'Открыть папку':'Просмотреть файл';if(f.directory)thumb.append(icon(f.name==='.recycle'&&dir===''?'trash':'folder'));else if(imageExt.includes(ext(f.name))){const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';img.onload=()=>img.classList.add('photoLoaded');img.dataset.src=imageURL(f,false,dir,selected);photoObserver.observe(img);img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};thumb.append(img)}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name==='.recycle'?'Корзина':f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'':size(f.size);if(!f.directory)details.append(meta);if(view!=='gallery')tile.append(details);const more=document.createElement('button');more.className='more';more.textContent='⋯';more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);attachFileDrag(tile,f);
+const check=document.createElement('button');check.type='button';check.className='selectionCheck';check.title='Выделить '+f.name;check.setAttribute('aria-label','Выделить '+f.name);check.onclick=e=>{e.stopPropagation();toggleSelected(f.name)};tile.append(check);const thumb=document.createElement('div');thumb.className='thumb';thumb.title=f.directory?'Открыть папку':'Просмотреть файл';if(f.directory)thumb.append(icon(f.name==='.recycle'&&dir===''?'trash':'folder'));else if(imageExt.includes(ext(f.name))){const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';img.onload=()=>img.classList.add('photoLoaded');img.dataset.src=imageURL(f,false,dir,selected);photoObserver.observe(img);img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};thumb.append(img)}else if(videoIsTrackable(f)){
+  const img=document.createElement('img');img.loading='lazy';img.decoding='async';
+  img.className='videoPoster';img.alt='';
+  img.dataset.src='/api/video-poster?'+qs({
+    share:selected,path:fpath(f.name),
+    v:String(f.modified||0)+'-'+String(f.size||0)
+  });
+  img.onload=()=>img.classList.add('photoLoaded');
+  img.onerror=()=>{photoObserver.unobserve(img);img.remove();thumb.replaceChildren(icon('video'))};
+  photoObserver.observe(img);thumb.append(img);
+  const play=document.createElement('span');play.className='videoPosterPlay';
+  play.textContent='▶';play.setAttribute('aria-hidden','true');thumb.append(play);
+}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name==='.recycle'?'Корзина':f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'':size(f.size);if(!f.directory)details.append(meta);if(view!=='gallery')tile.append(details);const more=document.createElement('button');more.className='more';more.textContent='⋯';more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);attachFileDrag(tile,f);
 return tile;
 }
 function render(){
@@ -1864,7 +2000,16 @@ previewArea.addEventListener('touchcancel',()=>{gesture=null;if(dismissActive)di
 previewArea.addEventListener('click',event=>{if(!event.target.closest('img')||Date.now()-lastTouchAt<600)return;clearTimeout(tapTimer);tapTimer=setTimeout(toggleViewerControls,210)});
 previewArea.addEventListener('dblclick',event=>{if(!previewArea.querySelector('img'))return;clearTimeout(tapTimer);setZoom(zoom>1?1:2.5)});
 previewArea.addEventListener('wheel',event=>{if(!previewArea.querySelector('img')||!(event.ctrlKey||event.metaKey))return;event.preventDefault();setZoom(zoom*(event.deltaY<0?1.18:.85))},{passive:false});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!el('mobileSheetOverlay').classList.contains('hidden'))closeMobileSheet();else if(activeDialog)activeDialog(null);else{closePreview();hideMenu()}}if(el('preview').style.display==='flex'){if(e.key==='ArrowLeft')stepPreview(-1);if(e.key==='ArrowRight')stepPreview(1);if(e.key==='0')setZoom(1);if(e.key==='+')setZoom(zoom*1.25);if(e.key==='-')setZoom(zoom/1.25)}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!el('mobileSheetOverlay').classList.contains('hidden'))closeMobileSheet();else if(activeDialog)activeDialog(null);else{closePreview();hideMenu()}}if(el('preview').style.display==='flex'){
+  const video=el('previewBody').querySelector('video');
+  if(video&&document.activeElement?.tagName!=='INPUT'&&!e.altKey&&!e.ctrlKey&&!e.metaKey){
+    if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+      e.preventDefault();
+      if(Number.isFinite(video.duration))video.currentTime=Math.max(0,Math.min(video.duration,video.currentTime+(e.key==='ArrowRight'?10:-10)));
+      return;
+    }
+  }
+  if(e.key==='ArrowLeft')stepPreview(-1);if(e.key==='ArrowRight')stepPreview(1);if(e.key==='0')setZoom(1);if(e.key==='+')setZoom(zoom*1.25);if(e.key==='-')setZoom(zoom/1.25)}});
 document.addEventListener('pointerdown',e=>{if(!el('fileMenu').contains(e.target)&&!e.target.closest('.more'))hideMenu()});
 let dragDepth=0;
 const work=el('workspace');
