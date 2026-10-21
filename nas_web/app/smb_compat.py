@@ -22,6 +22,10 @@ class SMBConnection:
         self.password = password
         self.server_name = server_name
         self.conn = None
+        # Within one authenticated, pool-managed connection, permission
+        # checks can reuse the SMB tree while STILL opening every file
+        # individually. This avoids 2 SMB roundtrips per cached thumbnail.
+        self._read_trees = {}
 
     def connect(self, host, port=445, timeout=12):
         self.conn = ImpacketConnection(self.server_name, host, sess_port=port, timeout=timeout)
@@ -31,10 +35,17 @@ class SMBConnection:
     def close(self):
         if self.conn is not None:
             try:
+                for tid in tuple(self._read_trees.values()):
+                    try:
+                        self.conn.disconnectTree(tid)
+                    except Exception:
+                        pass
+                self._read_trees.clear()
                 self.conn.logoff()
             finally:
                 self.conn.close()
                 self.conn = None
+                self._read_trees.clear()
 
     def listShares(self, **kwargs):
         shares = []
@@ -110,16 +121,28 @@ class SMBConnection:
                 self.conn.disconnectTree(tid)
 
     def can_read(self, share, path):
-        """Ask SMB to open this exact file for reading, without fetching contents."""
+        """Check per-file SMB read rights while reusing a session's share tree.
+
+        No permission-result caching: a revoked file read is rejected on its
+        very next request. Only a tree handle is kept for this connection.
+        """
         remote = path.replace("/", "\\")
-        tid = self.conn.connectTree(share)
+        tid = self._read_trees.get(share)
+        if tid is None:
+            tid = self.conn.connectTree(share)
+            self._read_trees[share] = tid
         fid = None
         try:
             fid = self.conn.openFile(tid, remote, desiredAccess=0x00000001, shareMode=0x00000007)
             return True
-        finally:
+        except Exception:
+            # A read denial or stale SMB tree must not be reused.
+            self._read_trees.pop(share, None)
             try:
-                if fid is not None:
-                    self.conn.closeFile(tid, fid)
-            finally:
                 self.conn.disconnectTree(tid)
+            except Exception:
+                pass
+            raise
+        finally:
+            if fid is not None:
+                self.conn.closeFile(tid, fid)
