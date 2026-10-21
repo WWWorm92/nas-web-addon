@@ -534,33 +534,73 @@ function leaveGlobalGallery(){
   renderBreadcrumb();render();updateMobileNav();
 }
 
+async function loadGlobalTimeline(token=allPhotoScanToken){
+  if(!allPhotosMode||allPhotoSubsetMode)return;
+  try{
+    const result=await api('/api/gallery/months?'+qs({
+      order:globalGalleryOrder,timezone_offset:String(new Date().getTimezoneOffset())
+    }));
+    if(token!==allPhotoScanToken||!allPhotosMode||allPhotoSubsetMode)return;
+    allPhotoTimeline=result.months||[];
+    allPhotoTimelineCheckedAt=Date.now();
+    renderGalleryYears(allPhotos);
+  }catch(e){
+    if(token===allPhotoScanToken)message('Не удалось загрузить список месяцев: '+e.message);
+  }
+}
+async function jumpToGlobalMonth(monthKey){
+  if(!allPhotosMode||allPhotoSubsetMode)return;
+  const month=allPhotoTimeline.find(item=>item.month===monthKey);
+  if(!month)return;
+  // Month positions refer to the entire database, not the loaded page.
+  const token=++allPhotoScanToken;
+  allPhotoStartOffset=month.offset;allPhotoNextOffset=month.offset;
+  allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryRenderSignature='';
+  render();
+  while(allPhotoPageBusy&&allPhotosMode&&token===allPhotoScanToken){
+    await new Promise(resolve=>setTimeout(resolve,80));
+  }
+  if(!allPhotosMode||token!==allPhotoScanToken)return;
+  await loadGlobalPage(true);
+  if(!allPhotosMode||token!==allPhotoScanToken)return;
+  requestAnimationFrame(()=>{
+    if(token!==allPhotoScanToken)return;
+    const heading=el('entries').querySelector('.galleryMonth');
+    heading?.scrollIntoView({behavior:'smooth',block:'start'});
+    el('galleryMonthJump').value=monthKey;
+  });
+  scanAllPhotos(token);
+}
 async function setGlobalGalleryOrder(order){
  if(!['taken','modified'].includes(order)||order===globalGalleryOrder)return;
  globalGalleryOrder=order;localStorage.setItem('nasweb-gallery-order',order);
  el('galleryOrderSelect').value=order;
  const token=++allPhotoScanToken;
- allPhotos=[];allPhotoTotal=0;galleryRenderSignature='';
+ allPhotoSubsetMode=false;allPhotoStartOffset=0;allPhotoNextOffset=0;
+ allPhotoTimeline=[];allPhotoTimelineCheckedAt=0;
+ allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryRenderSignature='';
  if(!allPhotosMode)return;
  render();
- // A page read for the previous sort can still be in flight.
- // Wait for its finalizer instead of leaving the gallery blank forever.
  while(allPhotoPageBusy&&allPhotosMode&&token===allPhotoScanToken){
    await new Promise(resolve=>setTimeout(resolve,80));
  }
  if(!allPhotosMode||token!==allPhotoScanToken)return;
  await loadGlobalPage(true);
- if(allPhotosMode&&token===allPhotoScanToken)scanAllPhotos(token);
+ if(!allPhotosMode||token!==allPhotoScanToken)return;
+ loadGlobalTimeline(token);
+ scanAllPhotos(token);
 }
 async function loadGlobalPage(reset=false){
-  if(allPhotoPageBusy||!allPhotosMode)return;
+  if(allPhotoPageBusy||!allPhotosMode||allPhotoSubsetMode)return;
   const token=allPhotoScanToken;
   allPhotoPageBusy=true;
   try{
-    const start=reset?0:allPhotos.length;
+    const start=reset?allPhotoStartOffset:allPhotoNextOffset;
     const data=await api('/api/gallery?'+qs({offset:start,limit:90,order:globalGalleryOrder}));
-    if(!allPhotosMode||token!==allPhotoScanToken)return;
+    if(!allPhotosMode||token!==allPhotoScanToken||allPhotoSubsetMode)return;
     allPhotoStatus=data;allPhotoTotal=data.total;
-    if(reset)allPhotos=data.items;else {
+    allPhotoNextOffset=start+data.items.length;
+    if(reset)allPhotos=data.items;else{
       const known=new Set(allPhotos.map(f=>f.share+'|'+f.path));
       for(const f of data.items)if(!known.has(f.share+'|'+f.path))allPhotos.push(f);
     }
