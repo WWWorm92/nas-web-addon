@@ -500,6 +500,18 @@ def job_update(identifier, **values):
                    (*[values[key] for key in fields], time.time(), identifier))
 
 
+def cleanup_orphaned_archives():
+    """Remove private ZIP spools left behind by an add-on crash/reboot."""
+    if not ARCHIVES.is_dir():
+        return
+    for entry in ARCHIVES.glob("takeout-*.zip"):
+        try:
+            if entry.is_file() and not entry.is_symlink():
+                entry.unlink()
+        except OSError:
+            LOG.warning("Unable to clean abandoned Google Takeout archive")
+
+
 def mark_interrupted():
     """Worker threads cannot survive an HA add-on restart.
 
