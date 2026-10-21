@@ -342,6 +342,38 @@ jobs:
           node --check nas_web/app/app.js
           node --check nas_web/app/admin.js
           sh -n nas_web/entrypoint.sh
+      - name: Desktop navigation and home-screen contracts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from html.parser import HTMLParser
+          class Tags(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.buttons={}
+              def handle_starttag(self, tag, attrs):
+                  details=dict(attrs)
+                  if tag=="button" and details.get("id"):
+                      self.buttons[details["id"]]=details
+          source=Path("nas_web/app/index.html").read_text()
+          js=Path("nas_web/app/app.js").read_text()
+          parsed=Tags()
+          parsed.feed(source)
+          ids=["desktopFilesNav","desktopPhotosNav","sidebarFilesNav",
+               "sidebarPhotosNav","desktopGalleryBack","quickOpenPhotos",
+               "quickUpload","quickNewFolder"]
+          assert all(name in parsed.buttons for name in ids)
+          assert 'id="desktopHomeOverview"' in source
+          assert "const desktopReturnToFiles=" in js
+          assert "el(id).onclick=desktopReturnToFiles" in js
+          assert "el(id).onclick=()=>{enterGlobalGallery()" in js
+          assert "updateDesktopWorkspace();" in js
+          assert "#app.globalGalleryOpen .desktopGalleryBack{display:inline-flex}" in source
+          assert "panel.classList.toggle('hidden',!home)" in js
+          assert "quickUpload').onclick=()=>el('upload').click()" in js
+          assert "quickNewFolder').onclick=()=>el('folder').click()" in js
+          print("Desktop gallery has a persistent exit and home quick actions use existing safe operations")
+          PY
       - name: Basic UI DOM contracts
         run: |
           python - <<'PY'
