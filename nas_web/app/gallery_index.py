@@ -141,6 +141,41 @@ def page(owner, shares, offset, limit, order='taken'):
         return [dict(row) for row in rows]
 
 
+def month_index(owner, shares, order="taken", utc_offset_minutes=0):
+    """Full-index month navigation with absolute gallery offsets.
+
+    Uses precisely the same row ordering as page(). Never loads or alters
+    photographs and never needs SMB access. Offset is into the entire gallery
+    (not just the currently downloaded batch of thumbnails).
+    utc_offset_minutes = max(-840, min(840, int(utc_offset_minutes)))
+    """
+    if order not in ("taken", "modified"):
+        raise ValueError("Unsupported gallery order")
+    if not shares:
+        return []
+    if order == "taken":
+        bucket = "CASE WHEN taken IS NULL THEN 'undated' ELSE substr(taken,1,7) END"
+        sorting = "CASE WHEN taken IS NULL THEN 1 ELSE 0 END, taken DESC, share, path"
+        args = [owner, *shares]
+    else:
+        # Browser's getTimezoneOffset() is UTC minus local in minutes.
+        # SQLite timestamps are UTC; subtract the offset to match the
+        # month displayed by new Date(modified*1000) in that browser.
+        bucket = "strftime('%Y-%m',modified - ? * 60,'unixepoch')"
+        sorting = "modified DESC, share, path"
+        args = [utc_offset_minutes, owner, *shares]
+    sql = (
+        "WITH ranked AS (SELECT " + bucket + " AS month, "
+        "ROW_NUMBER() OVER (ORDER BY " + sorting + ") - 1 AS position "
+        "FROM photos WHERE owner=? AND share IN (" +
+        ",".join("?" for _ in shares) + ")) "
+        "SELECT month,COUNT(*) AS count,MIN(position) AS offset "
+        "FROM ranked GROUP BY month ORDER BY offset"
+    )
+    with LOCK, connect() as db:
+        return [dict(row) for row in db.execute(sql, args).fetchall()]
+
+
 def pending_folder(db, owner):
     return db.execute("SELECT share,path FROM folders WHERE owner=? AND done=0 ORDER BY LENGTH(path),path LIMIT 1", (owner,)).fetchone()
 
