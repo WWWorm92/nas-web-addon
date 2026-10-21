@@ -662,6 +662,18 @@ button:active{transform:scale(.975)}
 .profileFolderActions .profileDanger{color:var(--danger)}
 .profileBindFolder{margin-top:14px;width:100%;border-style:dashed}
 .profileMessage{color:var(--accent);font-size:12px;min-height:16px;margin:12px 0 0}
+.profilePicker{margin:14px 0 0;padding:15px;border:1px solid var(--border);background:var(--panel2);border-radius:14px;display:flex;flex-direction:column;gap:10px}
+.profilePickerHeader{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.profilePickerHeader strong{font-size:14px}.profilePickerHeader button{min-height:32px;min-width:32px;padding:5px;border:0;background:transparent}
+.profilePicker label{color:var(--muted);font-size:12px}.profilePicker select{width:100%;background:var(--panel);min-height:44px}
+.profilePickTrail{display:flex;align-items:center;gap:3px;flex-wrap:wrap;font-size:12px;min-height:32px}
+.profilePickTrail button{background:transparent;border:0;min-height:32px;padding:4px 6px;max-width:100%;overflow-wrap:anywhere;color:var(--accent)}
+.profilePickTrail button:disabled{color:var(--text);cursor:default}.profilePickTrail span{color:var(--muted)}
+.profilePickFolders{display:flex;flex-direction:column;gap:5px;max-height:200px;min-height:48px;overflow-y:auto}
+.profilePickFolders button{text-align:left;background:var(--panel);padding:10px 12px;min-height:41px;border-radius:9px;overflow-wrap:anywhere}
+.profilePickFolders p{color:var(--muted);font-size:12px;margin:10px 0}
+.profilePickActions{display:flex;justify-content:flex-end;gap:8px;margin-top:5px}
+.profilePickActions button{flex:1;font-size:12px;min-height:44px}.profilePickActions button:disabled{opacity:.45;cursor:not-allowed}
 @media(max-width:700px){#profileOverlay{padding:0;align-items:flex-end}.profilePanel{width:100%;max-height:94dvh;border-radius:22px 22px 0 0;padding:20px 18px calc(24px + env(safe-area-inset-bottom))}.profileFolder{flex-direction:column;align-items:stretch}.profileFolderActions{justify-content:flex-start}.profileFolderActions button{flex:1}}
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><label class="rememberRow" for="remember"><input id="remember" type="checkbox"><span>Запомнить меня <small>на 90 дней</small></span></label><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
@@ -696,8 +708,19 @@ button:active{transform:scale(.975)}
     </form>
     <div class="profileFoldersHeading"><div><h3>Мои папки</h3><p>Привязка определяет, кто управляет видимостью фотографий из папки. Файлы и SMB-права не меняются.</p></div></div>
     <div id="profileFolders" class="profileFolders"></div>
-    <button id="profileBindFolder" type="button" class="profileBindFolder">＋ Привязать открытую папку</button>
-    <p id="profileHint" class="profileHint">Чтобы привязать новую папку, сначала откройте её в файловом менеджере.</p>
+    <button id="profileBindFolder" type="button" class="profileBindFolder">＋ Привязать папку</button>
+    <p id="profileHint" class="profileHint">Выберите любую доступную папку Simple NAS. Корень шары привязать нельзя.</p>
+    <div id="profilePicker" class="profilePicker hidden" aria-label="Выбор папки">
+      <div class="profilePickerHeader"><strong>Выбрать папку</strong><button id="profilePickerClose" type="button" aria-label="Закрыть выбор папки">✕</button></div>
+      <label for="profilePickShare">Хранилище</label>
+      <select id="profilePickShare" aria-label="Выбор SMB-шары"></select>
+      <nav id="profilePickTrail" class="profilePickTrail" aria-label="Путь к выбранной папке"></nav>
+      <div id="profilePickFolders" class="profilePickFolders" aria-live="polite"></div>
+      <div class="profilePickActions">
+        <button type="button" id="profilePickCancel">Отмена</button>
+        <button type="button" id="profilePickConfirm" class="primary" disabled>Привязать эту папку</button>
+      </div>
+    </div>
     <p id="profileMessage" class="profileMessage" role="status" aria-live="polite"></p>
   </section>
 </div>
