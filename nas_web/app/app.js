@@ -2346,6 +2346,7 @@ el('profileBindFolder').onclick=openProfilePicker;
 // All import controls live INSIDE the existing user profile, not the app shell.
 let googleImportDestination=null,googlePickerWaiting=false,googleImportBusy=false;
 let googlePickerPollAfter=0;
+let googleTakeoutLimitBytes=0;
 let googleStatusRequestBusy=false;
 function importNotice(text){el('profileImportMessage').textContent=text}
 function renderImportDestination(){
@@ -2378,6 +2379,14 @@ async function refreshGoogleImport(){
   try{
     const status=await api('/api/import/google/status');
     const {configured,connected}=status;
+    googleTakeoutLimitBytes=Number(status.max_takeout_bytes)||0;
+    const storage=status.takeout_storage||{};
+    const freeBytes=Number(storage.free),reserved=Number(storage.reserve)||0;
+    const uploadRoom=Number.isFinite(freeBytes)?Math.max(0,freeBytes-reserved):null;
+    el('profileTakeoutLimits').textContent=
+      (googleTakeoutLimitBytes?'Максимальный ZIP: '+size(googleTakeoutLimitBytes):'')+
+      (uploadRoom===null?'':' · место для временного ZIP: '+size(uploadRoom))+
+      ' · лимит можно изменить в настройках аддона (max_import_mb).';
     if(connected&&status.picker_active)googlePickerWaiting=true;
     if(!connected)googlePickerWaiting=false;
     el('profileGoogleState').textContent=!configured
@@ -2581,6 +2590,10 @@ el('profileTakeoutFiles').onchange=async()=>{
     for(const file of files){
       if(!file.name.toLowerCase().endsWith('.zip')){
         throw Error('Поддерживаются только ZIP-архивы');
+      }
+      if(googleTakeoutLimitBytes&&file.size>googleTakeoutLimitBytes){
+        throw Error('Архив '+size(file.size)+' превышает предел '+size(googleTakeoutLimitBytes)+
+          '. Откройте настройки NAS Web и увеличьте max_import_mb (например, до 8192 или 10240).');
       }
       importNotice('Загружаем архив '+file.name+' ('+(complete+1)+'/'+files.length+')');
       const job=await submitTakeoutArchive(file,destination);
