@@ -127,7 +127,7 @@
 }
 
 /* 0.22.12: desktop work area and always-visible navigation */
-.desktopTopNav,.sidebarQuickLinks,.desktopGalleryBack{display:none}
+.desktopTopNav,.desktopGalleryBack{display:none}
 @media(min-width:761px){
  /* Gallery used to hide the entire sidebar: keep section switches accessible. */
  #app.globalGalleryOpen .sidebar{display:block}
@@ -139,15 +139,6 @@
  .desktopNavBtn.navSelected{color:var(--accent);background:var(--accentbg);border-color:var(--border)}
  .desktopNavBtn:hover:not(.navSelected){color:var(--text);background:var(--panel)}
  #app .sidebar{width:236px;padding:25px 12px}
- .sidebarQuickLinks{display:flex;flex-direction:column;gap:5px;margin-bottom:23px;
-   padding-bottom:23px;border-bottom:1px solid var(--border)}
- .sidebarQuickLinks .sidebarTitle{margin-bottom:7px}
- .sidebarSectionButton{display:flex;align-items:center;gap:11px;width:100%;min-height:44px;
-   text-align:left;border:1px solid transparent;background:transparent;color:var(--muted);
-   padding:10px 13px;border-radius:12px;font-weight:650}
- .sidebarSectionButton:hover{background:var(--panel2);color:var(--text)}
- .sidebarSectionButton.navSelected{background:var(--accentbg);color:var(--accent);border-color:var(--border)}
- .sidebarLinkIcon{font-size:20px;width:26px;line-height:1;text-align:center}
  #app .workspace{padding:28px clamp(22px,3vw,46px);max-width:1800px}
  #app .head{align-items:center;min-height:44px}
  #app .head .path{font-size:24px;letter-spacing:-.55px}
@@ -174,7 +165,7 @@
  #app.globalGalleryOpen .desktopGalleryBack{display:inline-flex;align-items:center;min-height:38px}
 }
 @media(max-width:700px){
- .desktopTopNav,.sidebarQuickLinks,.desktopGalleryBack{display:none!important}
+ .desktopTopNav,.desktopGalleryBack{display:none!important}
 }
 
 </style><style>
@@ -482,7 +473,7 @@ button:active{transform:scale(.975)}
 }
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><label class="rememberRow" for="remember"><input id="remember" type="checkbox"><span>Запомнить меня <small>на 90 дней</small></span></label><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
-<div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><nav class="desktopTopNav" aria-label="Разделы NAS Web"><button id="desktopFilesNav" class="desktopNavBtn navSelected" type="button"><span aria-hidden="true">▤</span> Файлы</button><button id="desktopPhotosNav" class="desktopNavBtn" type="button"><span aria-hidden="true">▧</span> Фото</button></nav><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Навигация NAS Web"><div class="sidebarQuickLinks"><div class="sidebarTitle">РАЗДЕЛЫ</div><button id="sidebarFilesNav" class="sidebarSectionButton navSelected" type="button"><span class="sidebarLinkIcon" aria-hidden="true">▤</span> Мои файлы</button><button id="sidebarPhotosNav" class="sidebarSectionButton" type="button"><span class="sidebarLinkIcon" aria-hidden="true">▧</span> Все фотографии</button></div><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div><button id="desktopGalleryBack" class="desktopGalleryBack" type="button">← Вернуться к файлам</button></div>
+<div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><nav class="desktopTopNav" aria-label="Разделы NAS Web"><button id="desktopFilesNav" class="desktopNavBtn navSelected" type="button"><span aria-hidden="true">▤</span> Файлы</button><button id="desktopPhotosNav" class="desktopNavBtn" type="button"><span aria-hidden="true">▧</span> Фото</button></nav><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div><button id="desktopGalleryBack" class="desktopGalleryBack" type="button">← Вернуться к файлам</button></div>
 
 <div id="mobileGalleryHeader" class="mobileGalleryHeader"><strong>Фото</strong><div><button id="gallerySearchToggle" type="button" aria-label="Поиск фотографий">⌕</button><button id="gallerySettingsToggle" type="button" aria-label="Настройки галереи"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="var(--bg)"/><circle cx="16" cy="12" r="2" fill="var(--bg)"/><circle cx="10" cy="18" r="2" fill="var(--bg)"/></svg></button></div></div>
 <div id="gallerySettingsPanel" class="gallerySettingsPanel hidden"><div class="gallerySettingsTitle">Настройки галереи <button id="gallerySettingsClose" type="button" aria-label="Закрыть настройки">✕</button></div><div id="gallerySettingsContent"><button type="button" id="galleryRetryDates" class="hidden" aria-hidden="true" tabindex="-1">Повторно проверить даты (без сброса)</button><select id="galleryOrderSelect" aria-label="Сортировка фотографий"><option value="taken">По дате съёмки (EXIF)</option><option value="modified">По дате изменения файла</option></select></div></div>
