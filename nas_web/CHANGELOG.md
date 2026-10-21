@@ -1,3 +1,10 @@
+## 0.22.29
+
+- Fix the profile folder binding button being disabled in the global gallery, at the root of a share, or without a current file-manager folder.
+- Add an independent folder chooser inside the profile, with SMB share selection, breadcrumb navigation and a folders-only list. The add action stays available without leaving the gallery or changing the active directory.
+- Disable confirmation only for the SMB share root (which cannot be bound) or while validating a selected directory. Keep live SMB access checks, owner conflict prevention and gallery visibility unchanged.
+- Add a browser regression test for binding a folder from gallery mode and excluding recycle-bin/file entries from the picker.
+
 ## 0.22.28
 
 - Add editable SMB-linked personal profiles with display names and avatar colors. Profile names are cosmetic; Simple NAS remains the only SMB login and ACL authority.
