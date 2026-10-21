@@ -46,6 +46,7 @@ COOKIE_SECURE = bool(opts.get('https_only', False))
 # Prioritize foreground photo transfers over new thumbnail SMB reads.
 PHOTO_TRANSFER_CONDITION = threading.Condition()
 ACTIVE_PHOTO_TRANSFERS = 0
+ACTIVE_THUMBNAIL_REQUESTS = 0
 
 @contextmanager
 def foreground_photo_transfer():
@@ -59,10 +60,30 @@ def foreground_photo_transfer():
             ACTIVE_PHOTO_TRANSFERS -= 1
             PHOTO_TRANSFER_CONDITION.notify_all()
 
+@contextmanager
+def foreground_thumbnail_request():
+    global ACTIVE_THUMBNAIL_REQUESTS
+    with PHOTO_TRANSFER_CONDITION:
+        ACTIVE_THUMBNAIL_REQUESTS += 1
+    try:
+        yield
+    finally:
+        with PHOTO_TRANSFER_CONDITION:
+            ACTIVE_THUMBNAIL_REQUESTS -= 1
+            PHOTO_TRANSFER_CONDITION.notify_all()
+
 def wait_for_photo_transfer():
-    # Bounded waiting avoids starving thumbnails during extended viewing.
+    # Fullscreen originals take priority over thumbnail generation.
     with PHOTO_TRANSFER_CONDITION:
         PHOTO_TRANSFER_CONDITION.wait_for(lambda: ACTIVE_PHOTO_TRANSFERS == 0, timeout=4)
+
+def wait_for_background_media_idle():
+    # EXIF scanning is low priority. Yield SMB bandwidth to thumbnails and
+    # fullscreen originals while allowing progress during continuous browsing.
+    with PHOTO_TRANSFER_CONDITION:
+        PHOTO_TRANSFER_CONDITION.wait_for(
+            lambda: ACTIVE_PHOTO_TRANSFERS == 0 and ACTIVE_THUMBNAIL_REQUESTS == 0,
+            timeout=8)
 
 
 
@@ -697,7 +718,7 @@ def _gallery_scan_step(u, owner, shares, skipped=None):
                     break
                 taken = None
                 try:
-                    wait_for_photo_transfer()
+                    wait_for_background_media_idle()
                     cached, taken = photo_dates.lookup(
                         u["name"], row["share"], row["path"],
                         row["modified"], row["size"])
@@ -841,6 +862,11 @@ def reindex_unified_gallery(request: Request, x_csrf_token: str = Header(default
 
 @app.get("/api/thumb")
 def thumbnail(request: Request, share: str, path: str, v: str = "", large: bool = False):
+    # Prioritize all thumbnail reads over continuous background EXIF scans.
+    with foreground_thumbnail_request():
+        return _thumbnail_response(request, share, path, v, large)
+
+def _thumbnail_response(request: Request, share: str, path: str, v: str, large: bool):
     """Serve small images quickly, with cache hit and stage latency diagnostics."""
     u = user_for(request)
     p = path_ok(path)
