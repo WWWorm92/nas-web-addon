@@ -1,3 +1,12 @@
+## 0.22.32
+
+- Fix Google Takeout ZIP uploads failing with `starlette.requests.ClientDisconnect` when browsers, proxies or mobile networks interrupt a large one-request transfer.
+- Replace monolithic upload with 1 MiB authenticated and owner-scoped chunks. Each chunk has an explicit byte offset, can be safely replayed, and is stored in a private SQLite-backed resumable staging session. The browser retries transient connection failures and first checks the saved offset so an ACK lost after a successful chunk cannot create duplicate bytes.
+- Closing/reloading the page does not discard the incomplete ZIP: select the **same** archive again in Profile to resume from the verified server-side offset. Resumable partial ZIPs survive add-on restarts and expire after 36 hours if inactive.
+- Verify the full file size and ZIP header before launching the existing background importer. On completion, the worker deletes the temporary archive as before. Authenticated users cannot read or append to each other's staged ZIPs.
+- Handle incomplete client chunks explicitly without unhandled ASGI exception-group tracebacks. The original all-in-one upload endpoint now responds with a clear upgrade message.
+- Improve Takeout UI transfer progress and recovery guidance; add Python and Node regression tests for chunk retransmission, reconnects, owner isolation, startup cleanup and frontend lost-ACK recovery.
+
 ## 0.22.31
 
 - Move **Memories** out of the mobile "More" menu and into the top of the unified gallery on desktop and mobile, styled as a horizontally scrollable Google Photos-like Stories strip.

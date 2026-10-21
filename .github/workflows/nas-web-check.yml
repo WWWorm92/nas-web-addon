@@ -106,6 +106,10 @@ jobs:
         run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_profiles.py'
       - name: Google Photos import and OAuth regression tests
         run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_google_photos_import.py'
+      - name: Resumable Google Takeout upload regression
+        run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_takeout_resumable.py'
+      - name: Takeout browser-side disconnect resume
+        run: node nas_web/tests/takeout_resumable_ui.test.cjs
       - name: Google import profile UI contracts
         run: node nas_web/tests/google_import_ui.test.cjs
       - name: Read-only SMB range access regression

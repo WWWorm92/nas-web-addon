@@ -2461,30 +2461,94 @@ el('profileGoogleImportPicked').onclick=async()=>{
   }catch(err){importNotice('Импорт не запущен: '+err.message)}
   finally{button.disabled=false}
 };
-function submitTakeoutArchive(file,destination){
+// A Takeout ZIP is never sent as one long HTTP request: proxies and mobile
+// networks can disconnect mid-upload. Each 1 MiB chunk can be acknowledged,
+// retried and resumed from the durable server-side byte offset.
+function sendTakeoutChunk(blob,uploadId,offset,onProgress){
   return new Promise((resolve,reject)=>{
     const xhr=new XMLHttpRequest();
-    xhr.open('POST','/api/import/google/takeout?'+qs({
-      share:destination.share,path:destination.path
+    xhr.open('PUT','/api/import/google/takeout/chunk?'+qs({
+      upload_id:uploadId,offset:String(offset)
     }));
     xhr.withCredentials=true;
-    xhr.setRequestHeader('Content-Type','application/zip');
+    xhr.timeout=90000;
+    xhr.setRequestHeader('Content-Type','application/octet-stream');
     xhr.setRequestHeader('X-CSRF-Token',csrf);
-    el('profileImportUploadProgress').classList.remove('hidden');
     xhr.upload.onprogress=e=>{
-      el('profileImportUploadBar').value=e.lengthComputable?Math.round(e.loaded/e.total*100):0;
-      el('profileImportUploadText').textContent='Передаём '+file.name+
-        (e.lengthComputable?' · '+Math.round(e.loaded/e.total*100)+'%':'');
+      if(e.lengthComputable)onProgress(e.loaded);
     };
     xhr.onload=()=>{
-      let data={};try{data=JSON.parse(xhr.responseText)}catch{}
-      if(xhr.status>=200&&xhr.status<300)resolve(data);
-      else reject(Error(data.detail||'HTTP '+xhr.status));
+      let result={};try{result=JSON.parse(xhr.responseText)}catch{}
+      if(xhr.status>=200&&xhr.status<300)resolve(result);
+      else{
+        const error=new Error(result.detail||'HTTP '+xhr.status);
+        error.status=xhr.status;
+        reject(error);
+      }
     };
-    xhr.onerror=()=>reject(Error('Ошибка соединения с NAS'));
-    xhr.onabort=()=>reject(Error('Передача архива прервана'));
-    xhr.send(file);
+    xhr.onerror=()=>reject(Error('Соединение прервано при передаче части ZIP'));
+    xhr.ontimeout=()=>reject(Error('Превышено время ожидания части ZIP'));
+    xhr.onabort=()=>reject(Error('Загрузка прервана'));
+    xhr.send(blob);
   });
+}
+async function submitTakeoutArchive(file,destination){
+  const transfer=await collectionPost('/api/import/google/takeout/start',{
+    share:destination.share,path:destination.path,name:file.name,
+    size:file.size,mtime:file.lastModified||0
+  });
+  const id=transfer.upload_id,chunkSize=transfer.chunk_size||1048576;
+  let offset=transfer.offset||0,failures=0;
+  const progress=el('profileImportUploadProgress');
+  const bar=el('profileImportUploadBar');
+  const label=el('profileImportUploadText');
+  progress.classList.remove('hidden');
+  function updateProgress(current,extra=''){
+    const value=Math.round(Math.min(1,current/file.size)*100);
+    bar.value=value;
+    label.textContent='Takeout: '+file.name+' · '+value+'% ('+
+      size(current)+' / '+size(file.size)+')'+extra;
+  }
+  updateProgress(offset,offset?' · продолжаем передачу':'');
+  while(offset<file.size){
+    const chunk=file.slice(offset,Math.min(file.size,offset+chunkSize));
+    try{
+      const answer=await sendTakeoutChunk(chunk,id,offset,
+        loaded=>updateProgress(offset+loaded));
+      if(!Number.isSafeInteger(answer.offset)||answer.offset<=offset||
+         answer.offset>file.size)throw Error('Сервер вернул неверную позицию загрузки');
+      offset=answer.offset;
+      failures=0;
+      updateProgress(offset);
+    }catch(err){
+      // A dropped ACK does not mean the chunk was lost. Ask the server where
+      // the file actually ends before retransmitting anything.
+      if([400,401,403,404,410,413].includes(err.status))throw err;
+      failures++;
+      if(failures>6)throw Error('Не удалось восстановить передачу ZIP: '+err.message+
+        '. Повторно выберите тот же архив для продолжения.');
+      updateProgress(offset,' · переподключение '+failures+'/6');
+      await new Promise(resolve=>setTimeout(resolve,Math.min(6000,500*2**failures)));
+      try{
+        const status=await api('/api/import/google/takeout/status?'+
+          qs({upload_id:id}));
+        if(!Number.isSafeInteger(status.offset)||status.offset<offset||
+           status.offset>file.size)throw Error('Некорректная позиция на NAS');
+        offset=status.offset;
+        updateProgress(offset,' · восстановлено');
+      }catch(statusError){
+        if(/HTTP 401|HTTP 403|HTTP 404/.test(statusError.message))throw statusError;
+        // Temporary status request failure: send original chunk again. The
+        // server recognizes exact duplicates and cannot write them twice.
+      }
+    }
+  }
+  label.textContent='ZIP передан · проверяем архив и запускаем импорт…';
+  const job=await collectionPost('/api/import/google/takeout/finish',{
+    upload_id:id
+  });
+  progress.classList.add('hidden');
+  return job;
 }
 async function waitImportJob(id){
   // Individual ZIP parts must be applied sequentially so that one user's
