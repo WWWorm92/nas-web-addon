@@ -697,13 +697,14 @@ def _gallery_scan_step(u, owner, shares, skipped=None):
             if folder is None:
                 break
             share, path = folder["share"], folder["path"]
-            entries = ()
-            if share in shares:
-                try:
-                    check_share(conn, share)
-                    entries = conn.listPath(share, full(path), timeout=20)
-                except Exception as exc:
-                    logger.info("Gallery folder skipped: %s", type(exc).__name__)
+            try:
+                check_share(conn, share)
+                entries = conn.listPath(share, full(path), timeout=20)
+            except Exception as exc:
+                logger.info("Gallery folder skipped: %s", type(exc).__name__)
+                with gallery_index.LOCK, gallery_index.connect() as db:
+                    gallery_index.mark_folder_failed(db, owner, share, path)
+                continue
             with gallery_index.LOCK, gallery_index.connect() as db:
                 gallery_index.add_folder_contents(db, owner, share, path, entries)
         with gallery_index.LOCK, gallery_index.connect() as db:
