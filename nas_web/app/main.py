@@ -635,7 +635,9 @@ def google_import_status(request: Request):
             "connected": google_photos_import.is_connected(
                 google_photos_import.owner_of(u["name"])),
             "jobs": google_photos_import.jobs(u["name"]),
-            "picker_active": bool(google_photos_import.picker_session(u["name"]))}
+            "picker_active": bool(google_photos_import.picker_session(u["name"])),
+            "max_takeout_bytes": _takeout_max_size(),
+            "takeout_storage": google_photos_import.takeout_storage_info()}
 
 
 @app.post("/api/import/google/oauth/start")
@@ -722,7 +724,7 @@ def google_picker_import(request: Request, payload: dict,
 # This works around mobile/proxy interruptions that previously raised
 # ClientDisconnect during a single multi-gigabyte request.
 def _takeout_max_size():
-    return max(1, min(4096, int(opts.get("max_import_mb", 2048)))) * 1024 * 1024
+    return max(1, min(32768, int(opts.get("max_import_mb", 8192)))) * 1024 * 1024
 
 
 @app.post("/api/import/google/takeout/start")
