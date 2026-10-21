@@ -1,3 +1,11 @@
+## 0.22.10
+
+- Explain that the admin EXIF queue is aggregated across all indexed SMB users; show a separate per-user breakdown, with currently logged-in SMB user highlighted.
+- Distinguish per-user pending, dated, checked-without-date, and blocked EXIF records. Aggregation and read-only diagnostics do not modify photo rows or saved dates.
+- Fix gallery sort switching so selecting 'file modification date' restores the old file-date chronology without terminating background EXIF scanning or leaving the gallery blank when a request is still in progress.
+- Keep 'EXIF capture date' as a deliberate user-selected display mode; do not rewrite or reset either date source.
+- Add automated tests for per-user counts, date preservation and gallery index scoping.
+
 ## 0.22.9
 
 - Fix `STATUS_ACCESS_DENIED` during EXIF extraction and ranged media streaming on read-only SMB files: Impacket `openFile()` defaults to requesting both READ and WRITE; range reads now explicitly request READ only with read/write/delete sharing.
