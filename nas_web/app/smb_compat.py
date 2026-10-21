@@ -12,6 +12,9 @@ class Entry:
         self.isDirectory = bool(file.is_directory())
         self.file_size = file.get_filesize()
         self.last_write_time = file.get_mtime_epoch()
+        # Do not traverse SMB symlink/junction directories in permanent-delete.
+        attributes = file.get_attributes() if hasattr(file, "get_attributes") else 0
+        self.isReparsePoint = bool(attributes & 0x400)
 
 class SMBConnection:
     def __init__(self, username, password, client_name, server_name, **kwargs):
