@@ -15,6 +15,8 @@ jobs:
           node-version: '22'
       - name: Python syntax
         run: python -m compileall -q nas_web/app
+      - name: PDF preview framing security tests
+        run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_pdf_frame_policy.py'
       - name: Remember-me login tests
         run: |
           pip install cryptography==46.0.3

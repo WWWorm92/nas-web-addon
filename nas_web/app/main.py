@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth
+from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth, pdf_frame_policy
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -247,9 +247,8 @@ async def headers(request, call_next):
     r.headers["Server-Timing"] = f"app;dur={elapsed_ms}"
     r.headers["X-Content-Type-Options"] = "nosniff"
     r.headers["Referrer-Policy"] = "no-referrer"
-    r.headers["X-Frame-Options"] = "DENY"
     r.headers["Cache-Control"] = "no-store"
-    r.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    pdf_frame_policy.apply_headers(request.url.path, r)
     return r
 
 @app.get("/", response_class=HTMLResponse)

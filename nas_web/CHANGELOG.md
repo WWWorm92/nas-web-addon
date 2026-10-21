@@ -1,3 +1,11 @@
+## 0.22.23
+
+- Fix Firefox showing a blocked-frame page when opening PDFs in the NAS Web viewer through KeenDNS.
+- Permit same-origin embedding only for successful inline PDF streams from /api/file (HTTP 200 and 206): X-Frame-Options SAMEORIGIN and CSP frame-ancestors 'self'.
+- Preserve DENY / frame-ancestors 'none' for all other endpoints, file downloads, errors and non-PDF content.
+- Preserve SMB ACL checks, credentials, no-store caching, file streaming, range support and other CSP protections.
+- Add PDF frame-policy security regression tests to GitHub Actions.
+
 ## 0.22.22
 
 - Improve the upload center with transfer speed, estimated remaining time and bytes sent, plus a separate server-side SMB saving state. Do not show completion until /api/upload responds successfully.
