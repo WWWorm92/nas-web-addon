@@ -165,3 +165,70 @@ Fixes the crash on import of thumb_cache.py: `PermissionError: [Errno 13] Permis
 - **Обновить фототеку** полностью перестраивает индекс после изменений на NAS. Просмотр фотографий не изменяет исходные файлы.
 - Защитные лимиты индексатора: до 100 000 фотографий и 20 000 папок на пользователя. Фотографии показываются только из шар текущей сессии; доступ к каждому оригиналу и превью дополнительно проверяется SMB.
 - Первое сканирование больших хранилищ может занять продолжительное время. Папки, в которые SMB не позволяет войти, пропускаются.
+
+
+## Google Photos import in user profiles (0.22.30)
+
+Open **NAS Web → Profile → Import from Google Photos**. No separate navigation
+button is used. Choose a **writable SMB folder** as the destination.
+
+### Full library: Google Takeout
+
+1. Export **Google Photos** from [Google Takeout](https://takeout.google.com/),
+   choose ZIP format and split your archive into parts of at most `max_import_mb`
+   (default 2048 MiB; the maximum add-on setting is 4096 MiB). On a Pi with
+   limited free HA `/data` space, choose **1 GB** archive parts.
+2. In the Profile import section select all ZIP parts. NAS Web uploads one ZIP
+   at a time and streams each media entry directly to the SMB folder; it does not
+   extract the full archive to the Pi. A private local ZIP spool is still
+   required while processing that part.
+3. The accompanying JSON `photoTakenTime.timestamp` is saved in NAS Web's
+   gallery date index. Imported photo bytes remain unchanged. Photos without
+   matching JSON metadata fall back to EXIF or SMB file modification time.
+4. Previously imported *identical content* in this user's destination folder
+   is skipped using SHA-256. Existing files are never overwritten. Progress is
+   stored in SQLite; after restarting NAS Web, the active job is marked
+   interrupted and the user can re-upload the ZIP to skip already imported
+   photos. If a sidecar is stored in a different ZIP part, its date may not
+   be available on the first import.
+
+### Selected media: Google Photos Picker
+
+The Picker API only provides media explicitly selected by the user. It **cannot
+enumerate or continuously synchronize a whole existing Google Photos library**.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create/select a
+   project, enable the **Google Photos Picker API**, configure the OAuth consent
+   screen and its testing users (where applicable), and create an **OAuth Client
+   ID → Web application**.
+2. Add this **exact** authorized redirect URI to the OAuth client:
+   `https://YOUR-PUBLIC-NAS-DOMAIN/api/import/google/oauth/callback`.
+   Google requires public HTTPS for non-localhost web redirects.
+3. Configure the NAS Web add-on options (not the public repository):
+   `google_client_id`, `google_client_secret`, and `google_redirect_uri`
+   with that **same** full callback URL. Keep the client secret private.
+4. Restart the add-on. In **Profile → Import from Google Photos → Connect
+   Google**, consent to the **photospicker.mediaitems.readonly** scope.
+5. Choose a writable SMB destination, click **Choose photos in Google**, open
+   the provided Google Photos link, select photos/videos and confirm. Once
+   Google reports selection complete, click **Import selected**.
+
+Google refresh tokens are encrypted on the NAS Web host and stored per SMB
+profile. **Disconnect** removes the locally stored tokens and Picker session,
+not the already imported SMB files. Google Picker image downloads use `=d`
+(which, according to Google's documentation, excludes location EXIF metadata);
+video downloads use Google's `=dv` high-quality transcoded version. Takeout
+is preferred when original file fidelity and full metadata are priorities.
+
+### Import limitations
+
+- Only users with existing Simple NAS SMB write permission can import; no
+  administrative bypass or new SMB users are created.
+- Existing gallery photo formats (JPEG, PNG, WebP and GIF) appear in the
+  unified gallery. Other imported image formats (including HEIC) and videos
+  remain accessible through the SMB file manager; gallery previews for these
+  formats require separate codec support.
+- Google Takeout JSON capture dates are persisted in the NAS Web gallery index,
+  **not embedded back into EXIF**. Edits to filenames outside NAS Web, or
+  reusing the originals in other apps, may require preserving the sidecar JSON.
+- Photo imports do not delete, update or modify anything in Google Photos.
