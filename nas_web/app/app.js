@@ -361,7 +361,8 @@ async function openCollectionPhotos(albumId,favorites){
  try{
   const result=await api('/api/collections/photos?'+qs({favorites:String(favorites),...(favorites?{}:{album_id:String(albumId)}),limit:'120'}));
   if(!allPhotosMode)await enterGlobalGallery();
-  allPhotos=result.items;allPhotoTotal=result.items.length;
+  allPhotoSubsetMode=true;allPhotoTimeline=[];allPhotoStartOffset=0;
+  allPhotos=result.items;allPhotoTotal=result.items.length;allPhotoNextOffset=allPhotoTotal;
   allPhotoStatus={complete:true,total:allPhotoTotal,pending:0};
   ++allPhotoScanToken;galleryRenderSignature='';renderAllGallery();
   message(favorites?'Избранное':'Фотографии альбома');
@@ -372,7 +373,8 @@ async function openMemories(){
   const result=await api('/api/gallery/memories');
   if(!result.items.length){openMobileSheet('Воспоминания',[{label:'На эту дату фотографий пока нет',run:()=>{}}]);return}
   if(!allPhotosMode)await enterGlobalGallery();
-  allPhotos=result.items;allPhotoTotal=result.items.length;
+  allPhotoSubsetMode=true;allPhotoTimeline=[];allPhotoStartOffset=0;
+  allPhotos=result.items;allPhotoTotal=result.items.length;allPhotoNextOffset=allPhotoTotal;
   allPhotoStatus={complete:true,total:allPhotoTotal,pending:0};
   ++allPhotoScanToken;galleryRenderSignature='';renderAllGallery();
  }catch(e){alert(e.message)}
@@ -526,7 +528,7 @@ function leaveGlobalGallery(){
   if(!allPhotosMode)return;
   if(previewIndex>=0)closePreview();
   gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
-  allPhotosMode=false;allPhotoScanToken++;view=previousFileView;
+  allPhotosMode=false;allPhotoScanToken++;allPhotoSubsetMode=false;allPhotoTimeline=[];view=previousFileView;
   el('app').classList.remove('globalGalleryOpen');
   el('globalGallerySummary').classList.add('hidden');
   el('galleryPageFooter').classList.add('hidden');
@@ -637,7 +639,7 @@ function renderGlobalProgress(){
   el('globalGalleryProgress').textContent=(data.complete?'Найдено '+data.total+' фото':'Поиск: '+data.scanned+' папок · '+data.total+' фото')
     +(data.dates_pending&&data.complete?' · EXIF: к проверке '+(data.dates_available??data.dates_pending)+(data.dates_blocked?' · нет доступа: '+data.dates_blocked:''):'')
     +(data.limited?' · лимит индекса':'');
-  el('galleryPageFooter').classList.toggle('hidden',!data.complete||allPhotos.length>=data.total);
+  el('galleryPageFooter').classList.toggle('hidden',!data.complete||allPhotoSubsetMode||allPhotoNextOffset>=data.total);
 }
 async function enterGlobalGallery(){
   if(allPhotosMode)return;
@@ -645,7 +647,9 @@ async function enterGlobalGallery(){
   previousFileView=view==='gallery'?'grid':view;
   gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
   el('app').classList.remove('filesSearching');
-  allPhotosMode=true;view='gallery';allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;
+  allPhotosMode=true;view='gallery';allPhotoSubsetMode=false;
+  allPhotoStartOffset=0;allPhotoNextOffset=0;allPhotoTimeline=[];allPhotoTimelineCheckedAt=0;
+  allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;
   const token=++allPhotoScanToken;
   el('app').classList.add('globalGalleryOpen');
   el('search').value='';el('search').placeholder='Поиск среди загруженных фото…';
@@ -654,7 +658,10 @@ async function enterGlobalGallery(){
   el('globalGallerySummary').classList.remove('detailsOpen');
   updateMobileNav();render();
   await loadGlobalPage(true);
-  if(allPhotosMode&&token===allPhotoScanToken)scanAllPhotos(token);
+  if(allPhotosMode&&token===allPhotoScanToken){
+    loadGlobalTimeline(token);
+    scanAllPhotos(token);
+  }
 }
 function renderAllGallery(){
   const grid=el('entries');
@@ -704,7 +711,7 @@ function renderAllGallery(){
       +(status.limited?' · достигнут предел индекса':'')
       +(status.complete&&status.dates_pending?' · EXIF: осталось '+(status.shared_dates_pending??status.dates_pending):'')
     : 'Подготавливаем фототеку…';
-  el('galleryPageFooter').classList.toggle('hidden',!status?.complete||allPhotos.length>=allPhotoTotal||!allPhotos.length);
+  el('galleryPageFooter').classList.toggle('hidden',!status?.complete||allPhotoSubsetMode||allPhotoNextOffset>=allPhotoTotal||!allPhotos.length);
   message(allPhotos.length?'Показано '+shown.length+' из '+allPhotoTotal+' фотографий':'Ищем фотографии во всех доступных папках…');
   pumpThumbs();
 }
@@ -938,7 +945,11 @@ el('selectionDelete').onclick=async()=>{
 };
 el('galleryZoomOut').onclick=()=>setGalleryColumns(galleryColumns-1);
 el('galleryZoomIn').onclick=()=>setGalleryColumns(galleryColumns+1);
-el('galleryMonthJump').onchange=e=>{const [year,month]=e.target.value.split('-');if(year)galleryJumpTo(year,month)};
+el('galleryMonthJump').onchange=e=>{
+  const key=e.target.value;if(!key)return;
+  if(allPhotosMode&&!allPhotoSubsetMode)jumpToGlobalMonth(key);
+  else{const [year,month]=key.split('-');if(year)galleryJumpTo(year,month)}
+};
 el('galleryPickDone').onclick=clearGalleryPick;
 el('galleryPickDownload').onclick=async()=>{
   const chosen=[...galleryPicked.values()];
@@ -963,7 +974,7 @@ el('galleryLoadMore').onclick=()=>loadGlobalPage(false);
 el('globalGalleryBack').onclick=leaveGlobalGallery;
 const galleryNextObserver=new IntersectionObserver(entries=>{
   if(entries.some(e=>e.isIntersecting)&&allPhotosMode&&allPhotoStatus?.complete&&
-     !allPhotoPageBusy&&allPhotos.length<allPhotoTotal)loadGlobalPage(false);
+     !allPhotoPageBusy&&!allPhotoSubsetMode&&allPhotoNextOffset<allPhotoTotal)loadGlobalPage(false);
 },{rootMargin:'450px 0px'});
 galleryNextObserver.observe(el('galleryLoadMore'));
 
