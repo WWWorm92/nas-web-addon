@@ -2124,13 +2124,113 @@ function renderProfile(){
     };
     actions.append(toggle,remove);row.append(info,actions);list.append(row);
   }
-  const canBind=!allPhotosMode&&!!selected&&!!dir&&!dir.startsWith('.recycle');
-  el('profileBindFolder').disabled=!canBind;
-  el('profileHint').textContent=canBind
-    ?'Открыта папка '+selected+' / '+dir+'. После привязки только этот профиль сможет скрывать её фотографии.'
-    :'Для привязки откройте нужную папку в разделе «Файлы», затем вернитесь в профиль.';
+  // The profile picker works from gallery mode, a share root, or any folder.
+  // There is no prerequisite to navigate the file manager first.
+  el('profileBindFolder').disabled=!shares.length;
 }
+
+// Independent folder picker: does not alter the user's active gallery,
+// current file-manager directory or the shared index.
+let profilePickShare='',profilePickPath='',profilePickerEpoch=0,profilePickerBusy=false;
+function closeProfilePicker(){
+  ++profilePickerEpoch;
+  profilePickerBusy=false;
+  el('profilePicker').classList.add('hidden');
+}
+function profilePickerTrail(){
+  const trail=el('profilePickTrail');trail.replaceChildren();
+  const parts=profilePickPath?profilePickPath.split('/'):[];
+  const home=document.createElement('button');home.type='button';
+  home.textContent=profilePickShare||'Хранилище';
+  home.disabled=parts.length===0;
+  home.onclick=()=>profileBrowseFolder(profilePickShare,'');
+  trail.append(home);
+  for(let index=0;index<parts.length;index++){
+    const separator=document.createElement('span');separator.textContent='›';
+    const step=document.createElement('button');step.type='button';
+    step.textContent=parts[index];step.disabled=index===parts.length-1;
+    const target=parts.slice(0,index+1).join('/');
+    step.onclick=()=>profileBrowseFolder(profilePickShare,target);
+    trail.append(separator,step);
+  }
+}
+// A response from an older navigation can never overwrite a newer folder.
+async function profileBrowseFolder(share,path){
+  if(!shares.includes(share))return;
+  const serial=++profilePickerEpoch;
+  profilePickShare=share;profilePickPath=path;
+  profilePickerBusy=true;
+  el('profilePickShare').value=share;
+  profilePickerTrail();
+  const container=el('profilePickFolders');container.replaceChildren();
+  const loading=document.createElement('p');loading.textContent='Открываем папку…';
+  container.append(loading);
+  el('profilePickConfirm').disabled=true;
+  try{
+    const data=await api('/api/list?'+qs({share,path}));
+    if(serial!==profilePickerEpoch||el('profilePicker').classList.contains('hidden'))return;
+    const folders=(data.items||[])
+      .filter(item=>item.directory&&item.name&&item.name!=='.'&&item.name!=='..'&&item.name!=='.recycle')
+      .sort((a,b)=>a.name.localeCompare(b.name,'ru',{numeric:true}));
+    container.replaceChildren();
+    for(const folder of folders){
+      const next=[path,folder.name].filter(Boolean).join('/');
+      const button=document.createElement('button');button.type='button';
+      button.textContent='▱  '+folder.name;
+      button.onclick=()=>profileBrowseFolder(share,next);
+      container.append(button);
+    }
+    if(!folders.length){
+      const empty=document.createElement('p');
+      empty.textContent=path?'Нет подпапок. Выберите текущую папку.':'В этой шаре нет доступных папок.';
+      container.append(empty);
+    }
+    profilePickerBusy=false;
+    el('profilePickConfirm').disabled=!path;
+  }catch(err){
+    if(serial!==profilePickerEpoch)return;
+    container.replaceChildren();
+    const error=document.createElement('p');
+    error.textContent='Не удалось открыть папку: '+err.message;
+    container.append(error);
+    profilePickerBusy=false;
+    el('profilePickConfirm').disabled=true;
+  }
+}
+function openProfilePicker(){
+  if(!shares.length){profileNotice('Нет доступных SMB-шар');return;}
+  el('profilePicker').classList.remove('hidden');
+  profileNotice('');
+  const select=el('profilePickShare');select.replaceChildren();
+  for(const share of shares){
+    const option=document.createElement('option');option.value=share;option.textContent=share;
+    select.append(option);
+  }
+  const share=selected&&shares.includes(selected)?selected:shares[0];
+  const path=!allPhotosMode&&share===selected&&dir&&!dir.startsWith('.recycle')?dir:'';
+  profileBrowseFolder(share,path);
+  el('profilePicker').scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+el('profilePickShare').onchange=()=>profileBrowseFolder(el('profilePickShare').value,'');
+el('profilePickerClose').onclick=closeProfilePicker;
+el('profilePickCancel').onclick=closeProfilePicker;
+el('profilePickConfirm').onclick=async()=>{
+  if(profilePickerBusy||!profilePickShare||!profilePickPath)return;
+  const share=profilePickShare,path=profilePickPath;
+  const button=el('profilePickConfirm');button.disabled=true;
+  try{
+    const result=await collectionPost('/api/profile/folders',{share,path});
+    profileData=result;
+    closeProfilePicker();renderProfile();
+    profileNotice('Папка '+share+' / '+path+' привязана к профилю');
+  }catch(err){
+    profileNotice('Не удалось привязать папку: '+err.message);
+    if(!el('profilePicker').classList.contains('hidden'))button.disabled=false;
+  }
+};
+
 function closeProfile(){
+  closeProfilePicker();
   el('profileOverlay').classList.add('hidden');
 }
 async function openProfile(){
@@ -2157,14 +2257,7 @@ el('profileForm').onsubmit=async e=>{
   }catch(err){profileNotice('Ошибка сохранения: '+err.message)}
   finally{button.disabled=false}
 };
-el('profileBindFolder').onclick=async()=>{
-  if(allPhotosMode||!dir||!selected)return;
-  const share=selected,path=dir;
-  try{
-    profileData=await collectionPost('/api/profile/folders',{share,path});
-    renderProfile();profileNotice('Папка '+path+' привязана. Её можно скрыть из фотогалереи.');
-  }catch(err){profileNotice('Не удалось привязать папку: '+err.message)}
-};
+el('profileBindFolder').onclick=openProfilePicker;
 
 const theme=localStorage.getItem('nas_theme')||'dark';document.documentElement.dataset.theme=theme;el('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('nas_theme',t)};
 const startupLoginGeneration=loginGeneration;
