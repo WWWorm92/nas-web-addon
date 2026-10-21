@@ -637,6 +637,32 @@ button:active{transform:scale(.975)}
  .photoStage .videoQuickActions button{min-height:42px;min-width:72px}
 }
 
+/* 0.22.31: Google Photos-like memories are part of the gallery, not a menu. */
+#app:not(.globalGalleryOpen) #galleryMemories,
+#app #galleryMemories.hidden{display:none!important}
+#app .galleryMemories{display:block;min-width:0;margin:4px 0 20px}
+#app .galleryMemoriesHeading{display:flex;align-items:center;justify-content:space-between;margin:0 0 13px}
+#app .galleryMemoriesHeading h2{margin:0;font-weight:770;letter-spacing:-.5px;font-size:20px}
+#app .galleryMemoriesHeading p{margin:4px 0 0;color:var(--muted);font-size:12px}
+#app .galleryMemoryStories{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;scrollbar-width:none;padding:2px 1px 12px;overscroll-behavior-x:contain}
+#app .galleryMemoryStories::-webkit-scrollbar{display:none}
+#app .memoryStory{position:relative;display:block;flex:0 0 160px;width:160px;height:205px;min-height:0;overflow:hidden;text-align:left;border:1px solid var(--border);border-radius:18px;padding:0;background:var(--panel2);color:white;scroll-snap-align:start;isolation:isolate}
+#app .memoryStory img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transition:transform .25s ease}
+#app .memoryStory::after{position:absolute;inset:0;content:"";background:linear-gradient(180deg,#080c1612 20%,#090d17b7 100%);pointer-events:none}
+#app .memoryStoryContent{position:absolute;bottom:13px;left:12px;right:11px;z-index:1;display:flex;flex-direction:column;gap:3px}
+#app .memoryStoryContent strong{font-size:15px;line-height:1.2;letter-spacing:-.2px;color:#fff}
+#app .memoryStoryContent small{font-size:11px;line-height:1.35;color:#e5eaf4}
+#app .memoryStory:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+@media(hover:hover) and (pointer:fine){#app .memoryStory:hover img{transform:scale(1.06)}}
+@media(max-width:700px){
+ #app .galleryMemories{margin:4px 0 14px}
+ #app .galleryMemoriesHeading{margin-bottom:10px;padding:0 2px}
+ #app .galleryMemoriesHeading h2{font-size:19px}
+ #app .galleryMemoryStories{gap:9px;margin-right:-10px;padding-right:10px;padding-bottom:10px}
+ #app .memoryStory{flex-basis:134px;width:134px;height:178px;border-radius:15px}
+}
+@media(prefers-reduced-motion:reduce){#app .memoryStory img{transition:none}}
+
 /* Personal profiles and global photo-folder visibility. */
 .profileTrigger{display:inline-flex;align-items:center;gap:8px;border:0;background:transparent;padding:5px 7px;min-height:42px;border-radius:12px}
 .profileAvatar{width:33px;height:33px;display:grid;place-items:center;border-radius:12px;background:#4b80db;color:white;font-size:14px;font-weight:780;flex-shrink:0}
@@ -704,6 +730,12 @@ button:active{transform:scale(.975)}
 
 <div id="mobileGalleryHeader" class="mobileGalleryHeader"><strong>Фото</strong><div><button id="gallerySearchToggle" type="button" aria-label="Поиск фотографий">⌕</button><button id="gallerySettingsToggle" type="button" aria-label="Настройки галереи"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="var(--bg)"/><circle cx="16" cy="12" r="2" fill="var(--bg)"/><circle cx="10" cy="18" r="2" fill="var(--bg)"/></svg></button></div></div>
 <div id="gallerySettingsPanel" class="gallerySettingsPanel hidden"><div class="gallerySettingsTitle">Настройки галереи <button id="gallerySettingsClose" type="button" aria-label="Закрыть настройки">✕</button></div><div id="gallerySettingsContent"><button type="button" id="galleryRetryDates" class="hidden" aria-hidden="true" tabindex="-1">Повторно проверить даты (без сброса)</button></div></div>
+<section id="galleryMemories" class="galleryMemories hidden" aria-labelledby="galleryMemoriesTitle">
+  <div class="galleryMemoriesHeading">
+    <div><h2 id="galleryMemoriesTitle">Воспоминания</h2><p>В этот день, много лет назад</p></div>
+  </div>
+  <div id="galleryMemoryStories" class="galleryMemoryStories" aria-label="Лента воспоминаний"></div>
+</section>
 <div id="mobileFilesHeader" class="mobileFilesHeader"><strong>Файлы</strong><div><button id="filesSearchToggle" type="button" aria-label="Поиск файлов">⌕</button><button id="filesSortToggle" type="button" aria-label="Сортировка файлов">↕</button><button id="filesSettingsToggle" type="button" aria-label="Действия с файлами">⋮</button></div></div><div id="mobileFilesBreadcrumb" class="mobileFilesBreadcrumb"></div>
 <div class="controls"><input class="search" id="search" type="search" placeholder="Поиск файлов и папок…" aria-label="Поиск файлов"><button id="up" title="На уровень выше">← Назад</button><button id="folder">＋ Папка</button><label class="primary uploadLabel">↑ Загрузить<input id="upload" type="file" multiple hidden></label><button id="selectionModeButton" type="button" title="Выделить несколько файлов">☑ Выбрать</button><button id="refresh" title="Обновить список" aria-label="Обновить список">⟳</button><select id="sort" aria-label="Сортировка"><option value="name">По имени</option><option value="new">Сначала новые</option><option value="size">По размеру</option></select><div class="viewButtons" role="group" aria-label="Режим отображения"><button id="gridView" class="active" title="Плитки" aria-label="Плитки">▦</button><button id="listView" title="Список" aria-label="Список">☰</button><button id="galleryView" title="Фотогалерея" aria-label="Фотогалерея">▧</button></div></div><div id="selectionBar" class="selectionBar hidden" role="toolbar" aria-label="Выделенные файлы"><span id="selectionCount">0 выбрано</span><button id="selectAll" type="button">Выбрать все</button><button id="selectionDownload" type="button">Скачать файл</button><button id="selectionCopy" type="button">Копировать</button><button id="selectionMove" type="button">Переместить</button><button id="selectionZip" type="button">Скачать ZIP</button><button id="selectionDelete" type="button" class="selectionDanger">Удалить</button><button id="selectionCancel" type="button">Отмена</button></div><div id="globalGallerySummary" class="globalGallerySummary hidden"><button id="galleryStatusToggle" class="galleryStatusToggle" type="button" aria-label="Показать состояние индексации">ⓘ Индексация</button><span id="globalGalleryProgress" role="status">Индексация фототеки…</span><div class="globalGalleryActions"><button type="button" id="globalGalleryRescan">Обновить фототеку</button><button type="button" id="globalGalleryBack">← К файлам</button></div></div><div id="galleryControls" class="galleryControls"><select id="galleryMonthJump" aria-label="Перейти к месяцу"><option value="">Перейти к месяцу</option></select><div class="galleryZoomControls"><button id="galleryZoomOut" type="button" aria-label="Меньше фото в строке">−</button><span id="galleryZoomLabel">3 в ряд</span><button id="galleryZoomIn" type="button" aria-label="Больше фото в строке">+</button></div></div><div id="galleryPickBar" class="galleryPickBar hidden"><span id="galleryPickCount">0 выбрано</span><button id="galleryPickDownload" type="button">Скачать ZIP</button><button id="galleryPickDone" type="button">Готово</button></div><div id="galleryYears" class="galleryYears hidden" aria-label="Быстрый переход по годам"></div><div class="status" id="status" role="status"></div><button type="button" id="uploadCenterButton" class="uploadCenterButton">⇧ Центр загрузок</button><div id="uploadProgress" class="hidden"><div id="progressFill"></div></div><div class="items" id="entries"></div><div id="galleryPageFooter" class="galleryPageFooter hidden"><button id="galleryLoadMore" type="button">Показать ещё</button></div></section></div>
 <nav id="mobileNav" class="mobileNav" aria-label="Основная навигация">
