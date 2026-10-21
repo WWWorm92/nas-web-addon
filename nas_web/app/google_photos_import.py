@@ -12,6 +12,8 @@ import logging
 import os
 import re
 import secrets
+import shutil
+import errno
 import sqlite3
 import threading
 import time
@@ -40,6 +42,7 @@ MAX_MEDIA = 4 * 1024 * 1024 * 1024
 MAX_UNCOMPRESSED = 40 * 1024 * 1024 * 1024
 TAKEOUT_CHUNK_SIZE = 1024 * 1024
 TAKEOUT_UPLOAD_TTL = 36 * 3600
+TAKEOUT_SPOOL_RESERVE = 512 * 1024 * 1024
 GUARD = threading.RLock()
 ACTIVE = set()
 ACCESS_CACHE = {}
@@ -543,6 +546,27 @@ def _takeout_position(db, row):
     return actual
 
 
+def takeout_storage_info():
+    """Remaining writable spool storage; this is HA /data, not an SMB share."""
+    ARCHIVES.mkdir(mode=0o700, parents=True, exist_ok=True)
+    disk = shutil.disk_usage(ARCHIVES)
+    return {"free": disk.free, "total": disk.total,
+            "reserve": TAKEOUT_SPOOL_RESERVE}
+
+
+def _ensure_takeout_space(bytes_needed):
+    info = takeout_storage_info()
+    available = max(0, info["free"] - info["reserve"])
+    if bytes_needed > available:
+        gib = 1024 ** 3
+        raise ValueError(
+            "Недостаточно свободного места в хранилище аддона (/data): "
+            f"для ZIP нужно ещё {bytes_needed / gib:.1f} ГБ, "
+            f"доступно с резервом {available / gib:.1f} ГБ. "
+            "Освободите место или экспортируйте Google Takeout частями по 1–2 ГБ."
+        )
+
+
 def begin_takeout_upload(username, share, folder, filename, size, mtime, max_bytes):
     """Create or resume the identical file for one SMB user/destination."""
     name = str(filename or "")
@@ -553,8 +577,14 @@ def begin_takeout_upload(username, share, folder, filename, size, mtime, max_byt
         modified = int(mtime)
     except (TypeError, ValueError):
         raise ValueError("Некорректный размер архива") from None
-    if total <= 0 or total > max_bytes or modified < 0:
-        raise ValueError("ZIP превышает лимит max_import_mb или имеет неверный размер")
+    if total <= 0 or modified < 0:
+        raise ValueError("Некорректный размер или дата ZIP-архива")
+    if total > max_bytes:
+        raise ValueError(
+            f"ZIP слишком большой: {total / (1024 ** 3):.2f} ГБ, "
+            f"настроенный предел max_import_mb — {max_bytes / (1024 ** 3):.2f} ГБ. "
+            f"Увеличьте max_import_mb в параметрах аддона (например, до 8192 или 10240)."
+        )
     with GUARD:
         if owner_of(username) in ACTIVE:
             raise ValueError("Импорт этого пользователя уже выполняется")
@@ -566,10 +596,12 @@ def begin_takeout_upload(username, share, folder, filename, size, mtime, max_byt
                 (owner_of(username), share, folder, name, total, modified)).fetchone()
             if row is not None:
                 offset = _takeout_position(db, row)
+                _ensure_takeout_space(total - offset)
                 db.execute("UPDATE takeout_uploads SET updated=? WHERE id=?",
                            (time.time(), row["id"]))
                 return {"upload_id": row["id"], "offset": offset,
                         "size": total, "chunk_size": TAKEOUT_CHUNK_SIZE}
+            _ensure_takeout_space(total)
             identifier = secrets.token_urlsafe(24)
             path = _takeout_part(identifier)
             with path.open("xb"):
@@ -622,8 +654,13 @@ def write_takeout_chunk(username, identifier, offset, chunk):
                 if written != len(chunk):
                     raise OSError("Incomplete chunk write")
                 stream.flush()
-            except Exception:
+            except Exception as exc:
                 stream.truncate(actual)
+                if isinstance(exc, OSError) and exc.errno in (errno.ENOSPC, errno.EDQUOT):
+                    raise ValueError(
+                        "Закончилась свободная память для ZIP в /data. "
+                        "Освободите место и выберите тот же ZIP для продолжения."
+                    ) from None
                 raise
         next_offset = actual + len(chunk)
         db.execute("UPDATE takeout_uploads SET offset=?, updated=? WHERE id=?",
