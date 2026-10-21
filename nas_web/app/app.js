@@ -490,12 +490,22 @@ function leaveGlobalGallery(){
   renderBreadcrumb();render();updateMobileNav();
 }
 
-function setGlobalGalleryOrder(order){
+async function setGlobalGalleryOrder(order){
  if(!['taken','modified'].includes(order)||order===globalGalleryOrder)return;
  globalGalleryOrder=order;localStorage.setItem('nasweb-gallery-order',order);
  el('galleryOrderSelect').value=order;
- allPhotoScanToken++;allPhotos=[];allPhotoTotal=0;galleryRenderSignature='';
- loadGlobalPage(true);
+ const token=++allPhotoScanToken;
+ allPhotos=[];allPhotoTotal=0;galleryRenderSignature='';
+ if(!allPhotosMode)return;
+ render();
+ // A page read for the previous sort can still be in flight.
+ // Wait for its finalizer instead of leaving the gallery blank forever.
+ while(allPhotoPageBusy&&allPhotosMode&&token===allPhotoScanToken){
+   await new Promise(resolve=>setTimeout(resolve,80));
+ }
+ if(!allPhotosMode||token!==allPhotoScanToken)return;
+ await loadGlobalPage(true);
+ if(allPhotosMode&&token===allPhotoScanToken)scanAllPhotos(token);
 }
 async function loadGlobalPage(reset=false){
   if(allPhotoPageBusy||!allPhotosMode)return;
