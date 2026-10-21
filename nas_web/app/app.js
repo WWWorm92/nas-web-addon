@@ -8,6 +8,7 @@ const videoExt=['mp4','webm','m4v','mov','mp3','ogg'];
 
 const ICON_PATHS={
  folder:'<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3z"/>',
+ trash:'<path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13M10 11v6m4-6v6"/>',
  image:'<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="9" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 6"/>',
  video:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="m10 8 6 4-6 4z"/>',
  file:'<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5"/>',
@@ -507,16 +508,24 @@ function updateMobileNav(){
 function hideMenu(){el('fileMenu').classList.add('hidden');el('fileMenu').replaceChildren()}
 function menuButton(text,fn,danger=false){const btn=document.createElement('button');btn.textContent=text;if(danger)btn.classList.add('danger');btn.onclick=()=>{hideMenu();fn()};return btn}
 function openMenu(f,button){
+const inTrashRoot=dir==='.recycle';
 if(isMobileLayout()){
   const actions=[];
   if(f.directory)actions.push({label:'▱ Открыть папку',run:()=>enterFolder(f.name)});
   else{if(canPreview(f))actions.push({label:'▣ Просмотреть',run:()=>openPreview(f)});actions.push({label:'↓ Скачать',run:()=>download(f)})}
+  if(inTrashRoot)actions.push({label:'↶ Восстановить',run:()=>restoreItem(f)});
   actions.push({label:'✎ Переименовать',run:()=>renameItem(f)});
   actions.push({label:'□ Выделить',run:()=>toggleSelected(f.name)});
-  actions.push({label:'× Удалить',danger:true,run:()=>deleteItem(f)});
+  actions.push({label:'× '+(isTrashItemPath(fpath(f.name))?'Удалить навсегда':'В корзину'),danger:true,run:()=>deleteItem(f)});
   openMobileSheet(f.name,actions);return;
 }
-const menu=el('fileMenu');menu.replaceChildren();if(f.directory)menu.append(menuButton('Открыть',()=>enterFolder(f.name)));else{if(canPreview(f))menu.append(menuButton('Просмотреть',()=>openPreview(f)));menu.append(menuButton('Скачать',()=>download(f)))}menu.append(menuButton('Переименовать',()=>renameItem(f)));menu.append(menuButton('Удалить',()=>deleteItem(f),true));menu.classList.remove('hidden');const rect=button.getBoundingClientRect(),mw=200,mh=190;menu.style.left=Math.max(8,Math.min(rect.left,innerWidth-mw-8))+'px';menu.style.top=(rect.bottom+mh>innerHeight?Math.max(8,rect.top-mh):rect.bottom+5)+'px'}
+const menu=el('fileMenu');menu.replaceChildren();
+if(f.directory)menu.append(menuButton('Открыть',()=>enterFolder(f.name)));
+else{if(canPreview(f))menu.append(menuButton('Просмотреть',()=>openPreview(f)));menu.append(menuButton('Скачать',()=>download(f)))}
+if(inTrashRoot)menu.append(menuButton('↶ Восстановить',()=>restoreItem(f)));
+menu.append(menuButton('Переименовать',()=>renameItem(f)));
+menu.append(menuButton(isTrashItemPath(fpath(f.name))?'Удалить навсегда':'В корзину',()=>deleteItem(f),true));
+menu.classList.remove('hidden');const rect=button.getBoundingClientRect(),mw=210,mh=220;menu.style.left=Math.max(8,Math.min(rect.left,innerWidth-mw-8))+'px';menu.style.top=(rect.bottom+mh>innerHeight?Math.max(8,rect.top-mh):rect.bottom+5)+'px'}
 function sortedFiltered(){let a=items.filter(f=>f.name.toLocaleLowerCase().includes(el('search').value.trim().toLocaleLowerCase()));const sort=el('sort').value;a.sort((x,y)=>Number(y.directory)-Number(x.directory)||(sort==='new'?Number(y.modified||0)-Number(x.modified||0):sort==='size'?Number(y.size)-Number(x.size):x.name.localeCompare(y.name,'ru')));return a}
 // Limit simultaneous thumbnail requests so phones don't saturate the NAS.
 const thumbQueue=[];let activeThumbs=0;const THUMB_CONCURRENCY=2;
@@ -752,7 +761,7 @@ tile.addEventListener('touchmove',e=>{if(e.touches.length&&Math.hypot(e.touches[
 tile.addEventListener('touchend',()=>clearTimeout(pressTimer));tile.addEventListener('touchcancel',()=>clearTimeout(pressTimer));
 tile.addEventListener('contextmenu',e=>{if(e.target.closest('.more'))return;e.preventDefault();openMenu(f,tile)});
 tile.addEventListener('click',e=>{if(longPressed){e.stopImmediatePropagation();longPressed=false}},true);
-const check=document.createElement('button');check.type='button';check.className='selectionCheck';check.title='Выделить '+f.name;check.setAttribute('aria-label','Выделить '+f.name);check.onclick=e=>{e.stopPropagation();toggleSelected(f.name)};tile.append(check);const thumb=document.createElement('div');thumb.className='thumb';thumb.title=f.directory?'Открыть папку':'Просмотреть файл';if(f.directory)thumb.append(icon('folder'));else if(imageExt.includes(ext(f.name))){const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';img.onload=()=>img.classList.add('photoLoaded');img.dataset.src=imageURL(f,false,dir,selected);photoObserver.observe(img);img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};thumb.append(img)}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name==='.recycle'?'Корзина':f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'':size(f.size);if(!f.directory)details.append(meta);if(view!=='gallery')tile.append(details);const more=document.createElement('button');more.className='more';more.textContent='⋯';more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);grid.append(tile)}updateSelection();if(!shown.length)message(view==='gallery'?'В этой папке нет фотографий. Переключитесь на плитки, чтобы увидеть файлы и папки.':el('search').value?'Ничего не найдено':'Папка пуста');else message(shown.length+(view==='gallery'?' фотографий':' элементов'))}
+const check=document.createElement('button');check.type='button';check.className='selectionCheck';check.title='Выделить '+f.name;check.setAttribute('aria-label','Выделить '+f.name);check.onclick=e=>{e.stopPropagation();toggleSelected(f.name)};tile.append(check);const thumb=document.createElement('div');thumb.className='thumb';thumb.title=f.directory?'Открыть папку':'Просмотреть файл';if(f.directory)thumb.append(icon(f.name==='.recycle'&&dir===''?'trash':'folder'));else if(imageExt.includes(ext(f.name))){const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';img.onload=()=>img.classList.add('photoLoaded');img.dataset.src=imageURL(f,false,dir,selected);photoObserver.observe(img);img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};thumb.append(img)}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name==='.recycle'?'Корзина':f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'':size(f.size);if(!f.directory)details.append(meta);if(view!=='gallery')tile.append(details);const more=document.createElement('button');more.className='more';more.textContent='⋯';more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);grid.append(tile)}updateSelection();if(!shown.length)message(view==='gallery'?'В этой папке нет фотографий. Переключитесь на плитки, чтобы увидеть файлы и папки.':el('search').value?'Ничего не найдено':'Папка пуста');else message(shown.length+(view==='gallery'?' фотографий':' элементов'))}
 async function refresh(){galleryDateGeneration++;if(!selected)return;selectedFiles.clear();selectionMode=false;updateSelection();hideMenu();message('Загрузка…');const share=selected,path=dir;renderBreadcrumb();el('entries').replaceChildren();el('up').disabled=!dir;try{const data=await api('/api/list?'+qs({share,path}));if(share!==selected||path!==dir)return;items=data.items;render();if(view==='gallery')scanGalleryDates()}catch(e){message(e.message)}}
 async function mutate(action,payload){try{await api('/api/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({share:selected,...payload})});await refresh()}catch(e){alert(e.message)}}
 let activeDialog=null;
@@ -775,23 +784,24 @@ function askDialog({title,text,initial='',input=false,confirm='Продолжи�
 }
 async function renameItem(f){const name=await askDialog({title:'Переименовать',text:'Введите новое имя файла или папки.',initial:f.name,input:true,confirm:'Сохранить'});if(name&&name!==f.name)await mutate('rename',{path:fpath(f.name),name})}
 const isTrashItemPath=path=>path.startsWith('.recycle/')&&path.length>'.recycle/'.length;
+async function restoreItem(f){
+  if(dir!=='.recycle')return;
+  await mutate('trash/restore',{path:fpath(f.name)});
+}
 async function deleteItem(f){
   const path=fpath(f.name),insideTrash=isTrashItemPath(path);
   if(insideTrash){
-    const answer=await askDialog({
+    const approved=await askDialog({
       title:'Удалить '+(f.directory?'папку':'файл')+' навсегда?',
-      text:'«'+f.name+'» '+(f.directory?'будет безвозвратно удалена вместе со всеми вложенными папками и файлами. Введите УДАЛИТЬ для подтверждения.':'будет безвозвратно удалён. Это действие нельзя отменить.'),
-      input:!!f.directory,confirm:'Удалить навсегда',danger:true
+      text:'«'+f.name+'» '+(f.directory?'и всё содержимое будут удалены навсегда.':'будет удалён навсегда.'),
+      confirm:'Удалить',danger:true
     });
-    if(f.directory ? String(answer||'').toUpperCase()!=='УДАЛИТЬ':!answer)return;
-    await mutate('trash/permanent-delete',{
-      path,directory:!!f.directory,confirm:'УДАЛИТЬ',confirm_name:f.name
-    });
+    if(approved)await mutate('trash/permanent-delete',{path,directory:!!f.directory});
   }else{
     const approved=await askDialog({
       title:'Переместить '+(f.directory?'папку':'файл')+' в корзину?',
       text:'«'+f.name+'» '+(f.directory?'будет перемещена в корзину вместе со всем содержимым.':'будет перемещён в корзину.')+
-        ' Данные не удаляются навсегда.',
+        ' Восстановить можно в течение 14 дней.',
       confirm:'В корзину',danger:true
     });
     if(approved)await mutate('delete',{path,directory:!!f.directory});
@@ -983,16 +993,16 @@ el('selectionDelete').onclick=async()=>{
   const targets=items.filter(f=>selectedFiles.has(f.name));
   if(!targets.length)return;
   const inTrash=targets.every(f=>isTrashItemPath(fpath(f.name)));
-  const answer=await askDialog(inTrash?{
+  const approved=await askDialog(inTrash?{
     title:'Удалить навсегда '+targets.length+' элементов?',
-    text:'Будут безвозвратно удалены выбранные файлы и все содержимое выбранных папок. Введите УДАЛИТЬ для подтверждения.',
-    input:true,confirm:'Удалить навсегда',danger:true
+    text:'Выбранные файлы и содержимое выбранных папок будут удалены навсегда.',
+    confirm:'Удалить',danger:true
   }:{
     title:'Переместить в корзину?',
     text:'В корзину будут перемещены '+targets.length+' элементов вместе с содержимым выбранных папок.',
     confirm:'В корзину',danger:true
   });
-  if(inTrash?String(answer||'').toUpperCase()!=='УДАЛИТЬ':!answer)return;
+  if(!approved)return;
   let removed=0,failed=0;
   for(const f of targets){
     const path=fpath(f.name);
@@ -1000,8 +1010,7 @@ el('selectionDelete').onclick=async()=>{
     try{
       await api(permanent?'/api/trash/permanent-delete':'/api/delete',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({share:selected,path,directory:!!f.directory,
-          ...(permanent?{confirm:'УДАЛИТЬ',confirm_name:f.name}:{})})
+        body:JSON.stringify({share:selected,path,directory:!!f.directory})
       });
       removed++;
     }catch(e){failed++}
