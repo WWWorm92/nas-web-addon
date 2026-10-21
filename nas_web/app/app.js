@@ -25,7 +25,7 @@ const fpath=name=>[dir,name].filter(Boolean).join('/');
 const fileUrl=(name,inline=false)=>'/api/file?'+qs({share:selected,path:fpath(name),inline:String(inline)});
 let loginGeneration=0,videoUser='';
 async function api(url,options={}){const r=await fetch(url,{credentials:'same-origin',...options,headers:{...(options.headers||{}),'X-CSRF-Token':csrf}});if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).detail||m}catch{}if(r.status===401&&url!=='/api/login'&&url!=='/api/me')showLogin();throw Error(m)}return r.json()}
-function showLogin(){closeProfile();videoUser='';resetFileManagerState();leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
+function showLogin(){closeProfile();profileData=null;googleImportDestination=null;googlePickerWaiting=false;videoUser='';resetFileManagerState();leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
 function showApp(user){videoUser=String(user.username||'').toLocaleLowerCase();resetFileManagerState();closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();refreshProfile().catch(err=>console.warn('Profile:',err.message));if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
 function renderShares(){el('shares').replaceChildren();for(const share of shares){const b=document.createElement('button');b.className='share'+(share===selected?' selected':'');b.append(icon('disk'),document.createTextNode(' '+share));b.onclick=()=>choose(share);el('shares').append(b)}}
 const selectedFiles=new Set();
@@ -2056,6 +2056,7 @@ async function refreshProfile(){
   profileColor=data.avatar_color;
   updateProfileAvatar();
   renderProfile();
+  renderImportDestination();
   return data;
 }
 function renderProfile(){
@@ -2132,6 +2133,7 @@ function renderProfile(){
 // Independent folder picker: does not alter the user's active gallery,
 // current file-manager directory or the shared index.
 let profilePickShare='',profilePickPath='',profilePickerEpoch=0,profilePickerBusy=false;
+let profilePickerPurpose='bind';
 function closeProfilePicker(){
   ++profilePickerEpoch;
   profilePickerBusy=false;
@@ -2197,7 +2199,9 @@ async function profileBrowseFolder(share,path){
     el('profilePickConfirm').disabled=true;
   }
 }
-function openProfilePicker(){
+function openProfilePicker(purpose='bind'){
+  profilePickerPurpose=purpose==='import'?'import':'bind';
+  el('profilePickConfirm').textContent=profilePickerPurpose==='import'?'Выбрать эту папку':'Привязать эту папку';
   if(!shares.length){profileNotice('Нет доступных SMB-шар');return;}
   el('profilePicker').classList.remove('hidden');
   profileNotice('');
@@ -2217,6 +2221,12 @@ el('profilePickCancel').onclick=closeProfilePicker;
 el('profilePickConfirm').onclick=async()=>{
   if(profilePickerBusy||!profilePickShare||!profilePickPath)return;
   const share=profilePickShare,path=profilePickPath;
+  if(profilePickerPurpose==='import'){
+    googleImportDestination={share,path};
+    closeProfilePicker();renderImportDestination();
+    importNotice('Папка назначения выбрана');
+    return;
+  }
   const button=el('profilePickConfirm');button.disabled=true;
   try{
     const result=await collectionPost('/api/profile/folders',{share,path});
@@ -2238,6 +2248,7 @@ async function openProfile(){
   el('profileOverlay').classList.remove('hidden');
   profileNotice('');
   try{await refreshProfile()}catch(e){profileNotice('Не удалось открыть профиль: '+e.message)}
+  refreshGoogleImport().catch(err=>importNotice('Импорт Google: '+err.message));
 }
 el('profileTrigger').onclick=openProfile;
 el('profileClose').onclick=closeProfile;
@@ -2259,6 +2270,210 @@ el('profileForm').onsubmit=async e=>{
 };
 el('profileBindFolder').onclick=openProfilePicker;
 
+
+// All import controls live INSIDE the existing user profile, not the app shell.
+let googleImportDestination=null,googlePickerWaiting=false,googleImportBusy=false;
+let googlePickerPollAfter=0;
+let googleStatusRequestBusy=false;
+function importNotice(text){el('profileImportMessage').textContent=text}
+function renderImportDestination(){
+  if(!googleImportDestination&&profileData?.folders?.length){
+    const folder=profileData.folders[0];
+    googleImportDestination={share:folder.share,path:folder.path};
+  }
+  el('profileImportPath').textContent=googleImportDestination
+    ?googleImportDestination.share+' / '+googleImportDestination.path
+    :'Выберите папку на NAS';
+}
+el('profileImportChoose').onclick=()=>openProfilePicker('import');
+function formatImportJob(job){
+  const card=document.createElement('div');card.className='profileImportJob';
+  const source=job.source==='picker'?'Выбор Google Фото':'Google Takeout';
+  const phase={
+    queued:'В очереди',running:'Перенос выполняется',
+    completed:'Завершён',failed:'Ошибка',interrupted:'Прерван'
+  }[job.status]||job.status;
+  card.textContent=source+' · '+phase+
+    (job.total?' · '+job.processed+' / '+job.total:'')+
+    ' · перенесено: '+job.imported+', пропущено: '+job.skipped+
+    (job.failed?' · ошибок: '+job.failed:'')+
+    (job.detail?' · '+job.detail:'');
+  return card;
+}
+async function refreshGoogleImport(){
+  if(el('profileOverlay').classList.contains('hidden')||googleStatusRequestBusy)return;
+  googleStatusRequestBusy=true;
+  try{
+    const status=await api('/api/import/google/status');
+    const {configured,connected}=status;
+    if(connected&&status.picker_active)googlePickerWaiting=true;
+    if(!connected)googlePickerWaiting=false;
+    el('profileGoogleState').textContent=!configured
+      ?'Для Picker не настроен OAuth в аддоне'
+      :connected?'Google подключён':'Google не подключён';
+    el('profileGoogleConnect').disabled=!configured;
+    el('profileGoogleConnect').classList.toggle('hidden',!!connected);
+    el('profileGoogleDisconnect').classList.toggle('hidden',!connected);
+    el('profileGooglePickerStart').disabled=!connected||googleImportBusy;
+    const cards=el('profileImportJobsList');cards.replaceChildren();
+    for(const job of status.jobs||[])cards.append(formatImportJob(job));
+    if(!(status.jobs||[]).length){
+      const empty=document.createElement('p');empty.className='profileHint';
+      empty.textContent='Переносов пока нет';
+      cards.append(empty);
+    }
+    if(googlePickerWaiting&&connected){
+      el('profilePickerActions').classList.remove('hidden');
+      if(Date.now()<googlePickerPollAfter)return;
+      const result=await api('/api/import/google/picker/status');
+      const waitMs=Math.max(6000,Math.min(60000,Number.parseFloat(result.poll_interval||'6s')*1000||6000));
+      googlePickerPollAfter=Date.now()+waitMs;
+      if(result.active){
+        el('profileGooglePickerLink').href=result.picker_uri;
+        el('profileGooglePickerStatus').textContent=result.ready
+          ?'Выбор завершён, можно начать импорт'
+          :'Завершите выбор фотографий во вкладке Google';
+        el('profileGoogleImportPicked').disabled=!result.ready||googleImportBusy;
+      }else{
+        googlePickerWaiting=false;
+        el('profilePickerActions').classList.add('hidden');
+      }
+    }
+  }finally{googleStatusRequestBusy=false}
+}
+function googleImportDestinationRequired(){
+  if(!googleImportDestination){
+    importNotice('Сначала выберите папку назначения в профиле');
+    return null;
+  }
+  return googleImportDestination;
+}
+el('profileGoogleConnect').onclick=async()=>{
+  try{
+    const result=await api('/api/import/google/oauth/start',{method:'POST'});
+    if(!result.url?.startsWith('https://accounts.google.com/'))throw Error('Некорректная ссылка OAuth');
+    window.location.assign(result.url);
+  }catch(err){importNotice(err.message)}
+};
+el('profileGoogleDisconnect').onclick=async()=>{
+  if(!confirm('Отключить Google Фото для этого профиля? Уже импортированные файлы останутся.'))return;
+  try{
+    await api('/api/import/google/disconnect',{method:'POST'});
+    googlePickerWaiting=false;el('profilePickerActions').classList.add('hidden');
+    await refreshGoogleImport();importNotice('Google Фото отключён');
+  }catch(err){importNotice(err.message)}
+};
+el('profileGooglePickerStart').onclick=async()=>{
+  try{
+    const result=await api('/api/import/google/picker/start',{method:'POST'});
+    if(!result.picker_uri?.startsWith('https://'))throw Error('Не получена ссылка Google');
+    googlePickerWaiting=true;
+    googlePickerPollAfter=0;
+    el('profilePickerActions').classList.remove('hidden');
+    el('profileGooglePickerLink').href=result.picker_uri;
+    el('profileGooglePickerStatus').textContent='Откройте Google Фото, отметьте фотографии и подтвердите выбор';
+    el('profileGoogleImportPicked').disabled=true;
+    importNotice('Ссылка Google Фото готова. Откройте её и выберите фотографии.');
+  }catch(err){importNotice('Ошибка Picker: '+err.message)}
+};
+el('profileGoogleImportPicked').onclick=async()=>{
+  const destination=googleImportDestinationRequired();if(!destination)return;
+  const button=el('profileGoogleImportPicked');button.disabled=true;
+  try{
+    const result=await collectionPost('/api/import/google/picker/import',{
+      share:destination.share,path:destination.path
+    });
+    googlePickerWaiting=false;el('profilePickerActions').classList.add('hidden');
+    importNotice('Импорт выбранных фотографий запущен: '+result.total+' файлов');
+    refreshGoogleImport();
+  }catch(err){importNotice('Импорт не запущен: '+err.message)}
+  finally{button.disabled=false}
+};
+function submitTakeoutArchive(file,destination){
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST','/api/import/google/takeout?'+qs({
+      share:destination.share,path:destination.path
+    }));
+    xhr.withCredentials=true;
+    xhr.setRequestHeader('Content-Type','application/zip');
+    xhr.setRequestHeader('X-CSRF-Token',csrf);
+    el('profileImportUploadProgress').classList.remove('hidden');
+    xhr.upload.onprogress=e=>{
+      el('profileImportUploadBar').value=e.lengthComputable?Math.round(e.loaded/e.total*100):0;
+      el('profileImportUploadText').textContent='Передаём '+file.name+
+        (e.lengthComputable?' · '+Math.round(e.loaded/e.total*100)+'%':'');
+    };
+    xhr.onload=()=>{
+      let data={};try{data=JSON.parse(xhr.responseText)}catch{}
+      if(xhr.status>=200&&xhr.status<300)resolve(data);
+      else reject(Error(data.detail||'HTTP '+xhr.status));
+    };
+    xhr.onerror=()=>reject(Error('Ошибка соединения с NAS'));
+    xhr.onabort=()=>reject(Error('Передача архива прервана'));
+    xhr.send(file);
+  });
+}
+async function waitImportJob(id){
+  // Individual ZIP parts must be applied sequentially so that one user's
+  // worker never races itself or resets the gallery while scanning.
+  for(;;){
+    const state=await api('/api/import/google/status');
+    const job=(state.jobs||[]).find(job=>job.id===id);
+    if(!job)throw Error('Задача импорта потеряна');
+    if(['completed','failed','interrupted'].includes(job.status)){
+      if(job.status!=='completed')throw Error(job.detail||'Ошибка импорта');
+      return job;
+    }
+    if(el('profileImportMessage')){
+      importNotice('Импортируем '+job.processed+'/'+(job.total||'…')+
+        ' · перенесено '+job.imported+' · ошибок '+job.failed);
+    }
+    await new Promise(resolve=>setTimeout(resolve,2200));
+  }
+}
+el('profileTakeoutFiles').onchange=async()=>{
+  const files=Array.from(el('profileTakeoutFiles').files||[]);
+  if(!files.length)return;
+  const destination=googleImportDestinationRequired();
+  if(!destination){el('profileTakeoutFiles').value='';return}
+  if(googleImportBusy){importNotice('Импорт уже выполняется');return}
+  googleImportBusy=true;
+  el('profileTakeoutFiles').disabled=true;
+  let complete=0;
+  try{
+    for(const file of files){
+      if(!file.name.toLowerCase().endsWith('.zip')){
+        throw Error('Поддерживаются только ZIP-архивы');
+      }
+      importNotice('Загружаем архив '+file.name+' ('+(complete+1)+'/'+files.length+')');
+      const job=await submitTakeoutArchive(file,destination);
+      el('profileImportUploadProgress').classList.add('hidden');
+      await waitImportJob(job.job_id);
+      complete++;
+      await refreshGoogleImport();
+    }
+    importNotice('Готово: обработано '+complete+' ZIP-архивов Google Takeout');
+  }catch(err){importNotice('Импорт остановлен: '+err.message+' · обработано архивов: '+complete)}
+  finally{
+    googleImportBusy=false;
+    el('profileTakeoutFiles').disabled=false;
+    el('profileTakeoutFiles').value='';
+    el('profileImportUploadProgress').classList.add('hidden');
+    refreshGoogleImport().catch(()=>{});
+  }
+};
+setInterval(()=>{
+  if(!document.hidden&&!el('profileOverlay').classList.contains('hidden'))
+    refreshGoogleImport().catch(err=>console.warn('Google import status:',err.message));
+},6500);
+
+
 const theme=localStorage.getItem('nas_theme')||'dark';document.documentElement.dataset.theme=theme;el('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('nas_theme',t)};
+// Return to the profile after Google's top-level OAuth redirect.
+const oauthResult=new URLSearchParams(window.location.search).get('nas_google');
+if(oauthResult){
+  window.history.replaceState({},'',window.location.pathname);
+}
 const startupLoginGeneration=loginGeneration;
-api('/api/me').then(user=>{if(loginGeneration===startupLoginGeneration)showApp(user)}).catch(()=>{if(loginGeneration===startupLoginGeneration)showLogin()});
+api('/api/me').then(user=>{if(loginGeneration===startupLoginGeneration){showApp(user);if(oauthResult){openProfile().then(()=>importNotice(oauthResult==='connected'?'Google Фото подключён':'Google OAuth не завершён'))}}}).catch(()=>{if(loginGeneration===startupLoginGeneration)showLogin()});

@@ -5,6 +5,7 @@ set -eu
 install -d -m 0700 -o nasweb -g nasweb /data/nasweb-thumbs
 install -d -m 0700 -o nasweb -g nasweb /data/nasweb-video
 install -d -m 0700 -o nasweb -g nasweb /data/nasweb-auth
+install -d -m 0700 -o nasweb -g nasweb /data/nasweb-import
 
 # Supervisor options may be root-readable only. Keep the original unchanged.
 # The copy is private to the unprivileged NAS Web process.

@@ -1,3 +1,14 @@
+## 0.22.30
+
+- Add **Google Photos imports inside each SMB user's Profile**: no new main-navigation icon or screen.
+- Import one or more Google Takeout ZIP parts using a raw streaming upload to a private, size-limited temporary archive; process media entry-by-entry, validate paths and expansion limits, and never overwrite existing SMB files.
+- Pair Takeout media with matching Google `photoTakenTime.timestamp` JSON sidecars, preserve the capture date in the shared gallery metadata index, and reuse the existing incremental gallery refresh. The original JPEG/video bytes are never edited.
+- Add per-profile OAuth 2.0 connect/disconnect and Google Photos Picker session flow: explicitly select photos/videos in Google, poll readiness, import only the selected items and clean up the session.
+- Encrypt Google refresh tokens on disk with a private Fernet key; bind OAuth callbacks to one-time state and the initiating SMB user, filter download hosts, reject redirects, and enforce SMB ACLs and CSRF on all import actions.
+- Maintain persistent import progress and content-hash duplicate tracking. Following add-on restart, unfinished jobs become interrupted; re-importing the same archives skips copies already recorded.
+- Add an independent SMB destination folder picker in Profile, import status and upload progress, new Google Cloud options and regression tests.
+- Known limitations: Google OAuth configuration is required for Picker; Takeout import is per-ZIP-part, with temporary local disk space needed. For EXIF-free photos, capture dates are stored in NAS Web's gallery database, not inserted into the original files. Non-gallery media types stay available in the file manager.
+
 ## 0.22.29
 
 - Fix the profile folder binding button being disabled in the global gallery, at the root of a share, or without a current file-manager folder.
