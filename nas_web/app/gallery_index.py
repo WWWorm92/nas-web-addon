@@ -129,15 +129,31 @@ def state(owner, shares):
                 "dated": dated, "checked_no_date": checked_no_date}
 
 
-def page(owner, shares, offset, limit, order='taken'):
+def page(owner, shares, offset, limit, order='taken', utc_offset_minutes=0):
+    """Newest effective date first: EXIF capture time, otherwise local file mtime.
+
+    The fallback local timestamp matches the browser's photoDate(), and the
+    ordering matches month_index(), including equal-time tie breakers.
+    Existing 'modified' API mode is retained for older clients.
+    """
     if not shares:
         return []
+    utc_offset_minutes = max(-840, min(840, int(utc_offset_minutes)))
+    if order not in ("taken", "modified"):
+        raise ValueError("Unsupported gallery order")
+    filters = ",".join("?" for _ in shares)
+    if order == "taken":
+        sorting = ("COALESCE(taken, strftime('%Y-%m-%dT%H:%M:%S', "
+                   "modified - ? * 60,'unixepoch')) DESC, share, path")
+        args = (owner, *shares, utc_offset_minutes, limit, offset)
+    else:
+        sorting = "modified DESC, share, path"
+        args = (owner, *shares, limit, offset)
     with LOCK, connect() as db:
         rows = db.execute(
             "SELECT share,path,folder,name,size,modified,taken FROM photos "
-            "WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") " +
-            ("ORDER BY CASE WHEN taken IS NULL THEN 1 ELSE 0 END, taken DESC, share, path LIMIT ? OFFSET ?" if order == 'taken' else "ORDER BY modified DESC, share, path LIMIT ? OFFSET ?"),
-            (owner, *shares, limit, offset)).fetchall()
+            "WHERE owner=? AND share IN (" + filters + ") "
+            "ORDER BY " + sorting + " LIMIT ? OFFSET ?", args).fetchall()
         return [dict(row) for row in rows]
 
 
@@ -154,9 +170,13 @@ def month_index(owner, shares, order="taken", utc_offset_minutes=0):
     if not shares:
         return []
     if order == "taken":
-        bucket = "CASE WHEN taken IS NULL THEN 'undated' ELSE substr(taken,1,7) END"
-        sorting = "CASE WHEN taken IS NULL THEN 1 ELSE 0 END, taken DESC, share, path"
-        args = [owner, *shares]
+        # Same effective date and sort expression as page(): dated and
+        # undated photos belong in a single chronological month timeline.
+        effective = ("COALESCE(taken, strftime('%Y-%m-%dT%H:%M:%S', "
+                     "modified - ? * 60,'unixepoch'))")
+        bucket = "substr(" + effective + ",1,7)"
+        sorting = effective + " DESC, share, path"
+        args = [utc_offset_minutes, utc_offset_minutes, owner, *shares]
     else:
         # Browser's getTimezoneOffset() is UTC minus local in minutes.
         # SQLite timestamps are UTC; subtract the offset to match the

@@ -611,16 +611,17 @@ def unified_gallery_months(request: Request, order: str = "taken", timezone_offs
 
 
 @app.get("/api/gallery")
-def unified_gallery(request: Request, offset: int = 0, limit: int = 90, order: str = "taken"):
+def unified_gallery(request: Request, offset: int = 0, limit: int = 90,
+                    order: str = "taken", timezone_offset: int = 0):
     u = user_for(request)
-    if order not in ("taken", "modified"):
-        fail(400, "Некорректная сортировка")
+    if order not in ("taken", "modified") or not -840 <= timezone_offset <= 840:
+        fail(400, "Некорректная сортировка или часовой пояс")
     if offset < 0 or limit < 1 or limit > 120:
         fail(400, "Некорректная страница галереи")
     shares = list(u.get("shares", []))
     owner = gallery_index.key(u["name"])
     status = gallery_index.state(owner, shares)
-    return {"items": gallery_index.page(owner, shares, offset, limit, order), **status}
+    return {"items": gallery_index.page(owner, shares, offset, limit, order, timezone_offset), **status}
 
 
 # Virtual collections are private to each authenticated user. Every photo operation

@@ -7,18 +7,17 @@ const start = source.indexOf('function galleryVirtualLayout(');
 const end = source.indexOf('function galleryVirtualScrollTo(',start);
 assert.ok(start>0&&end>start, 'gallery virtual layout and viewport functions found');
 
-function getVirtual(order){
+function getVirtual(){
   const deps={
-    globalGalleryOrder:order,
-    photoDay:f=>f.taken?f.taken.slice(0,10):'Дата изменения',
-    photoYear:f=>f.taken?f.taken.slice(0,4):'Без даты',
-    photoDate:f=>new Date(f.taken||'2020-01-01'),
+    photoDay:f=>new Date(f.taken||f.modified*1000).toISOString().slice(0,10),
+    photoYear:f=>new Date(f.taken||f.modified*1000).toISOString().slice(0,4),
+    photoDate:f=>new Date(f.taken||f.modified*1000),
   };
   return new Function(...Object.keys(deps),source.slice(start,end)+
     '\nreturn {galleryVirtualLayout,galleryVirtualWindow};')(...Object.values(deps));
 }
 function photo(day,i){return {name:'p'+i+'.jpg',share:'Photos',path:'p'+i+'.jpg',taken:day};}
-const {galleryVirtualLayout:layout,galleryVirtualWindow:windowFor}=getVirtual('taken');
+const {galleryVirtualLayout:layout,galleryVirtualWindow:windowFor}=getVirtual();
 const small=[
   photo('2020-06-21T14:00:00',0),photo('2020-06-21T13:00:00',1),
   photo('2020-06-20T12:00:00',2),photo('2020-06-20T11:00:00',3),
@@ -70,5 +69,14 @@ for(const scroll of sampleScrolls){
 const wide=layout(all,5,86,2,false);
 assert.ok(wide.rows.length<virtual.rows.length);
 assert.equal(wide.rows.filter(r=>r.kind==='photos').reduce((n,r)=>n+r.photos.length,0),all.length);
-assert.equal(getVirtual('modified').galleryVirtualLayout(small,3,120,3,true).rows[0].label,'Дата изменения');
+const mixed=[
+  photo('2020-06-21T14:00:00',0),
+  {...photo(null,1),modified:Date.parse('2020-06-21T12:00:00Z')/1000},
+  photo('2020-06-20T12:00:00',2)
+];
+const mixedRows=layout(mixed,3,120,3,false).rows;
+assert.deepEqual(mixedRows.map(row=>row.kind==='header'?'H':row.photos.length),['H',2,'H',1]);
+assert.equal(mixedRows[0].label,'2020-06-21');
+assert.equal(mixedRows[0].year,'2020');
+assert.equal(mixedRows[0].month,'06');
 console.log('Virtual gallery dates, 10500 photos, viewport, spacers and column changes OK');

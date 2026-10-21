@@ -1,3 +1,10 @@
+## 0.22.24
+
+- Show the unified photo gallery in one newest-first chronological order: capture date (EXIF) when present, otherwise the file modification time. Undated PNG/JPEG/WebP/GIF photos now appear alongside dated photos instead of being sent to the end of the gallery.
+- Compute full-library month navigation and pagination offsets with the same mixed chronology and the browser's timezone offset. Remove the artificial 'no capture date' month.
+- Remove the gallery's EXIF-vs-modified sorting selector; leave file-manager sorting unchanged. Preserve dates, shared EXIF metadata, the index database, user SMB ACLs, cached thumbnails and background scanning.
+- Add regression tests for new PNG without EXIF, mixed chronology, month offsets, timezone, and user access separation; update gallery virtualization and calendar tests.
+
 ## 0.22.23
 
 - Fix Firefox showing a blocked-frame page when opening PDFs in the NAS Web viewer through KeenDNS.

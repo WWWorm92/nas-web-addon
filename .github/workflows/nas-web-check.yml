@@ -346,6 +346,8 @@ jobs:
               assert g.page(a,["Photos"],0,10,"modified")[0]["name"]=="dated.jpg"
           print("Admin counts are per owner, aggregated totals are separate and dates are unchanged")
           PY
+      - name: Mixed EXIF and file-modified gallery chronology
+        run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_mixed_gallery_dates.py'
       - name: Full library calendar and paginated month navigation tests
         run: |
           PYTHONPATH=nas_web python - <<'PY'
@@ -376,7 +378,7 @@ jobs:
               months=g.month_index(owner,["Photos"],"taken")
               assert [(m["month"],m["count"],m["offset"]) for m in months] == [
                   ("2024-07",1,0),("2020-06",1,1),("2018-07",1,2),
-                  ("undated",1,3)],months
+                  ("2017-07",1,3)],months
               old=next(m for m in months if m["month"]=="2018-07")
               assert g.page(owner,["Photos"],old["offset"],1,"taken")[0]["name"]=="old.jpg"
               assert g.month_index(owner,["Secret"],"taken")==[]

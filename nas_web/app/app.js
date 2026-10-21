@@ -176,7 +176,7 @@ function renderGalleryYears(photos){
   const fullIndex=allPhotosMode&&!allPhotoSubsetMode;
   const months=fullIndex?allPhotoTimeline:null;
   const years=months
-    ? [...new Set(months.map(m=>m.month==='undated'?'Без даты':m.month.slice(0,4)))]
+    ? [...new Set(months.map(m=>m.month.slice(0,4)))]
     : [...new Set(photos.map(photoYear))];
   bar.classList.toggle('hidden',!years.length);
   const picker=el('galleryMonthJump');
@@ -189,12 +189,9 @@ function renderGalleryYears(photos){
     if(months){
       for(const item of months){
         const option=document.createElement('option');option.value=item.month;
-        if(item.month==='undated')option.textContent='Без даты съёмки · '+item.count+' фото';
-        else{
-          const [year,month]=item.month.split('-').map(Number);
-          const label=new Intl.DateTimeFormat('ru',{month:'long',year:'numeric'}).format(new Date(year,month-1,1));
-          option.textContent=label+' · '+item.count+' фото';
-        }
+        const [year,month]=item.month.split('-').map(Number);
+        const label=new Intl.DateTimeFormat('ru',{month:'long',year:'numeric'}).format(new Date(year,month-1,1));
+        option.textContent=label+' · '+item.count+' фото';
         picker.append(option);
       }
     }else{
@@ -214,7 +211,7 @@ function renderGalleryYears(photos){
     const button=document.createElement('button');button.type='button';button.textContent=year;
     button.onclick=()=>{
       if(months){
-        const firstMonth=months.find(m=>(m.month==='undated'?'Без даты':m.month.slice(0,4))===year);
+        const firstMonth=months.find(m=>m.month.slice(0,4)===year);
         if(firstMonth)jumpToGlobalMonth(firstMonth.month);
       }else{
         galleryJumpTo(year);
@@ -451,10 +448,6 @@ function gallerySettingsOpen(open){
   }
   panel.classList.toggle('hidden',!open);
 }
-let globalGalleryOrder=localStorage.getItem('nasweb-gallery-order')==='modified'?'modified':'taken';
-const orderSelect=el('galleryOrderSelect');
-orderSelect.value=globalGalleryOrder;
-orderSelect.onchange=()=>setGlobalGalleryOrder(orderSelect.value);
 el('gallerySettingsToggle').onclick=()=>gallerySettingsOpen(el('gallerySettingsPanel').classList.contains('hidden'));
 el('gallerySettingsClose').onclick=()=>gallerySettingsOpen(false);
 el('gallerySearchToggle').onclick=()=>{
@@ -626,12 +619,11 @@ function galleryVirtualLayout(photos,cols,tileSize,gap,compact){
     group=[];
   }
   for(const f of photos){
-    const displayed=globalGalleryOrder==='modified'?{...f,taken:null}:f;
-    const label=globalGalleryOrder==='taken'&&!f.taken?'Дата съёмки неизвестна':photoDay(displayed);
+    const label=photoDay(f);
     if(label!==day){
       flush();day=label;headerAt=rows.length;
-      add({kind:'header',label,year:globalGalleryOrder==='taken'&&!f.taken?'Без даты':photoYear(displayed),
-        month:globalGalleryOrder==='taken'&&!f.taken?'':String(photoDate(displayed).getMonth()+1).padStart(2,'0'),
+      add({kind:'header',label,year:photoYear(f),
+        month:String(photoDate(f).getMonth()+1).padStart(2,'0'),
         height:compact?40:44,headerAt});
     }
     group.push(f);
@@ -755,9 +747,7 @@ function leaveGlobalGallery(){
 async function loadGlobalTimeline(token=allPhotoScanToken){
   if(!allPhotosMode||allPhotoSubsetMode)return;
   try{
-    const result=await api('/api/gallery/months?'+qs({
-      order:globalGalleryOrder,timezone_offset:String(new Date().getTimezoneOffset())
-    }));
+    const result=await api('/api/gallery/months?'+qs({timezone_offset:String(new Date().getTimezoneOffset())}));
     if(token!==allPhotoScanToken||!allPhotosMode||allPhotoSubsetMode)return;
     allPhotoTimeline=result.months||[];
     allPhotoTimelineCheckedAt=Date.now();
@@ -790,33 +780,13 @@ async function jumpToGlobalMonth(monthKey){
   });
   scanAllPhotos(token);
 }
-async function setGlobalGalleryOrder(order){
- if(!['taken','modified'].includes(order)||order===globalGalleryOrder)return;
- globalGalleryOrder=order;localStorage.setItem('nasweb-gallery-order',order);
- el('galleryOrderSelect').value=order;
- const token=++allPhotoScanToken;
- allPhotoSubsetMode=false;allPhotoStartOffset=0;allPhotoNextOffset=0;
- allPhotoTimeline=[];allPhotoTimelineCheckedAt=0;
- allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryRenderSignature='';
- if(!allPhotosMode)return;
- resetGalleryVirtual();window.scrollTo({top:0,behavior:'instant'});
- render();
- while(allPhotoPageBusy&&allPhotosMode&&token===allPhotoScanToken){
-   await new Promise(resolve=>setTimeout(resolve,80));
- }
- if(!allPhotosMode||token!==allPhotoScanToken)return;
- await loadGlobalPage(true);
- if(!allPhotosMode||token!==allPhotoScanToken)return;
- loadGlobalTimeline(token);
- scanAllPhotos(token);
-}
 async function loadGlobalPage(reset=false){
   if(allPhotoPageBusy||!allPhotosMode||allPhotoSubsetMode)return;
   const token=allPhotoScanToken;
   allPhotoPageBusy=true;
   try{
     const start=reset?allPhotoStartOffset:allPhotoNextOffset;
-    const data=await api('/api/gallery?'+qs({offset:start,limit:90,order:globalGalleryOrder}));
+    const data=await api('/api/gallery?'+qs({offset:start,limit:90,timezone_offset:String(new Date().getTimezoneOffset())}));
     if(!allPhotosMode||token!==allPhotoScanToken||allPhotoSubsetMode)return;
     allPhotoStatus=data;allPhotoTotal=data.total;
     allPhotoNextOffset=start+data.items.length;
@@ -896,7 +866,7 @@ function renderAllGallery(){
   grid.classList.remove('list');grid.classList.add('galleryMode');
   const metrics=galleryVirtualMetrics(grid);
   const signature=shown.map(f=>[f.share,f.path,f.modified,f.size,f.taken||''].join('|')).join('\n')
-    +'|'+globalGalleryOrder+'|'+metrics.cols+'|'+metrics.width+'|'+metrics.gap;
+    +'|'+metrics.cols+'|'+metrics.width+'|'+metrics.gap;
   if(galleryRenderSignature===signature&&galleryVirtual.rows.length){
     renderGlobalProgress();scheduleGalleryVirtualScroll();return;
   }
