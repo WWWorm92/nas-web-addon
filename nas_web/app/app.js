@@ -67,6 +67,7 @@ function enterFolder(name){leaveGlobalGallery();clearSelection();photoCacheClear
 function download(f){const a=document.createElement('a');a.href=fileUrl(f.name);a.download=f.name;a.click()}
 const isPhoto=f=>!f.directory&&imageExt.includes(ext(f.name));
 let allPhotosMode=false,allPhotos=[],allPhotoTotal=0,allPhotoStatus=null,allPhotoPageBusy=false,allPhotoScanToken=0,previousFileView='grid';
+let allPhotoStartOffset=0,allPhotoNextOffset=0,allPhotoTimeline=[],allPhotoTimelineCheckedAt=0,allPhotoSubsetMode=false;
 const photoLocation=f=>({share:f.share||shownShare,folder:f.folder!==undefined?f.folder:shownDir});
 const photoDate=f=>f.taken?new Date(f.taken):new Date(Number(f.modified||0)*1000);
 const photoGalleryItems=()=>sortedFiltered().filter(isPhoto).sort((a,b)=>photoDate(b)-photoDate(a)||a.name.localeCompare(b.name,'ru'));
@@ -151,13 +152,56 @@ function galleryJumpTo(year,month){
 }
 function renderGalleryYears(photos){
   const bar=el('galleryYears');bar.replaceChildren();
-  bar.classList.toggle('hidden',view!=='gallery'||!photos.length);
-  if(view!=='gallery')return;
-  const years=[...new Set(photos.map(photoYear))];
-  const picker=el('galleryMonthJump');if(picker){picker.replaceChildren();const first=document.createElement('option');first.value='';first.textContent='Перейти к месяцу';picker.append(first);const seen=new Set();for(const f of photos){const d=photoDate(f);if(!Number.isFinite(d.getTime()))continue;const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(seen.has(key))continue;seen.add(key);const option=document.createElement('option');option.value=key;option.textContent=new Intl.DateTimeFormat('ru',{month:'long',year:'numeric'}).format(d);picker.append(option)}}
+  if(view!=='gallery'){bar.classList.add('hidden');return}
+  const fullIndex=allPhotosMode&&!allPhotoSubsetMode;
+  const months=fullIndex?allPhotoTimeline:null;
+  const years=months
+    ? [...new Set(months.map(m=>m.month==='undated'?'Без даты':m.month.slice(0,4)))]
+    : [...new Set(photos.map(photoYear))];
+  bar.classList.toggle('hidden',!years.length);
+  const picker=el('galleryMonthJump');
+  if(picker){
+    const previous=picker.value;
+    picker.replaceChildren();
+    const first=document.createElement('option');first.value='';
+    first.textContent=fullIndex&&!months.length?'Загружаем все месяцы…':'Перейти к месяцу';
+    picker.append(first);picker.disabled=fullIndex&&!months.length;
+    if(months){
+      for(const item of months){
+        const option=document.createElement('option');option.value=item.month;
+        if(item.month==='undated')option.textContent='Без даты съёмки · '+item.count+' фото';
+        else{
+          const [year,month]=item.month.split('-').map(Number);
+          const label=new Intl.DateTimeFormat('ru',{month:'long',year:'numeric'}).format(new Date(year,month-1,1));
+          option.textContent=label+' · '+item.count+' фото';
+        }
+        picker.append(option);
+      }
+    }else{
+      const seen=new Set();
+      for(const f of photos){
+        const d=photoDate(f);if(!Number.isFinite(d.getTime()))continue;
+        const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+        if(seen.has(key))continue;
+        seen.add(key);const option=document.createElement('option');option.value=key;
+        option.textContent=new Intl.DateTimeFormat('ru',{month:'long',year:'numeric'}).format(d);
+        picker.append(option);
+      }
+    }
+    if([...picker.options].some(option=>option.value===previous))picker.value=previous;
+  }
   for(const year of years){
     const button=document.createElement('button');button.type='button';button.textContent=year;
-    button.onclick=()=>{const heading=[...el('entries').querySelectorAll('.galleryMonth')].find(h=>h.dataset.year===year);if(heading)heading.scrollIntoView({behavior:'smooth',block:'start'});for(const b of bar.children)b.classList.toggle('galleryYearCurrent',b===button)};
+    button.onclick=()=>{
+      if(months){
+        const firstMonth=months.find(m=>(m.month==='undated'?'Без даты':m.month.slice(0,4))===year);
+        if(firstMonth)jumpToGlobalMonth(firstMonth.month);
+      }else{
+        const heading=[...el('entries').querySelectorAll('.galleryMonth')].find(h=>h.dataset.year===year);
+        if(heading)heading.scrollIntoView({behavior:'smooth',block:'start'});
+      }
+      for(const b of bar.children)b.classList.toggle('galleryYearCurrent',b===button);
+    };
     bar.append(button);
   }
 }
