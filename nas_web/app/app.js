@@ -780,7 +780,7 @@ async function deleteItem(f){
   if(insideTrash){
     const answer=await askDialog({
       title:'Удалить '+(f.directory?'папку':'файл')+' навсегда?',
-      text:'«'+f.name+'» будет безвозвратно удалён'+(f.directory?' вместе со всеми вложенными папками и файлами. Введите УДАЛИТЬ для подтверждения.':'. Это действие нельзя отменить.'),
+      text:'«'+f.name+'» '+(f.directory?'будет безвозвратно удалена вместе со всеми вложенными папками и файлами. Введите УДАЛИТЬ для подтверждения.':'будет безвозвратно удалён. Это действие нельзя отменить.'),
       input:!!f.directory,confirm:'Удалить навсегда',danger:true
     });
     if(f.directory ? String(answer||'').toUpperCase()!=='УДАЛИТЬ':!answer)return;
@@ -790,8 +790,8 @@ async function deleteItem(f){
   }else{
     const approved=await askDialog({
       title:'Переместить '+(f.directory?'папку':'файл')+' в корзину?',
-      text:'«'+f.name+'» будет перемещён'+(f.directory?'а вместе со всем содержимым':'')+
-        ' в корзину этого хранилища. Данные не удаляются навсегда.',
+      text:'«'+f.name+'» '+(f.directory?'будет перемещена в корзину вместе со всем содержимым.':'будет перемещён в корзину.')+
+        ' Данные не удаляются навсегда.',
       confirm:'В корзину',danger:true
     });
     if(approved)await mutate('delete',{path,directory:!!f.directory});
