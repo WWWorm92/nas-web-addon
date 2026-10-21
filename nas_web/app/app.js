@@ -565,7 +565,7 @@ function renderGalleryMemories(){
     const photo=group.items[0];
     const card=document.createElement('button');
     card.type='button';card.className='memoryStory';
-    card.setAttribute('aria-label',group.title+' — '+group.items.length+' фотографий');
+    card.setAttribute('aria-label',group.title+' — '+group.items.length+' фото');
     const cover=document.createElement('img');cover.loading='lazy';cover.alt='';
     cover.src=imageURL(photo,false,photo.folder,photo.share);
     const content=document.createElement('span');content.className='memoryStoryContent';
