@@ -1,3 +1,9 @@
+## 0.22.13
+
+- Remove only the redundant desktop 'NAS WEB · МОЁ ОБЛАКО' overview card and its repeated quick action buttons.
+- Preserve desktop Files/Photos tabs, sidebar, existing file search/toolbar, gallery return navigation, and mobile layout.
+- No changes to SMB permissions, authentication, media files, photo index, or EXIF metadata.
+
 ## 0.22.12
 
 - Fix desktop gallery navigation: Files/Photos tabs remain visible in the top bar; persistent 'Back to files' button works even when indexing details are collapsed.
