@@ -444,6 +444,27 @@ jobs:
         run: node nas_web/tests/file_virtual_scroll.test.cjs
       - name: Upload transfer progress and cancellation tests
         run: node nas_web/tests/upload_center.test.cjs
+      - name: Browser video playback resume and controls
+        run: node nas_web/tests/video_playback.test.cjs
+      - name: Bounded video poster extraction and negative cache
+        run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_video_posters.py'
+      - name: Video thumbnail SMB permission and cache contracts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          src=Path("nas_web/app/main.py").read_text()
+          start=src.index('@app.get("/api/video-poster")')
+          end=src.index('@app.get("/api/mov-mp4")',start)
+          endpoint=src[start:end]
+          assert 'u = user_for(request)' in endpoint
+          assert 'check_share(conn, share)' in endpoint
+          assert endpoint.count('conn.can_read(share, "/" + p)') >= 2
+          assert endpoint.index('conn.can_read(share, "/" + p)') < endpoint.index('cached = thumb_cache.get(key)')
+          assert 'video_posters.read_prefix(conn, share, p, size)' in endpoint
+          assert 'video_posters.extract_prefix(prefix)' in endpoint
+          assert 'video_posters.WORKERS' in endpoint
+          print('Authenticated SMB ACL verified before poster cache and extraction')
+          PY
       - name: Recycle, restore, and 14-day retention regressions
         run: |
           PYTHONPATH=nas_web python - <<'PY'
