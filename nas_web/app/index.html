@@ -473,9 +473,62 @@ button:active{transform:scale(.975)}
  .mobileSheetActions{gap:4px}
  .mobileSheetActions button{min-height:46px;padding:11px 14px;border-radius:11px;font-size:14px;font-weight:550}
 }
+
+/* 0.22.18: quiet UI pass. No navigation, photo, or file logic changes. */
+:root{--nas-hover-bg:#202d3e}
+:root[data-theme=light]{--nas-hover-bg:#edf2f8}
+#app .eyebrow{display:none}
+#app .top{background:var(--bg);box-shadow:none}
+#app .top .brand{font-size:18px}
+#app .topRight #who{background:transparent;padding:6px 2px}
+#app .topRight button{background:transparent;border-color:transparent}
+#app .topRight button:hover{background:var(--panel2);border-color:transparent}
+#app .sidebarTitle{font-size:10px;font-weight:650;letter-spacing:1.15px;color:var(--muted)}
+#app .share{font-weight:560;min-height:42px;border-radius:10px}
+#app .share:hover:not(.selected){background:var(--panel2)}
+#app .controls .viewButtons{box-shadow:none}
+#app .controls .viewButtons button.active{box-shadow:none}
+#app .galleryYears button{box-shadow:none}
+#fileMenu button{border-radius:9px}
+#fileMenu button:hover{background:var(--panel2)}
+.mobileSheetActions button{transition:background-color .15s ease}
+@media(min-width:761px){
+  #app .top{height:65px;min-height:65px}
+  #app .top .logo{width:35px;height:35px;font-size:20px}
+  #app .desktopTopNav{border:0;background:transparent;padding:0;gap:4px}
+  #app .desktopNavBtn{min-height:39px;padding:8px 13px;border-color:transparent;border-radius:9px;font-size:13px;gap:8px}
+  #app .desktopNavBtn svg{display:block;flex-shrink:0}
+  #app .desktopNavBtn.navSelected{background:var(--accentbg);border-color:transparent;color:var(--accent)}
+  #app .desktopNavBtn:hover:not(.navSelected){background:var(--panel2)}
+  #app .sidebar{width:222px;background:transparent;padding:23px 10px}
+  #app .sidebarTitle{padding:0 12px 9px}
+  #app .share{padding:10px 12px;margin:2px 0}
+  #app .workspace{padding:25px clamp(20px,2.7vw,40px)}
+  #app .head{margin-bottom:2px}
+  #app:not(.globalGalleryOpen) .controls{background:transparent;border:0;border-radius:0;padding:0;margin:14px 0 15px;box-shadow:none}
+  #app .controls .search{background:var(--panel)}
+  #app .controls .viewButtons{border-color:var(--border);background:var(--panel)}
+  #app .controls .viewButtons button{border-color:transparent;background:transparent}
+  #app .controls .viewButtons button.active{background:var(--accentbg);color:var(--accent)}
+  #app:not(.globalGalleryOpen) .items:not(.galleryMode) .item{border-color:transparent;border-radius:12px;box-shadow:none}
+  #app:not(.globalGalleryOpen) .items:not(.galleryMode).list .item{background:transparent;border-color:transparent;border-radius:9px;margin-bottom:0}
+  #app:not(.globalGalleryOpen) .items:not(.galleryMode) .item.selectedItem{background:var(--accentbg);border-color:var(--accent)}
+}
+@media(hover:hover) and (pointer:fine) and (min-width:761px){
+  #app:not(.globalGalleryOpen) .items:not(.galleryMode) .item:hover{transform:none;box-shadow:none;background:var(--nas-hover-bg);border-color:var(--border)}
+  #app:not(.globalGalleryOpen) .items:not(.galleryMode) .item.selectedItem:hover{background:var(--accentbg);border-color:var(--accent)}
+}
+@media(max-width:700px){
+  #app:not(.globalGalleryOpen) .items:not(.galleryMode) .item{box-shadow:none}
+  #app .mobileSheetActions button{background:transparent;border-color:transparent}
+  #app .mobileSheetActions button:active{background:var(--accentbg)}
+  #mobileNav{box-shadow:0 -3px 16px #0000000b}
+  #mobileNav button.navSelected{background:transparent;color:var(--accent)}
+}
+@media(prefers-reduced-motion:reduce){.mobileSheetActions button{transition:none}}
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><label class="rememberRow" for="remember"><input id="remember" type="checkbox"><span>Запомнить меня <small>на 90 дней</small></span></label><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
-<div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><nav class="desktopTopNav" aria-label="Разделы NAS Web"><button id="desktopFilesNav" class="desktopNavBtn navSelected" type="button"><span aria-hidden="true">▤</span> Файлы</button><button id="desktopPhotosNav" class="desktopNavBtn" type="button"><span aria-hidden="true">▧</span> Фото</button></nav><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div><button id="desktopGalleryBack" class="desktopGalleryBack" type="button">← Вернуться к файлам</button></div>
+<div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><nav class="desktopTopNav" aria-label="Разделы NAS Web"><button id="desktopFilesNav" class="desktopNavBtn navSelected" type="button"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 11h16M4 17h16"/><path d="M7 4v14M17 4v14" opacity=".32"/></svg></span> Файлы</button><button id="desktopPhotosNav" class="desktopNavBtn" type="button"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 3.5 3.5 3-3L21 18"/></svg></span> Фото</button></nav><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div><button id="desktopGalleryBack" class="desktopGalleryBack" type="button">← Вернуться к файлам</button></div>
 
 <div id="mobileGalleryHeader" class="mobileGalleryHeader"><strong>Фото</strong><div><button id="gallerySearchToggle" type="button" aria-label="Поиск фотографий">⌕</button><button id="gallerySettingsToggle" type="button" aria-label="Настройки галереи"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="var(--bg)"/><circle cx="16" cy="12" r="2" fill="var(--bg)"/><circle cx="10" cy="18" r="2" fill="var(--bg)"/></svg></button></div></div>
 <div id="gallerySettingsPanel" class="gallerySettingsPanel hidden"><div class="gallerySettingsTitle">Настройки галереи <button id="gallerySettingsClose" type="button" aria-label="Закрыть настройки">✕</button></div><div id="gallerySettingsContent"><button type="button" id="galleryRetryDates" class="hidden" aria-hidden="true" tabindex="-1">Повторно проверить даты (без сброса)</button><select id="galleryOrderSelect" aria-label="Сортировка фотографий"><option value="taken">По дате съёмки (EXIF)</option><option value="modified">По дате изменения файла</option></select></div></div>
