@@ -775,14 +775,11 @@ el('filesSortToggle').onclick=()=>openMobileSheet('Сортировка',[
  {label:'По размеру',run:()=>{el('sort').value='size';render()}}
 ]);
 el('filesSettingsToggle').onclick=()=>openMobileSheet('Файлы',[
- {label:'Мой профиль',run:()=>openProfile()},
  {label:'▦ Плитки',run:()=>el('gridView').click()},
  {label:'☰ Список',run:()=>el('listView').click()},
  {label:'☑ Выбрать файлы',run:()=>el('selectionModeButton').click()},
  {label:'＋ Создать папку',run:()=>el('folder').click()},
- {label:'⟳ Обновить',run:()=>refresh()},
- {label:'◐ Сменить тему',run:()=>el('theme').click()},
- {label:'⇥ Выйти',danger:true,run:()=>el('logout').click()}
+ {label:'⟳ Обновить',run:()=>refresh()}
 ]);
 function updateDesktopWorkspace(){
   const gallery=allPhotosMode;
