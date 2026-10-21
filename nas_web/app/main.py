@@ -580,6 +580,11 @@ def profile_folder_remove(request: Request, payload: dict, x_csrf_token: str = H
 
 
 
+@app.on_event("startup")
+def recover_google_import_jobs():
+    google_photos_import.mark_interrupted()
+
+
 # Photo import is scoped to the active SMB profile and never changes Simple NAS
 # users or their ACLs. OAuth secrets are loaded from private HA add-on options.
 def _import_folder(u, share, path):
@@ -627,7 +632,8 @@ def google_import_status(request: Request):
     return {"configured": google_photos_import.configured(opts),
             "connected": google_photos_import.is_connected(
                 google_photos_import.owner_of(u["name"])),
-            "jobs": google_photos_import.jobs(u["name"])}
+            "jobs": google_photos_import.jobs(u["name"]),
+            "picker_active": bool(google_photos_import.picker_session(u["name"]))}
 
 
 @app.post("/api/import/google/oauth/start")
