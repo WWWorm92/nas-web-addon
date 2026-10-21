@@ -774,7 +774,29 @@ function askDialog({title,text,initial='',input=false,confirm='Продолжи�
   });
 }
 async function renameItem(f){const name=await askDialog({title:'Переименовать',text:'Введите новое имя файла или папки.',initial:f.name,input:true,confirm:'Сохранить'});if(name&&name!==f.name)await mutate('rename',{path:fpath(f.name),name})}
-async function deleteItem(f){const approved=await askDialog({title:'Удалить '+(f.directory?'папку':'файл')+'?',text:'«'+f.name+'» будет удалён без возможности восстановления.'+(f.directory?' Папка должна быть пустой.':''),confirm:'Удалить',danger:true});if(approved)await mutate('delete',{path:fpath(f.name),directory:f.directory})}
+const isTrashItemPath=path=>path.startsWith('.recycle/')&&path.length>'.recycle/'.length;
+async function deleteItem(f){
+  const path=fpath(f.name),insideTrash=isTrashItemPath(path);
+  if(insideTrash){
+    const answer=await askDialog({
+      title:'Удалить '+(f.directory?'папку':'файл')+' навсегда?',
+      text:'«'+f.name+'» будет безвозвратно удалён'+(f.directory?' вместе со всеми вложенными папками и файлами. Введите УДАЛИТЬ для подтверждения.':'. Это действие нельзя отменить.'),
+      input:!!f.directory,confirm:'Удалить навсегда',danger:true
+    });
+    if(f.directory ? String(answer||'').toUpperCase()!=='УДАЛИТЬ':!answer)return;
+    await mutate('trash/permanent-delete',{
+      path,directory:!!f.directory,confirm:'УДАЛИТЬ',confirm_name:f.name
+    });
+  }else{
+    const approved=await askDialog({
+      title:'Переместить '+(f.directory?'папку':'файл')+' в корзину?',
+      text:'«'+f.name+'» будет перемещён'+(f.directory?'а вместе со всем содержимым':'')+
+        ' в корзину этого хранилища. Данные не удаляются навсегда.',
+      confirm:'В корзину',danger:true
+    });
+    if(approved)await mutate('delete',{path,directory:!!f.directory});
+  }
+}
 function chooseUploadDestination(files){
   return new Promise(resolve=>{
     let share=shares.includes(selected)?selected:shares[0],folder=dir||'';
@@ -960,15 +982,32 @@ el('selectionDownload').onclick=()=>{if(selectedFiles.size!==1)return;const file
 el('selectionDelete').onclick=async()=>{
   const targets=items.filter(f=>selectedFiles.has(f.name));
   if(!targets.length)return;
-  const approved=await askDialog({title:'Удалить выбранные элементы?',text:'В корзину будет перемещено '+targets.length+' элементов, включая содержимое выбранных папок.',confirm:'Удалить '+targets.length,danger:true});
-  if(!approved)return;
+  const inTrash=targets.every(f=>isTrashItemPath(fpath(f.name)));
+  const answer=await askDialog(inTrash?{
+    title:'Удалить навсегда '+targets.length+' элементов?',
+    text:'Будут безвозвратно удалены выбранные файлы и все содержимое выбранных папок. Введите УДАЛИТЬ для подтверждения.',
+    input:true,confirm:'Удалить навсегда',danger:true
+  }:{
+    title:'Переместить в корзину?',
+    text:'В корзину будут перемещены '+targets.length+' элементов вместе с содержимым выбранных папок.',
+    confirm:'В корзину',danger:true
+  });
+  if(inTrash?String(answer||'').toUpperCase()!=='УДАЛИТЬ':!answer)return;
   let removed=0,failed=0;
   for(const f of targets){
-    try{await api('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({share:selected,path:fpath(f.name),directory:f.directory})});removed++}
-    catch(e){failed++}
+    const path=fpath(f.name);
+    const permanent=isTrashItemPath(path);
+    try{
+      await api(permanent?'/api/trash/permanent-delete':'/api/delete',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({share:selected,path,directory:!!f.directory,
+          ...(permanent?{confirm:'УДАЛИТЬ',confirm_name:f.name}:{})})
+      });
+      removed++;
+    }catch(e){failed++}
   }
   clearSelection();await refresh();
-  if(failed)message('Удалено: '+removed+'. Не удалось удалить: '+failed+'. Проверьте права и содержимое папок.');
+  if(failed)message('Успешно: '+removed+'. Ошибок: '+failed+'. Если удаление прервалось, содержимое папки могло быть удалено частично.');
 };
 el('galleryZoomOut').onclick=()=>setGalleryColumns(galleryColumns-1);
 el('galleryZoomIn').onclick=()=>setGalleryColumns(galleryColumns+1);
