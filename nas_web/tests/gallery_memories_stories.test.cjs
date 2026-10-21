@@ -94,7 +94,7 @@ assert.equal(groups[2].items.length,2);
   const strip=el('galleryMemoryStories');
   assert.equal(el('galleryMemories').classList.contains('hidden'),false);
   assert.equal(strip.children.length,3);
-  assert.equal(strip.children[0].attributes['aria-label'],'Год назад — 1 фотографий');
+  assert.equal(strip.children[0].attributes['aria-label'],'Год назад — 1 фото');
   assert.match(strip.children[0].children[0].src,/one.jpg/);
   strip.scrollLeft=91;
   vm.renderGalleryMemories();
