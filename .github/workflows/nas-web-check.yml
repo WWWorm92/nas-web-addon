@@ -427,6 +427,8 @@ jobs:
         run: node nas_web/tests/thumbnail_queue.test.cjs
       - name: Virtual gallery viewport and date grouping tests
         run: node nas_web/tests/gallery_virtual.test.cjs
+      - name: File manager shortcut and drag-and-drop tests
+        run: node nas_web/tests/file_manager_ui.test.cjs
       - name: Recycle, restore, and 14-day retention regressions
         run: |
           PYTHONPATH=nas_web python - <<'PY'
