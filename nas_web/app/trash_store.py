@@ -96,19 +96,33 @@ def record_move(user, share, trash_name, original_path, directory, now=None):
 
 
 def register_legacy(user, share, entries, now=None):
-    """Track existing trash without guessing old deletion times/locations."""
+    """Track old bin items at first view, without guessing old deletion times."""
     now = time.time() if now is None else float(now)
+    visible = [entry for entry in entries
+               if entry.filename not in (".", "..") and entry.filename]
+    if not visible:
+        return
+    identity = owner_id(user["name"])
     with LOCK, connect() as db:
-        owner = remember_user(db, user)
-        for entry in entries:
-            if entry.filename in (".","..") or not entry.filename:
+        needs_credential = False
+        for entry in visible:
+            previous = db.execute(
+                "SELECT owner FROM trash_items WHERE share=? AND trash_name=?",
+                (share, entry.filename)).fetchone()
+            if previous:
+                if previous["owner"] == identity:
+                    needs_credential = True
                 continue
             db.execute("""
                 INSERT OR IGNORE INTO trash_items
                     (share,trash_name,original_path,deleted_at,directory,owner)
                 VALUES(?,?,NULL,?,?,?)
-            """, (share, entry.filename, now, int(bool(entry.isDirectory)),owner))
-
+            """, (share, entry.filename, now, int(bool(entry.isDirectory)), identity))
+            needs_credential = True
+        # Do not retain an SMB password for browsing an empty bin or someone
+        # else's entries. Renew only credentials used by this user's records.
+        if needs_credential:
+            remember_user(db, user)
 
 def item(share, name):
     with LOCK, connect() as db:
