@@ -31,7 +31,7 @@ def photo_exists(owner, shares, share, path):
     if share not in shares:
         return False
     with gallery_index.LOCK, gallery_index.connect() as db:
-        return db.execute("SELECT 1 FROM photos WHERE owner=? AND share=? AND path=?",
+        return db.execute("SELECT 1 FROM visible_photos WHERE owner=? AND share=? AND path=?",
                           (owner,share,path)).fetchone() is not None
 
 def listing(owner, shares):
@@ -74,7 +74,7 @@ def photos(owner,shares,album_id=None,favorites=False,limit=120,offset=0):
     if not shares:return []
     table="favorites" if favorites else "album_items"
     join="p.owner=i.owner AND p.share=i.share AND p.path=i.path"
-    sql="SELECT p.share,p.path,p.folder,p.name,p.size,p.modified,p.taken FROM "+table+" i JOIN photos p ON "+join+" WHERE i.owner=? AND p.share IN ("+",".join("?" for _ in shares)+")"
+    sql="SELECT p.share,p.path,p.folder,p.name,p.size,p.modified,p.taken FROM "+table+" i JOIN gallery.visible_photos p ON "+join+" WHERE i.owner=? AND p.share IN ("+",".join("?" for _ in shares)+")"
     args=[owner,*shares]
     if not favorites:
         sql+=" AND i.album_id=?";args.append(album_id)
@@ -82,13 +82,13 @@ def photos(owner,shares,album_id=None,favorites=False,limit=120,offset=0):
     # Attach the gallery database read-only; no migrations, resets or writes to photo index.
     with connect() as db:
         db.execute("ATTACH DATABASE ? AS gallery",(str(gallery_index.DB),))
-        sql=sql.replace("JOIN photos p","JOIN gallery.photos p")
+        
         return [dict(x) for x in db.execute(sql,args)]
 
 def memories(owner,shares,month,day,limit=100):
     if not shares:return []
     with gallery_index.LOCK,gallery_index.connect() as db:
-        rows=db.execute("SELECT share,path,folder,name,size,modified,taken FROM photos WHERE owner=? AND share IN ("+
+        rows=db.execute("SELECT share,path,folder,name,size,modified,taken FROM visible_photos WHERE owner=? AND share IN ("+
             ",".join("?" for _ in shares)+") AND taken IS NOT NULL AND substr(taken,6,5)=? "
             "ORDER BY taken DESC LIMIT ?",(owner,*shares,f"{month:02d}-{day:02d}",limit)).fetchall()
         return [dict(x) for x in rows]
@@ -98,7 +98,7 @@ def statistics(owner,shares):
     with gallery_index.LOCK,gallery_index.connect() as db:
         where="owner=? AND share IN ("+",".join("?" for _ in shares)+")"
         args=(owner,*shares)
-        totals=db.execute("SELECT COUNT(*),COALESCE(SUM(size),0),COUNT(taken) FROM photos WHERE "+where,args).fetchone()
-        by_share=[dict(x) for x in db.execute("SELECT share,COUNT(*) AS photos,SUM(size) AS bytes FROM photos WHERE "+where+" GROUP BY share",args)]
-        by_year=[dict(x) for x in db.execute("SELECT substr(taken,1,4) AS year,COUNT(*) AS photos FROM photos WHERE "+where+" AND taken IS NOT NULL GROUP BY substr(taken,1,4) ORDER BY year DESC LIMIT 60",args)]
+        totals=db.execute("SELECT COUNT(*),COALESCE(SUM(size),0),COUNT(taken) FROM visible_photos WHERE "+where,args).fetchone()
+        by_share=[dict(x) for x in db.execute("SELECT share,COUNT(*) AS photos,SUM(size) AS bytes FROM visible_photos WHERE "+where+" GROUP BY share",args)]
+        by_year=[dict(x) for x in db.execute("SELECT substr(taken,1,4) AS year,COUNT(*) AS photos FROM visible_photos WHERE "+where+" AND taken IS NOT NULL GROUP BY substr(taken,1,4) ORDER BY year DESC LIMIT 60",args)]
         return {"photos":totals[0],"bytes":totals[1],"dated":totals[2],"by_share":by_share,"by_year":by_year}
