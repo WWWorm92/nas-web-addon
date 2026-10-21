@@ -140,6 +140,87 @@ jobs:
           assert conn.conn.closed and conn.conn.disconnected
           print("SMB range access requests read-only permission and cleans up handles")
           PY
+      - name: Cached thumbnail SMB read rights and share-tree reuse
+        run: |
+          PYTHONPATH=nas_web python - <<'PY'
+          import sys
+          from types import ModuleType
+          fake=ModuleType("impacket")
+          backend=ModuleType("impacket.smbconnection")
+          backend.SMBConnection=object
+          sys.modules["impacket"]=fake
+          sys.modules["impacket.smbconnection"]=backend
+          from app.smb_compat import SMBConnection
+
+          class FakeSMB:
+              def __init__(self):
+                  self.trees=0
+                  self.opens=[]
+                  self.closes=[]
+                  self.disconnected=[]
+                  self.closed=False
+                  self.logged_off=False
+              def connectTree(self, share):
+                  assert share=="Photo"
+                  self.trees+=1
+                  return self.trees
+              def openFile(self, tid, path, **kw):
+                  assert kw["desiredAccess"]==1 and kw["shareMode"]==7
+                  self.opens.append((tid,path))
+                  if path=="\\denied.jpg":
+                      raise PermissionError("SMB access denied")
+                  return len(self.opens)
+              def closeFile(self, tid, fid):
+                  self.closes.append((tid,fid))
+              def disconnectTree(self, tid):
+                  self.disconnected.append(tid)
+              def logoff(self):
+                  self.logged_off=True
+              def close(self):
+                  self.closed=True
+
+          adapter=SMBConnection("alice","secret","NASWEB","NAS")
+          backend_conn=FakeSMB()
+          adapter.conn=backend_conn
+          assert adapter.can_read("Photo","/a.jpg")
+          assert adapter.can_read("Photo","/b.jpg")
+          assert backend_conn.trees==1, "Reused session should not reconnect share per photo"
+          assert len(backend_conn.opens)==2, "Every file must get a fresh SMB read ACL check"
+          assert len(backend_conn.closes)==2
+          try:
+              adapter.can_read("Photo","/denied.jpg")
+          except PermissionError:
+              pass
+          else:
+              raise AssertionError("Revoked SMB file read permission was bypassed")
+          assert backend_conn.disconnected==[1]
+          assert adapter.can_read("Photo","/c.jpg")
+          assert backend_conn.trees==2, "ACL denial must invalidate cached SMB tree"
+          adapter.close()
+          assert backend_conn.disconnected==[1,2]
+          assert backend_conn.logged_off and backend_conn.closed
+          print("Repeated thumbnail hits reuse tree but recheck each file read permission")
+          PY
+      - name: Gallery thumbnails and EXIF prioritization contracts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          js=Path("nas_web/app/app.js").read_text()
+          py=Path("nas_web/app/main.py").read_text()
+          assert "const thumbInflight=new Map()" in js
+          assert "const previousTiles=new Map(" in js
+          assert "const previousImg=oldTile?.dataset.thumbSrc===requestedSrc" in js
+          assert "if(previousImg){keptImages.add(img)}" in js
+          assert "if(img&&!keptImages.has(img))stopDetachedThumbnail(img)" in js
+          assert "if(completed)return" in js
+          assert "if(img.dataset.src){photoObserver.unobserve(img);photoObserver.observe(img)}" in js
+          assert "(!data.complete&&steps%20===0&&allPhotos.length<90)" in js
+          assert "with foreground_thumbnail_request():" in py
+          assert "wait_for_background_media_idle()" in py
+          assert "ACTIVE_THUMBNAIL_REQUESTS = 0" in py
+          assert "conn.can_read(share, \"/\" + p)" in py
+          print("Gallery images retained, cancelled requests released, EXIF yields to viewers")
+          PY
       - name: EXIF resume and denied-access safety tests
         run: |
           PYTHONPATH=nas_web python - <<'PY'
