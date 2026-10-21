@@ -1,3 +1,12 @@
+## 0.22.16
+
+- Distinct neutral trash-can icon for the `Корзина` (`.recycle`) folder, instead of a regular blue folder.
+- Add **Restore** action to the trash item context menu (desktop and mobile); new deletions return to their saved original path. Existing legacy trash items without location metadata return to the root of their SMB share. Never overwrite existing paths.
+- Automatically permanently remove recycle-bin entries after 14 days; a background worker checks hourly, even when nobody is logged in. To enable unattended cleanup, the deleting user's SMB credentials are stored encrypted using NAS Web's existing protected secret key and discarded when their last trash item is gone.
+- Pre-existing trash items without a recorded deletion time receive a new 14-day window on their first authenticated view after upgrading, preventing immediate accidental expiry.
+- Remove extra typed `УДАЛИТЬ` confirmation and artificial 5,000-object / 64-level deletion caps. Standard confirmation remains for explicit permanent deletion.
+- Keep Simple NAS SMB ACL enforcement, ordinary move-to-trash behavior, protected authorization, gallery index and EXIF dates unchanged.
+
 ## 0.22.15
 
 - Fix contradictory deletion dialog: ordinary files and nonempty folders are moved intact to their share's recycle folder; they do not require empty directories and are not permanently removed.
