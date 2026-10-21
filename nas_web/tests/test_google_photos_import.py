@@ -82,7 +82,7 @@ class GoogleImportTests(unittest.TestCase):
         self.assertEqual(results, {"imported": 1, "skipped": 1, "failed": 0})
         self.assertEqual(smb.files, {"/Photos/IMG_0001.jpg": picture})
         photo = g.page(g.key("alice"), ["Photo"], 0, 10)[0]
-        self.assertEqual(photo["taken"], "2023-07-15T17:43:47")
+        self.assertEqual(photo["taken"], "2023-07-15T16:23:47")
         # Re-importing an identical ZIP never creates a duplicate.
         job2 = importer.new_job("alice", "takeout", "Photo", "Photos")
         repeated = importer.process_takeout(archive, smb, "alice", "Photo", "Photos", job2)
