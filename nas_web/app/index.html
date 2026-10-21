@@ -526,6 +526,25 @@ button:active{transform:scale(.975)}
   #mobileNav button.navSelected{background:transparent;color:var(--accent)}
 }
 @media(prefers-reduced-motion:reduce){.mobileSheetActions button{transition:none}}
+
+/* 0.22.20: virtual photo rows with stable height; dates and controls unchanged. */
+#app.globalGalleryOpen #entries.galleryMode .galleryVirtualRow{
+  grid-column:1/-1;display:grid;min-width:0;
+  grid-template-columns:repeat(var(--virtual-cols,3),minmax(0,1fr));
+  column-gap:var(--virtual-gap,3px);row-gap:0;
+}
+#app.globalGalleryOpen #entries.galleryMode .galleryVirtualSpacer{
+  grid-column:1/-1;min-width:0;pointer-events:none;visibility:hidden;
+}
+#app.globalGalleryOpen #entries.galleryMode .galleryVirtualHeader{
+  grid-column:1/-1;box-sizing:border-box;
+  height:44px;min-height:44px;margin:0!important;padding:10px 4px 6px;
+}
+@media(max-width:700px){
+  #app.globalGalleryOpen #entries.galleryMode .galleryVirtualHeader{
+    height:40px;min-height:40px;padding:8px 2px 5px;
+  }
+}
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><label class="rememberRow" for="remember"><input id="remember" type="checkbox"><span>Запомнить меня <small>на 90 дней</small></span></label><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
 <div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><nav class="desktopTopNav" aria-label="Разделы NAS Web"><button id="desktopFilesNav" class="desktopNavBtn navSelected" type="button"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 11h16M4 17h16"/><path d="M7 4v14M17 4v14" opacity=".32"/></svg></span> Файлы</button><button id="desktopPhotosNav" class="desktopNavBtn" type="button"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 3.5 3.5 3-3L21 18"/></svg></span> Фото</button></nav><div class="topRight"><span id="who"></span><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div><button id="desktopGalleryBack" class="desktopGalleryBack" type="button">← Вернуться к файлам</button></div>
