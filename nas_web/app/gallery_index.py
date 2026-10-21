@@ -51,6 +51,25 @@ def connect():
         done INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (owner, share, path)
       );
+      CREATE TABLE IF NOT EXISTS profiles (
+        owner TEXT PRIMARY KEY, username TEXT NOT NULL, display_name TEXT NOT NULL,
+        avatar_color TEXT NOT NULL, updated REAL NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS profile_folders (
+        share TEXT NOT NULL, path TEXT NOT NULL, owner TEXT NOT NULL,
+        visible INTEGER NOT NULL DEFAULT 1, created REAL NOT NULL,
+        PRIMARY KEY(share,path), CHECK(path != '')
+      );
+      CREATE INDEX IF NOT EXISTS profile_folders_owner ON profile_folders(owner,share);
+      -- A single view keeps hiding consistent in gallery pagination, month
+      -- jumps, counts, memories, albums and statistics. Scanning still uses
+      -- photos directly and retains every EXIF value while a folder is hidden.
+      CREATE VIEW IF NOT EXISTS visible_photos AS
+        SELECT p.* FROM photos p WHERE NOT EXISTS (
+          SELECT 1 FROM profile_folders pf
+          WHERE pf.visible=0 AND pf.share=p.share
+            AND (p.path=pf.path OR substr(p.path,1,length(pf.path)+1)=pf.path||'/')
+        );
       CREATE TABLE IF NOT EXISTS jobs (
         owner TEXT PRIMARY KEY, started REAL NOT NULL,
         complete INTEGER NOT NULL DEFAULT 0, limited INTEGER NOT NULL DEFAULT 0,
@@ -79,6 +98,11 @@ def connect():
 def bump_revision(db, owner):
     """Signal actual photo index changes to the active gallery."""
     db.execute("UPDATE jobs SET revision=revision+1 WHERE owner=?", (owner,))
+
+
+def bump_all_revisions(db):
+    """Notify every open gallery when a shared folder changes visibility."""
+    db.execute("UPDATE jobs SET revision=revision+1")
 
 
 def mark_folder_failed(db, owner, share, folder):
@@ -119,19 +143,19 @@ def state(owner, shares):
         job = db.execute("SELECT complete,limited,revision FROM jobs WHERE owner=?", (owner,)).fetchone()
         scanned = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=1", (owner,)).fetchone()[0]
         pending = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=0", (owner,)).fetchone()[0]
-        total = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ")", (owner, *shares)).fetchone()[0] if shares else 0
-        dates_pending = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')", (owner, *shares)).fetchone()[0] if shares else 0
+        total = db.execute("SELECT COUNT(*) FROM visible_photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ")", (owner, *shares)).fetchone()[0] if shares else 0
+        dates_pending = db.execute("SELECT COUNT(*) FROM visible_photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')", (owner, *shares)).fetchone()[0] if shares else 0
         # Shared EXIF progress is deduplicated by file identity. Only include
         # files already discovered in shares this user can access.
         shared_remaining = db.execute(
-            "SELECT COUNT(*) FROM (SELECT share,path,size,modified FROM photos "
+            "SELECT COUNT(*) FROM (SELECT share,path,size,modified FROM visible_photos "
             "WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") "
             "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp') "
             "GROUP BY share,path,size,modified)", (owner, *shares)).fetchone()[0] if shares else 0
-        dated = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" +
+        dated = db.execute("SELECT COUNT(*) FROM visible_photos WHERE owner=? AND share IN (" +
                            ",".join("?" for _ in shares) + ") AND taken IS NOT NULL",
                            (owner, *shares)).fetchone()[0] if shares else 0
-        checked_no_date = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" +
+        checked_no_date = db.execute("SELECT COUNT(*) FROM visible_photos WHERE owner=? AND share IN (" +
                                      ",".join("?" for _ in shares) + ") AND exif_checked=1 AND taken IS NULL",
                                      (owner, *shares)).fetchone()[0] if shares else 0
         blocked = denied_count(db, owner, shares)
@@ -166,7 +190,7 @@ def page(owner, shares, offset, limit, order='taken', utc_offset_minutes=0):
         args = (owner, *shares, limit, offset)
     with LOCK, connect() as db:
         rows = db.execute(
-            "SELECT share,path,folder,name,size,modified,taken FROM photos "
+            "SELECT share,path,folder,name,size,modified,taken FROM visible_photos "
             "WHERE owner=? AND share IN (" + filters + ") "
             "ORDER BY " + sorting + " LIMIT ? OFFSET ?", args).fetchall()
         return [dict(row) for row in rows]
@@ -202,7 +226,7 @@ def month_index(owner, shares, order="taken", utc_offset_minutes=0):
     sql = (
         "WITH ranked AS (SELECT " + bucket + " AS month, "
         "ROW_NUMBER() OVER (ORDER BY " + sorting + ") - 1 AS position "
-        "FROM photos WHERE owner=? AND share IN (" +
+        "FROM visible_photos WHERE owner=? AND share IN (" +
         ",".join("?" for _ in shares) + ")) "
         "SELECT month,COUNT(*) AS count,MIN(position) AS offset "
         "FROM ranked GROUP BY month ORDER BY offset"
@@ -320,7 +344,7 @@ def denied_count(db, owner, shares):
     if not shares:
         return 0
     return db.execute(
-        "SELECT COUNT(*) FROM exif_denied d JOIN photos p "
+        "SELECT COUNT(*) FROM exif_denied d JOIN visible_photos p "
         "ON p.owner=d.owner AND p.share=d.share AND p.path=d.path "
         "WHERE d.owner=? AND p.share IN (" + ",".join("?" for _ in shares) + ") "
         "AND p.exif_checked=0 AND p.size=d.size AND p.modified=d.modified "
