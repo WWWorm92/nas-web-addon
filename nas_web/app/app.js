@@ -668,9 +668,11 @@ async function scanAllPhotos(token){
       if(steps%100===0&&Date.now()-allPhotoTimelineCheckedAt>30000){
         loadGlobalTimeline(token);
       }
-      if((!allPhotos.length&&data.total)||steps%8===0){
-        if(allPhotos.length<90)await loadGlobalPage(true);
-        else renderGlobalProgress();
+      if((!allPhotos.length&&data.total)||
+         (!data.complete&&steps%20===0&&allPhotos.length<90)){
+        // Only refresh pages while the folder tree is still being discovered.
+        // An EXIF-only pass should not recreate image tiles on each poll.
+        await loadGlobalPage(true);
       }else renderGlobalProgress();
       if(data.complete&&((data.dates_available??data.dates_pending)===0||data.limited)){
         // The finished index has a stable chronology for pagination.
@@ -756,15 +758,16 @@ function renderAllGallery(){
     else{
       img.loading='lazy';img.decoding='async';img.alt='';
       img.onload=()=>img.classList.add('photoLoaded');
-      img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};
       img.dataset.src=requestedSrc;
     }
+    // A reused image must target its new thumbnail container on errors.
+    img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};
     tile.dataset.thumbSrc=requestedSrc;
     thumb.append(img);tile.append(thumb);
     // The source folder remains available in the photo details panel.
 
     grid.append(tile);
-    if(img.dataset.src)photoObserver.observe(img);
+    if(img.dataset.src){photoObserver.unobserve(img);photoObserver.observe(img)}
   }
   for(const tile of previousTiles.values()){
     const img=tile.querySelector('.thumb img');
