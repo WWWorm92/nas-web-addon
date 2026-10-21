@@ -1532,7 +1532,27 @@ previewArea.addEventListener('dblclick',event=>{if(!previewArea.querySelector('i
 previewArea.addEventListener('wheel',event=>{if(!previewArea.querySelector('img')||!(event.ctrlKey||event.metaKey))return;event.preventDefault();setZoom(zoom*(event.deltaY<0?1.18:.85))},{passive:false});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!el('mobileSheetOverlay').classList.contains('hidden'))closeMobileSheet();else if(activeDialog)activeDialog(null);else{closePreview();hideMenu()}}if(el('preview').style.display==='flex'){if(e.key==='ArrowLeft')stepPreview(-1);if(e.key==='ArrowRight')stepPreview(1);if(e.key==='0')setZoom(1);if(e.key==='+')setZoom(zoom*1.25);if(e.key==='-')setZoom(zoom/1.25)}});
 document.addEventListener('pointerdown',e=>{if(!el('fileMenu').contains(e.target)&&!e.target.closest('.more'))hideMenu()});
-let dragDepth=0;const work=el('workspace');work.addEventListener('dragenter',e=>{e.preventDefault();dragDepth++;work.classList.add('drop')});work.addEventListener('dragover',e=>e.preventDefault());work.addEventListener('dragleave',e=>{e.preventDefault();dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)work.classList.remove('drop')});work.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;work.classList.remove('drop');uploadFiles([...e.dataTransfer.files])});
+let dragDepth=0;
+const work=el('workspace');
+const externalFileDrag=e=>!draggedFiles&&Array.from(e.dataTransfer?.types||[]).includes('Files');
+work.addEventListener('dragenter',e=>{
+  if(!externalFileDrag(e))return;
+  e.preventDefault();dragDepth++;work.classList.add('drop');
+});
+work.addEventListener('dragover',e=>{
+  if(draggedFiles||externalFileDrag(e))e.preventDefault();
+});
+work.addEventListener('dragleave',e=>{
+  if(!dragDepth)return;
+  e.preventDefault();dragDepth=Math.max(0,dragDepth-1);
+  if(!dragDepth)work.classList.remove('drop');
+});
+work.addEventListener('drop',e=>{
+  e.preventDefault();dragDepth=0;work.classList.remove('drop');
+  if(draggedFiles){endFileDrag();return}
+  const files=[...e.dataTransfer.files];
+  if(files.length)uploadFiles(files);
+});
 const theme=localStorage.getItem('nas_theme')||'dark';document.documentElement.dataset.theme=theme;el('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('nas_theme',t)};
 const startupLoginGeneration=loginGeneration;
 api('/api/me').then(user=>{if(loginGeneration===startupLoginGeneration)showApp(user)}).catch(()=>{if(loginGeneration===startupLoginGeneration)showLogin()});
