@@ -359,10 +359,13 @@ jobs:
           js=Path("nas_web/app/app.js").read_text()
           parsed=Tags()
           parsed.feed(source)
-          ids=["desktopFilesNav","desktopPhotosNav","sidebarFilesNav",
-               "sidebarPhotosNav","desktopGalleryBack"]
+          ids=["desktopFilesNav","desktopPhotosNav","desktopGalleryBack"]
           assert all(name in parsed.buttons for name in ids)
           assert 'id="desktopHomeOverview"' not in source
+          assert 'id="sidebarFilesNav"' not in source
+          assert 'id="sidebarPhotosNav"' not in source
+          assert 'id="shares"' in source
+          assert 'sidebarFilesNav' not in js and 'sidebarPhotosNav' not in js
           assert "const desktopReturnToFiles=" in js
           assert "el(id).onclick=desktopReturnToFiles" in js
           assert "el(id).onclick=()=>{enterGlobalGallery()" in js
