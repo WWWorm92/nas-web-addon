@@ -1,3 +1,12 @@
+## 0.22.21
+
+- Improve desktop file manager without changing its layout: Ctrl+A selects visible files, Ctrl+C and Ctrl+X copy/cut selected files into an in-app buffer, and Ctrl+V copies or moves them into the open folder. The buffer is kept only for the current authenticated page session; the system clipboard is untouched.
+- Add F2 rename, Delete (using the existing confirmation and recycle-bin behavior), Escape selection clearing, and Ctrl/Cmd-click selection. Shortcuts do not activate inside input fields, dialogs, or the photo viewer.
+- Allow dragging files or selected groups into a folder tile or a breadcrumb parent folder on desktop. Only same-share moves are permitted by drag-and-drop; moving folders into themselves or into recycle is disabled. Uses the existing authenticated transfer endpoint and SMB permission checks.
+- Keep ordinary computer-to-NAS file drag-and-drop upload separate from in-app moves. Mobile long-press, swipe, and menus remain unchanged.
+- Restore previous scroll position when returning to a parent folder via breadcrumbs, Up or the mobile breadcrumb, without resetting the photo gallery index.
+- Add file manager keyboard, transfer destination and drag/drop regression tests in GitHub Actions. No SMB backend, EXIF index, HTTP/HTTPS or file storage changes.
+
 ## 0.22.20
 
 - Render only the currently visible and nearby rows of the shared photo timeline instead of mounting every loaded photo tile in the browser DOM. Invisible rows become fixed-height spacers; no files, database rows or cache entries are deleted.
