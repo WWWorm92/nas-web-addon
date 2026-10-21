@@ -147,8 +147,8 @@ def month_index(owner, shares, order="taken", utc_offset_minutes=0):
     Uses precisely the same row ordering as page(). Never loads or alters
     photographs and never needs SMB access. Offset is into the entire gallery
     (not just the currently downloaded batch of thumbnails).
-    utc_offset_minutes = max(-840, min(840, int(utc_offset_minutes)))
     """
+    utc_offset_minutes = max(-840, min(840, int(utc_offset_minutes)))
     if order not in ("taken", "modified"):
         raise ValueError("Unsupported gallery order")
     if not shares:
