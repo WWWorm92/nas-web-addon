@@ -102,6 +102,8 @@ jobs:
                   assert g.page(b,["Secret"],0,10)==[]
           print("Shared metadata, ACL isolation and resume OK")
           PY
+      - name: Profile and shared folder visibility tests
+        run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_profiles.py'
       - name: Read-only SMB range access regression
         run: |
           PYTHONPATH=nas_web python - <<'PY'
