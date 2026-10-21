@@ -440,6 +440,8 @@ jobs:
         run: node nas_web/tests/gallery_auto_sync.test.cjs
       - name: Gallery SMB change reconciliation and persistence
         run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_gallery_auto_sync.py'
+      - name: Profile folder picker regression
+        run: node nas_web/tests/profile_folder_picker.test.cjs
       - name: File manager shortcut and drag-and-drop tests
         run: node nas_web/tests/file_manager_ui.test.cjs
       - name: Large-folder virtual scrolling and cache regressions
