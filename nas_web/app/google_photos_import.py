@@ -8,6 +8,7 @@ No Google tokens, SMB passwords or media are stored in the web frontend.
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import secrets
@@ -40,6 +41,7 @@ MAX_UNCOMPRESSED = 40 * 1024 * 1024 * 1024
 GUARD = threading.RLock()
 ACTIVE = set()
 ACCESS_CACHE = {}
+LOG = logging.getLogger("nasweb.google_import")
 
 
 def owner_of(user):
@@ -419,7 +421,7 @@ def _record_index(username, share, folder, name, conn, taken):
 
 
 def upload_media(conn, username, share, folder, original_name, stream, existing,
-                 taken=None, source_id="", limit=MAX_MEDIA):
+                 taken=None, source_id="", limit=MAX_MEDIA, pending=None):
     """SMB write to a random temporary filename; never overwrite real user files.
 
     Returns 'imported' or 'skipped'. Avoid storing media in a second local copy.
@@ -449,13 +451,32 @@ def upload_media(conn, username, share, folder, original_name, stream, existing,
             pass
         raise
     _register(owner, share, folder, digest, final_name, source_id)
-    try:
-        _record_index(username, share, folder, final_name, conn, taken)
-    except Exception:
-        # Scanning can recover metadata later. Do not delete a successfully
-        # imported original because an index refresh failed.
-        pass
+    if pending is not None:
+        pending[final_name] = taken
+    else:
+        try:
+            _record_index(username, share, folder, final_name, conn, taken)
+        except Exception:
+            LOG.exception("Unable to update gallery for imported file")
     return "imported"
+
+
+def index_imported_batch(conn, username, share, folder, pending):
+    """One SMB list and one SQLite transaction for the entire import batch.
+
+    Avoid listing an increasingly large folder once per uploaded photo (which
+    otherwise becomes O(n^2) SMB metadata requests for a 10,000-photo Takeout).
+    """
+    if not pending:
+        return
+    entries = conn.listPath(share, "/" + folder, timeout=45)
+    owner = owner_of(username)
+    with gallery_index.LOCK, gallery_index.connect() as db:
+        gallery_index.add_folder_contents(db, owner, share, folder, entries)
+        for filename, taken in pending.items():
+            if taken and filename.lower().endswith(gallery_index.IMAGE_EXTS):
+                gallery_index.save_date(db, owner, share,
+                                        "/".join((folder, filename)), taken)
 
 
 def new_job(username, source, share, folder):
@@ -521,6 +542,7 @@ def process_takeout(zip_path, conn, username, share, folder, job):
     """Import a single Takeout ZIP; repeat for each archive part."""
     processed = imported = skipped = failed = 0
     existing = {e.filename for e in conn.listPath(share, "/" + folder, timeout=30)}
+    pending = {}
     with zipfile.ZipFile(zip_path) as archive:
         members = archive.infolist()
         if len(members) > MAX_ENTRIES:
@@ -548,13 +570,18 @@ def process_takeout(zip_path, conn, username, share, folder, job):
                             break
                 with archive.open(entry) as stream:
                     result = upload_media(conn, username, share, folder, base, stream,
-                                          existing, taken=taken, limit=entry.file_size + 1)
+                                          existing, taken=taken, limit=entry.file_size + 1,
+                                          pending=pending)
                 imported += (result == "imported")
                 skipped += (result == "skipped")
             except Exception:
                 failed += 1
             processed += 1
             job_update(job, processed=processed, imported=imported, skipped=skipped, failed=failed)
+    try:
+        index_imported_batch(conn, username, share, folder, pending)
+    except Exception:
+        LOG.exception("Unable to index imported Takeout photos; SMB files are intact")
     return {"imported": imported, "skipped": skipped, "failed": failed}
 
 
@@ -578,6 +605,7 @@ def media_url(base, is_video):
 def process_picked(items, conn, username, opts, share, folder, job):
     token = access_token(username, opts)
     existing = {e.filename for e in conn.listPath(share, "/" + folder, timeout=30)}
+    pending = {}
     processed = imported = skipped = failed = 0
     job_update(job, status="running", total=len(items))
     opener = urllib.request.build_opener(NoRedirect())
@@ -598,13 +626,18 @@ def process_picked(items, conn, username, opts, share, folder, job):
                         raise ValueError("Слишком большой медиафайл")
                     result = upload_media(conn, username, share, folder, name, reply,
                                           existing, taken=taken_from_picker(item.get("createTime")),
-                                          source_id="picker:" + str(item.get("id", "")))
+                                          source_id="picker:" + str(item.get("id", "")),
+                                          pending=pending)
                     imported += (result == "imported")
                     skipped += (result == "skipped")
         except Exception:
             failed += 1
         processed += 1
         job_update(job, processed=processed, imported=imported, skipped=skipped, failed=failed)
+    try:
+        index_imported_batch(conn, username, share, folder, pending)
+    except Exception:
+        LOG.exception("Unable to index imported Picker photos; SMB files are intact")
     return {"imported": imported, "skipped": skipped, "failed": failed}
 
 
