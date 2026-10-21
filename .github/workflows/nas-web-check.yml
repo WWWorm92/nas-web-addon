@@ -417,6 +417,8 @@ jobs:
           assert "payload.get(\"confirm\")" in part
           assert "payload.get(\"confirm_name\")" in part
           assert "trash_delete.permanent_delete" in part
+          assert 'for part in path.split("/")[:-1]' in part
+          assert '"isReparsePoint"' in part
           assert "isTrashItemPath" in ui
           assert "В корзину" in ui and "Удалить навсегда" in ui
           assert "String(answer||'').toUpperCase()!=='УДАЛИТЬ'" in ui
