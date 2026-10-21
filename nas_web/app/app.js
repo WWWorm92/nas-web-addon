@@ -237,7 +237,7 @@ function photoLoad(f){
   const controller=new AbortController(),job={controller};
   job.promise=fetch(photoSource(f),{credentials:'same-origin',signal:controller.signal})
     .then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.blob()})
-    .then(blob=>photoCachePut(key,blob))
+    .then(blob=>{if(controller.signal.aborted)throw new DOMException('Aborted','AbortError');return photoCachePut(key,blob)})
     .finally(()=>{if(photoFetches.get(key)===job)photoFetches.delete(key)});
   photoFetches.set(key,job);return job.promise;
 }
@@ -248,12 +248,17 @@ function photoPrefetch(serial){
   // At most one background SMB transfer. Prefetch two frames in the
   // latest swipe direction, then one behind, without starving the viewer.
   const offsets=swipeDirection>=0?[1,2,-1]:[-1,-2,1];
-  const candidates=offsets.map(offset=>gallery[previewIndex+offset]).filter(f=>f&&isPhoto(f)&&Number(f.size)<=ORIGINAL_CACHE_LIMIT);
+  // Don't fetch huge neighboring originals or evict the recently viewed photo.
+  // Large files remain available on demand; data-saver users skip background transfers.
+  if(navigator.connection?.saveData)return;
+  const candidates=offsets.map(offset=>gallery[previewIndex+offset])
+    .filter(f=>f&&isPhoto(f)&&Number(f.size)>0&&Number(f.size)<=12*1024*1024);
   const prepare=async()=>{
     for(const f of candidates){
       if(serial!==viewerSerial)return;
       const key=photoKey(f);
-      if(photoCacheGet(key))continue;
+      if(originalCache.has(key))continue;
+      if(originalCacheBytes+Number(f.size)>ORIGINAL_CACHE_LIMIT)continue;
       try{await photoLoad(f)}catch(e){if(e.name==='AbortError')return}
     }
   };
@@ -529,6 +534,7 @@ menu.classList.remove('hidden');const rect=button.getBoundingClientRect(),mw=210
 function sortedFiltered(){let a=items.filter(f=>f.name.toLocaleLowerCase().includes(el('search').value.trim().toLocaleLowerCase()));const sort=el('sort').value;a.sort((x,y)=>Number(y.directory)-Number(x.directory)||(sort==='new'?Number(y.modified||0)-Number(x.modified||0):sort==='size'?Number(y.size)-Number(x.size):x.name.localeCompare(y.name,'ru')));return a}
 // Limit simultaneous thumbnail requests so phones don't saturate the NAS.
 const thumbQueue=[];let activeThumbs=0;const THUMB_CONCURRENCY=3;
+const THUMB_NEARBY_PX=350;
 const thumbInflight=new Map();
 function stopDetachedThumbnail(img){
   photoObserver.unobserve(img);
@@ -536,11 +542,22 @@ function stopDetachedThumbnail(img){
   if(cancel){cancel();img.removeAttribute('src')}
 }
 function pumpThumbs(){
-  if(previewIndex>=0)return; // Give foreground photo transfer bandwidth priority.
-  while(activeThumbs<THUMB_CONCURRENCY && thumbQueue.length){
-    thumbQueue.sort((a,b)=>{const ay=a.getBoundingClientRect().top,by=b.getBoundingClientRect().top;return (ay>=0&&ay<innerHeight?0:1)-(by>=0&&by<innerHeight?0:1)||Math.abs(ay)-Math.abs(by)});
-    const img=thumbQueue.shift();
+  if(previewIndex>=0||activeThumbs>=THUMB_CONCURRENCY||!thumbQueue.length)return;
+  // The user may have scrolled far away while previous thumbnails were loading.
+  // Measure each pending tile only once, and never transfer offscreen leftovers.
+  const pending=thumbQueue.splice(0),nearby=[];
+  for(const img of pending){
     if(!img.isConnected||!img.dataset.src)continue;
+    const rect=img.getBoundingClientRect();
+    if(!rect.width||!rect.height||rect.top>innerHeight+THUMB_NEARBY_PX||rect.bottom< -THUMB_NEARBY_PX){
+      photoObserver.observe(img);
+      continue;
+    }
+    nearby.push({img,priority:rect.bottom>0&&rect.top<innerHeight?0:1,distance:Math.abs(rect.top)});
+  }
+  nearby.sort((a,b)=>a.priority-b.priority||a.distance-b.distance);
+  for(const {img} of nearby){
+    if(activeThumbs>=THUMB_CONCURRENCY){thumbQueue.push(img);continue}
     activeThumbs++;
     let completed=false;
     const done=()=>{
