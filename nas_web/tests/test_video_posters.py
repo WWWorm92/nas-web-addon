@@ -1,10 +1,16 @@
 """Bounded video thumbnail extraction: untrusted input and SMB safety."""
 import subprocess
-import tempfile
-import time
+import sys
 import unittest
+from types import ModuleType
 from unittest.mock import Mock, patch
-from app import video_posters as p
+
+# Production thumbnail cache initializes /data when imported. CI has no HAOS
+# /data mount, so replace only that dependency for this isolated unit test.
+stub_cache = ModuleType("app.thumb_cache")
+stub_cache.render_image = Mock()
+with patch.dict(sys.modules, {"app.thumb_cache": stub_cache}):
+    from app import video_posters as p
 
 
 class VideoPosterTests(unittest.TestCase):
