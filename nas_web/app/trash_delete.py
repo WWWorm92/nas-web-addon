@@ -27,7 +27,7 @@ def deletion_plan(conn, share, path, directory):
     if not within_recycle(path):
         raise TrashDeletionError("Безвозвратное удаление разрешено только внутри корзины")
     if any(not bit or bit in (".", "..") or "/" in bit or "\\" in bit
-           or "*" in bit or "?" in bit for bit in path.split("/")):
+           or "*" in bit or "?" in bit or ":" in bit for bit in path.split("/")):
         raise TrashDeletionError("Некорректный путь объекта корзины")
 
     stack = [(path, bool(directory), 0, False)]
@@ -52,7 +52,7 @@ def deletion_plan(conn, share, path, directory):
             if name in (".", ".."):
                 continue
             if not isinstance(name, str) or not name or name in (".", "..") or any(
-                ch in name for ch in "/\\*?\0"
+                ch in name for ch in "/\\*?:\0"
             ) or any(ord(ch) < 32 for ch in name):
                 raise TrashDeletionError("Некорректное имя внутри удаляемой папки")
             stack.append((current + "/" + name, bool(child.isDirectory), depth + 1,
