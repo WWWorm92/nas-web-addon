@@ -25,8 +25,8 @@ const fpath=name=>[dir,name].filter(Boolean).join('/');
 const fileUrl=(name,inline=false)=>'/api/file?'+qs({share:selected,path:fpath(name),inline:String(inline)});
 let loginGeneration=0;
 async function api(url,options={}){const r=await fetch(url,{credentials:'same-origin',...options,headers:{...(options.headers||{}),'X-CSRF-Token':csrf}});if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).detail||m}catch{}if(r.status===401&&url!=='/api/login'&&url!=='/api/me')showLogin();throw Error(m)}return r.json()}
-function showLogin(){leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
-function showApp(user){closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
+function showLogin(){closeNasSearch();leaveGlobalGallery();closeMobileSheet();hideMenu();closePreview();photoCacheClear();el('login').classList.remove('hidden');el('app').classList.add('hidden')}
+function showApp(user){closeNasSearch();closeMobileSheet();photoCacheClear();csrf=user.csrf;shares=user.shares;el('who').textContent=user.username;el('login').classList.add('hidden');el('app').classList.remove('hidden');renderShares();if(shares.length)choose(shares[0]);else message('У пользователя нет доступных SMB-шар.')}
 function renderShares(){el('shares').replaceChildren();for(const share of shares){const b=document.createElement('button');b.className='share'+(share===selected?' selected':'');b.append(icon('disk'),document.createTextNode(' '+share));b.onclick=()=>choose(share);el('shares').append(b)}}
 const selectedFiles=new Set();
 let selectionMode=false;
@@ -1349,6 +1349,163 @@ previewArea.addEventListener('wheel',event=>{if(!previewArea.querySelector('img'
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!el('mobileSheetOverlay').classList.contains('hidden'))closeMobileSheet();else if(activeDialog)activeDialog(null);else{closePreview();hideMenu()}}if(el('preview').style.display==='flex'){if(e.key==='ArrowLeft')stepPreview(-1);if(e.key==='ArrowRight')stepPreview(1);if(e.key==='0')setZoom(1);if(e.key==='+')setZoom(zoom*1.25);if(e.key==='-')setZoom(zoom/1.25)}});
 document.addEventListener('pointerdown',e=>{if(!el('fileMenu').contains(e.target)&&!e.target.closest('.more'))hideMenu()});
 let dragDepth=0;const work=el('workspace');work.addEventListener('dragenter',e=>{e.preventDefault();dragDepth++;work.classList.add('drop')});work.addEventListener('dragover',e=>e.preventDefault());work.addEventListener('dragleave',e=>{e.preventDefault();dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)work.classList.remove('drop')});work.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;work.classList.remove('drop');uploadFiles([...e.dataTransfer.files])});
+
+// Global file search uses its own persistent index, not the photo/EXIF index.
+let nasSearchKind='all',nasSearchOffset=0,nasSearchGeneration=0;
+let nasSearchTimer=null,nasSearchPoll=null,nasSearchBusy=false,nasSearchHasMore=false;
+let nasSearchScanned=0,nasSearchComplete=false;
+const nasSearchOpen=()=>!el('nasSearchOverlay').classList.contains('hidden');
+function closeNasSearch(){
+  ++nasSearchGeneration;clearTimeout(nasSearchTimer);clearInterval(nasSearchPoll);
+  nasSearchPoll=null;nasSearchBusy=false;
+  el('nasSearchOverlay').classList.add('hidden');
+  document.body.classList.remove('nasSearchOpen');
+}
+function nasSearchStatusLine(status){
+  if(!nasSearchOpen())return;
+  nasSearchComplete=!!status.complete;
+  let line=status.complete?'Индекс готов: '+status.total+' элементов'
+    :'Индексируем имена: '+status.scanned+' папок · '+status.total+' элементов';
+  if(status.errors)line+=' · Пропущено папок: '+status.errors;
+  if(status.limited)line+=' · Достигнут лимит';
+  el('nasSearchStatusText').textContent=line;
+}
+async function pollNasSearchStatus(){
+  if(!nasSearchOpen())return;
+  try{
+    const status=await api('/api/search/status');
+    if(!nasSearchOpen())return;
+    nasSearchStatusLine(status);
+    if(status.complete){
+      if(nasSearchPoll){clearInterval(nasSearchPoll);nasSearchPoll=null}
+      if(el('nasSearchInput').value.trim().length>=2&&nasSearchOffset<=25)scheduleNasSearch(0);
+    }else if(status.scanned-nasSearchScanned>=60){
+      nasSearchScanned=status.scanned;
+      if(el('nasSearchInput').value.trim().length>=2&&nasSearchOffset<=25)scheduleNasSearch(0);
+    }
+  }catch(err){if(nasSearchOpen())el('nasSearchStatusText').textContent='Индекс: '+err.message}
+}
+function nasSearchEmpty(text){
+  const box=el('nasSearchResults');box.replaceChildren();
+  const info=document.createElement('p');info.className='nasSearchEmpty';info.textContent=text;box.append(info);
+}
+function createNasSearchResult(hit){
+  const btn=document.createElement('button');btn.type='button';btn.className='nasSearchResult';
+  const kind=hit.directory?'folder':fileKind({name:hit.name,directory:false});
+  btn.append(icon(kind));
+  const text=document.createElement('span');text.className='nasSearchResultText';
+  const title=document.createElement('strong');title.textContent=hit.name;
+  const location=document.createElement('small');
+  location.textContent=hit.share+' / '+hit.folder+(hit.directory?'':' · '+size(hit.size));
+  text.append(title,location);btn.append(text);
+  btn.onclick=()=>openNasSearchHit(hit);
+  return btn;
+}
+async function openNasSearchHit(hit){
+  closeNasSearch();if(allPhotosMode)leaveGlobalGallery();
+  selected=hit.share;dir=hit.directory?hit.path:hit.folder;
+  el('search').value='';renderShares();
+  window.scrollTo({top:0,behavior:'instant'});
+  await refresh();
+  if(hit.directory){message('Открыта папка '+hit.name);return}
+  const tile=[...el('entries').querySelectorAll('.item[data-filename]')]
+    .find(elm=>elm.dataset.filename===hit.name);
+  if(tile){
+    tile.scrollIntoView({block:'center',behavior:'smooth'});
+    tile.classList.add('searchHitFlash');
+    setTimeout(()=>tile.classList.remove('searchHitFlash'),1800);
+  }
+  message('Найден: '+hit.name);
+}
+async function runNasSearch(reset=true){
+  if(!nasSearchOpen())return;
+  const term=el('nasSearchInput').value.trim();
+  if(term.length<2){
+    ++nasSearchGeneration;nasSearchOffset=0;nasSearchHasMore=false;
+    nasSearchEmpty('Введите минимум 2 символа');
+    el('nasSearchMore').classList.add('hidden');return;
+  }
+  if(nasSearchBusy&&!reset)return;
+  const generation=++nasSearchGeneration;
+  nasSearchBusy=true;
+  if(reset){nasSearchOffset=0;nasSearchHasMore=false;nasSearchEmpty('Поиск…')}
+  el('nasSearchMore').classList.add('hidden');
+  try{
+    const result=await api('/api/search/files?'+qs({
+      q:term,kind:nasSearchKind,offset:nasSearchOffset,limit:25
+    }));
+    if(!nasSearchOpen()||generation!==nasSearchGeneration)return;
+    const box=el('nasSearchResults');
+    if(reset)box.replaceChildren();
+    const fragment=document.createDocumentFragment();
+    for(const hit of result.items)fragment.append(createNasSearchResult(hit));
+    box.append(fragment);
+    nasSearchOffset=result.next_offset;
+    nasSearchHasMore=result.has_more;
+    if(!box.children.length){
+      nasSearchEmpty(nasSearchComplete?'Совпадений нет':'Пока ничего не найдено · индексирование продолжается');
+    }
+    el('nasSearchMore').classList.toggle('hidden',!nasSearchHasMore);
+  }catch(err){
+    if(generation===nasSearchGeneration&&nasSearchOpen())nasSearchEmpty('Ошибка поиска: '+err.message);
+  }finally{if(generation===nasSearchGeneration)nasSearchBusy=false}
+}
+function scheduleNasSearch(delay=220){
+  clearTimeout(nasSearchTimer);
+  nasSearchTimer=setTimeout(()=>runNasSearch(true),delay);
+}
+async function openNasSearch(){
+  if(nasSearchOpen())return;
+  el('nasSearchOverlay').classList.remove('hidden');
+  document.body.classList.add('nasSearchOpen');
+  nasSearchScanned=0;
+  el('nasSearchResults').replaceChildren();
+  el('nasSearchMore').classList.add('hidden');
+  el('nasSearchStatusText').textContent='Подготавливаем поиск…';
+  el('nasSearchInput').focus();
+  const session=++nasSearchGeneration;
+  try{
+    await api('/api/search/index',{method:'POST'});
+    if(!nasSearchOpen()||session!==nasSearchGeneration)return;
+    await pollNasSearchStatus();
+    if(!nasSearchPoll)nasSearchPoll=setInterval(pollNasSearchStatus,2200);
+    if(el('nasSearchInput').value.trim().length>=2)scheduleNasSearch(0);
+    else nasSearchEmpty('Введите минимум 2 символа');
+  }catch(err){if(session===nasSearchGeneration&&nasSearchOpen())el('nasSearchStatusText').textContent=err.message}
+}
+el('openGlobalSearch').onclick=openNasSearch;
+el('mobileSearch').onclick=()=>{closeMobileSheet();openNasSearch()};
+el('nasSearchClose').onclick=closeNasSearch;
+el('nasSearchOverlay').onclick=e=>{if(e.target===el('nasSearchOverlay'))closeNasSearch()};
+el('nasSearchInput').oninput=()=>scheduleNasSearch();
+for(const button of el('nasSearchOverlay').querySelectorAll('.nasSearchFilters button')){
+  button.onclick=()=>{
+    nasSearchKind=button.dataset.kind;
+    for(const b of el('nasSearchOverlay').querySelectorAll('.nasSearchFilters button'))
+      b.classList.toggle('active',b===button);
+    scheduleNasSearch(0);
+  };
+}
+el('nasSearchMore').onclick=()=>runNasSearch(false);
+el('nasSearchReindex').onclick=async()=>{
+  if(!nasSearchOpen())return;
+  try{
+    el('nasSearchStatusText').textContent='Обновляем индекс файлов…';
+    await api('/api/search/index?refresh=true',{method:'POST'});
+    if(!nasSearchPoll)nasSearchPoll=setInterval(pollNasSearchStatus,2200);
+    await pollNasSearchStatus();
+    scheduleNasSearch(0);
+  }catch(err){el('nasSearchStatusText').textContent=err.message}
+};
+document.addEventListener('keydown',event=>{
+  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'&&previewIndex<0){
+    event.preventDefault();nasSearchOpen()?el('nasSearchInput').focus():openNasSearch();
+  }
+  if(event.key==='Escape'&&nasSearchOpen()){
+    event.preventDefault();event.stopImmediatePropagation();closeNasSearch();
+  }
+},true);
+
 const theme=localStorage.getItem('nas_theme')||'dark';document.documentElement.dataset.theme=theme;el('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('nas_theme',t)};
 const startupLoginGeneration=loginGeneration;
 api('/api/me').then(user=>{if(loginGeneration===startupLoginGeneration)showApp(user)}).catch(()=>{if(loginGeneration===startupLoginGeneration)showLogin()});
