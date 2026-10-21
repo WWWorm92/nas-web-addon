@@ -450,6 +450,8 @@ jobs:
         run: node nas_web/tests/gallery_auto_sync.test.cjs
       - name: Gallery SMB change reconciliation and persistence
         run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_gallery_auto_sync.py'
+      - name: Mobile More menu UX regression
+        run: node nas_web/tests/mobile_more_menu.test.cjs
       - name: Gallery memories stories regressions
         run: node nas_web/tests/gallery_memories_stories.test.cjs
       - name: Profile folder picker regression
