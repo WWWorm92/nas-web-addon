@@ -1271,6 +1271,50 @@ def download_zip(request: Request, payload: dict, x_csrf_token: str = Header(def
         temporary.cleanup()
         smb_action_error("zip", exc)
 
+@app.post("/api/trash/permanent-delete")
+def permanently_delete_trashed_item(request: Request, payload: dict,
+                                   x_csrf_token: str = Header(default="")):
+    """Explicitly delete ONE selected item within the authorized SMB share's trash.
+
+    This never permanently deletes a live path or the trash directory itself.
+    Contents are enumerated and bounded before destructive operations begin.
+    """
+    from . import trash_delete
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    path = path_ok(payload.get("path", ""))
+    if not trash_delete.within_recycle(path):
+        fail(403, "Безвозвратное удаление разрешено только внутри корзины")
+    directory = payload.get("directory")
+    if not isinstance(directory, bool):
+        fail(400, "Некорректный тип объекта")
+    basename = path.rsplit("/", 1)[-1]
+    if payload.get("confirm") != "УДАЛИТЬ" or payload.get("confirm_name") != basename:
+        fail(400, "Требуется явное подтверждение удаления объекта")
+    with smb(u) as conn:
+        share = payload.get("share", "")
+        check_share(conn, share)
+        parent = path.rpartition("/")[0]
+        try:
+            entry = entry_in_folder(conn, share, parent, basename)
+            if entry is None:
+                fail(404, "Объект уже отсутствует в корзине")
+            if bool(entry.isDirectory) != directory:
+                fail(409, "Тип объекта изменился. Обновите папку")
+            if getattr(entry, "isReparsePoint", False):
+                fail(409, "Удаление папок-ссылок не поддерживается")
+            count = trash_delete.permanent_delete(conn, share, path, directory)
+        except trash_delete.TrashDeletionError as exc:
+            fail(409, str(exc))
+        except HTTPException:
+            raise
+        except Exception as exc:
+            # SMB permissions are always enforced by the server. A failed
+            # operation may have removed some files before failing.
+            smb_action_error("permanent trash delete (may be partial)", exc)
+    return {"ok": True, "permanent": True, "deleted_entries": count}
+
+
 @app.post("/api/delete")
 def delete(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
     check_origin(request)
