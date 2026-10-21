@@ -1,3 +1,11 @@
+## 0.22.34
+
+- Redesign the mobile **More** menu as a compact, minimal sheet with a profile shortcut, muted grey-blue outline icons, subtle grouped rows, and a separated sign-out action. Remove the oversized stack of rectangular buttons; reduce sheet height and visual clutter.
+- Keep just **Profile**, **Favorites & albums**, **Photo statistics**, **Appearance**, and **Sign out**, organized as account, phototheque, app settings and exit. Show current account name and avatar color and the active appearance theme.
+- Remove redundant **Select files** and **Refresh list** actions from More; file selection and refreshing remain available in the contextual Files ⋮ menu, and the gallery still has its own refresh.
+- Simplify the Files ⋮ menu to file-related actions only (grid/list, select files, create folder, refresh); avoid duplicate account/theme/logout entries.
+- Scope the new styles and DOM to the More sheet so photo details, album menus, file action sheets and other reusable bottom sheets are not affected. Add Node UI regression coverage.
+
 ## 0.22.33
 
 - Allow **large Google Takeout ZIP files** up to 32 GiB per archive (configurable `max_import_mb: int(1,32768)`); new add-on installs default to 8192 MiB (8 GiB), enough for a 6.5 GB Takeout ZIP.
