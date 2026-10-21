@@ -404,6 +404,11 @@ jobs:
               key=Fernet.generate_key()
               store._cipher=lambda: Fernet(key)
               user={"name":"Katya","password":"test secret","shares":["Photo"]}
+              with store.connect() as db:
+                  assert not db.execute("SELECT 1 FROM cleanup_credentials").fetchone()
+              store.register_legacy(user,"Photo",[])
+              with store.connect() as db:
+                  assert not db.execute("SELECT 1 FROM cleanup_credentials").fetchone()
               old=1234567890.
               store.record_move(user,"Photo","summer.jpg","Katya/2018/summer.jpg",False,now=old)
               legacy=[Entry("old-folder",True),Entry("summer.jpg")]
