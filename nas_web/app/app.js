@@ -317,10 +317,10 @@ const desktopReturnToFiles=()=>{
   leaveGlobalGallery();
   window.scrollTo({top:0,behavior:'instant'});
 };
-for(const id of ['desktopFilesNav','sidebarFilesNav','desktopGalleryBack']){
+for(const id of ['desktopFilesNav','desktopGalleryBack']){
   el(id).onclick=desktopReturnToFiles;
 }
-for(const id of ['desktopPhotosNav','sidebarPhotosNav']){
+for(const id of ['desktopPhotosNav']){
   el(id).onclick=()=>{enterGlobalGallery();window.scrollTo({top:0,behavior:'instant'})};
 }
 el('mobileHome').onclick=()=>{closeMobileSheet();leaveGlobalGallery();clearSelection();photoCacheClear();dir='';el('search').value='';refresh();window.scrollTo({top:0,behavior:'smooth'})};
@@ -490,10 +490,10 @@ el('filesSettingsToggle').onclick=()=>openMobileSheet('Файлы',[
 ]);
 function updateDesktopWorkspace(){
   const gallery=allPhotosMode;
-  for(const id of ['desktopFilesNav','sidebarFilesNav']){
+  for(const id of ['desktopFilesNav']){
     const b=el(id);b.classList.toggle('navSelected',!gallery);b.setAttribute('aria-current',gallery?'false':'page');
   }
-  for(const id of ['desktopPhotosNav','sidebarPhotosNav']){
+  for(const id of ['desktopPhotosNav']){
     const b=el(id);b.classList.toggle('navSelected',gallery);b.setAttribute('aria-current',gallery?'page':'false');
   }
 
