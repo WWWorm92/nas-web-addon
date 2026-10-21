@@ -53,9 +53,12 @@ def connect():
       );
       CREATE TABLE IF NOT EXISTS jobs (
         owner TEXT PRIMARY KEY, started REAL NOT NULL,
-        complete INTEGER NOT NULL DEFAULT 0, limited INTEGER NOT NULL DEFAULT 0
+        complete INTEGER NOT NULL DEFAULT 0, limited INTEGER NOT NULL DEFAULT 0,
+        revision INTEGER NOT NULL DEFAULT 0
       );
     """)
+    if "revision" not in {row[1] for row in db.execute("PRAGMA table_info(jobs)")}:
+        db.execute("ALTER TABLE jobs ADD COLUMN revision INTEGER NOT NULL DEFAULT 0")
     try:
         with db:
             # One-time migration for the read-only SMB open fix. Earlier EXIF
@@ -71,6 +74,17 @@ def connect():
             yield db
     finally:
         db.close()
+
+
+def bump_revision(db, owner):
+    """Signal actual photo index changes to the active gallery."""
+    db.execute("UPDATE jobs SET revision=revision+1 WHERE owner=?", (owner,))
+
+
+def mark_folder_failed(db, owner, share, folder):
+    """Never interpret a failed SMB directory listing as an empty directory."""
+    db.execute("UPDATE folders SET done=1 WHERE owner=? AND share=? AND path=?",
+               (owner, share, folder))
 
 
 def begin(db, owner, shares):
@@ -102,7 +116,7 @@ def reset(owner, shares):
 def state(owner, shares):
     with LOCK, connect() as db:
         begin(db, owner, shares)
-        job = db.execute("SELECT complete,limited FROM jobs WHERE owner=?", (owner,)).fetchone()
+        job = db.execute("SELECT complete,limited,revision FROM jobs WHERE owner=?", (owner,)).fetchone()
         scanned = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=1", (owner,)).fetchone()[0]
         pending = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=0", (owner,)).fetchone()[0]
         total = db.execute("SELECT COUNT(*) FROM photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ")", (owner, *shares)).fetchone()[0] if shares else 0
@@ -122,6 +136,7 @@ def state(owner, shares):
                                      (owner, *shares)).fetchone()[0] if shares else 0
         blocked = denied_count(db, owner, shares)
         return {"complete": bool(job["complete"]), "limited": bool(job["limited"]),
+                "revision": int(job["revision"]),
                 "scanned": scanned, "pending": pending, "total": total,
                 "dates_pending": dates_pending, "dates_blocked": blocked,
                 "dates_available": max(0, dates_pending-blocked),
@@ -201,9 +216,9 @@ def pending_folder(db, owner):
 
 
 def add_folder_contents(db, owner, share, folder, entries):
-    # Failed SMB listings are passed as empty collections; never prune on failure.
-    if entries:
-        prune_missing(db, owner, share, folder, entries)
+    # Only authorized successful SMB listings reach this function.
+    # An empty directory is a valid success and must remove stale photo rows.
+    changed = prune_missing(db, owner, share, folder, entries)
     folders_count = db.execute("SELECT COUNT(*) FROM folders WHERE owner=?", (owner,)).fetchone()[0]
     photos_count = db.execute("SELECT COUNT(*) FROM photos WHERE owner=?", (owner,)).fetchone()[0]
     for entry in entries:
@@ -216,6 +231,8 @@ def add_folder_contents(db, owner, share, folder, entries):
                 db.execute("UPDATE jobs SET limited=1 WHERE owner=?", (owner,))
                 continue
             result = db.execute("INSERT OR IGNORE INTO folders(owner,share,path) VALUES (?,?,?)", (owner, share, path))
+            if result.rowcount:
+                changed = True
             folders_count += max(0, result.rowcount)
         elif name.lower().endswith(IMAGE_EXTS):
             if photos_count >= MAX_PHOTOS:
@@ -226,6 +243,7 @@ def add_folder_contents(db, owner, share, folder, entries):
             old = db.execute("SELECT size,modified,taken,exif_checked,sort_key FROM photos WHERE owner=? AND share=? AND path=?", (owner,share,path)).fetchone()
             if old and old["size"] == int(entry.file_size) and old["modified"] == modified:
                 continue
+            changed = True
             shared = db.execute("SELECT taken,exif_checked FROM shared_metadata WHERE share=? AND path=? AND size=? AND modified=?",
                                 (share,path,int(entry.file_size),modified)).fetchone()
             taken = shared["taken"] if shared else None
@@ -233,8 +251,11 @@ def add_folder_contents(db, owner, share, folder, entries):
             db.execute("INSERT OR REPLACE INTO photos(owner,share,path,folder,name,size,modified,taken,exif_checked,sort_key) "
                        "VALUES (?,?,?,?,?,?,?,?,?,?)",
                        (owner,share,path,folder,name,int(entry.file_size),modified,taken,checked,taken or sort_key))
-            photos_count += 1
+            if not old:
+                photos_count += 1
     db.execute("UPDATE folders SET done=1 WHERE owner=? AND share=? AND path=?", (owner, share, folder))
+    if changed:
+        bump_revision(db, owner)
 
 
 
@@ -259,6 +280,7 @@ def record_upload(owner, share, path, size, modified):
         db.execute("INSERT OR REPLACE INTO photos(owner,share,path,folder,name,size,modified,taken,exif_checked,sort_key) "
                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
                    (owner, share, path, folder, name, size, modified, taken, checked, taken or stamp))
+        bump_revision(db, owner)
     return True
 
 
@@ -366,17 +388,23 @@ def next_unchecked(db, owner, shares, excluded=()):
 
 def save_date(db, owner, share, path, taken):
     """Save once, then distribute EXIF to every indexed matching file identity."""
-    row = db.execute("SELECT size,modified FROM photos WHERE owner=? AND share=? AND path=?",
+    row = db.execute("SELECT size,modified,taken FROM photos WHERE owner=? AND share=? AND path=?",
                      (owner, share, path)).fetchone()
     if row is None:
         return
     size, modified = row["size"], row["modified"]
+    date_changed = row["taken"] != taken
     db.execute("INSERT OR REPLACE INTO shared_metadata(share,path,size,modified,taken,exif_checked) "
                "VALUES (?,?,?,?,?,1)", (share, path, size, modified, taken))
     db.execute(
         "UPDATE photos SET taken=?,exif_checked=1,sort_key=COALESCE(?,sort_key) "
         "WHERE share=? AND path=? AND size=? AND modified=?",
         (taken, taken, share, path, size, modified))
+    if date_changed:
+        for other in db.execute(
+                "SELECT DISTINCT owner FROM photos WHERE share=? AND path=? AND size=? AND modified=?",
+                (share, path, size, modified)).fetchall():
+            bump_revision(db, other["owner"])
 
 
 def reuse_shared(db, owner, shares):
@@ -396,7 +424,7 @@ def reuse_shared(db, owner, shares):
                   (SELECT 1 FROM shared_metadata m WHERE m.share=photos.share AND m.path=photos.path
                    AND m.size=photos.size AND m.modified=photos.modified AND m.exif_checked=1 AND m.taken IS NOT NULL)""", (owner,))
 
-def refresh_due(db, owner, shares, interval=6*3600):
+def refresh_due(db, owner, shares, interval=10*60):
     """Refresh completed scans periodically, never restarting unfinished jobs."""
     job = db.execute("SELECT started,complete FROM jobs WHERE owner=?", (owner,)).fetchone()
     if not job or not job["complete"] or time.time()-job["started"] < interval:
@@ -408,17 +436,26 @@ def refresh_due(db, owner, shares, interval=6*3600):
 
 
 def prune_missing(db, owner, share, folder, entries):
-    """Only remove stale records after an authorized successful folder listing."""
+    """Prune only after an authorized successful SMB listing, including empty folders."""
     present = {e.filename for e in entries}
+    changed = False
     for row in db.execute("SELECT path,name FROM photos WHERE owner=? AND share=? AND folder=?",
                           (owner,share,folder)).fetchall():
         if row["name"] not in present:
-            db.execute("DELETE FROM photos WHERE owner=? AND share=? AND path=?", (owner,share,row["path"]))
+            deleted = db.execute("DELETE FROM photos WHERE owner=? AND share=? AND path=?",
+                                 (owner,share,row["path"]))
+            changed = changed or deleted.rowcount > 0
     for row in db.execute("SELECT path FROM folders WHERE owner=? AND share=? AND path!=?",
                           (owner,share,folder)).fetchall():
         path = row["path"]
         if path.rsplit("/",1)[0] == folder and path.rsplit("/",1)[-1] not in present:
-            db.execute("DELETE FROM photos WHERE owner=? AND share=? AND (path=? OR path LIKE ?)",
-                       (owner,share,path,path+"/%"))
-            db.execute("DELETE FROM folders WHERE owner=? AND share=? AND (path=? OR path LIKE ?)",
-                       (owner,share,path,path+"/%"))
+            prefix = path + "/"
+            removed = db.execute("DELETE FROM photos WHERE owner=? AND share=? AND "
+                                 "(path=? OR substr(path,1,?)=?)",
+                                 (owner,share,path,len(prefix),prefix))
+            changed = changed or removed.rowcount > 0
+            deleted = db.execute("DELETE FROM folders WHERE owner=? AND share=? AND "
+                                 "(path=? OR substr(path,1,?)=?)",
+                                 (owner,share,path,len(prefix),prefix))
+            changed = changed or deleted.rowcount > 0
+    return changed
