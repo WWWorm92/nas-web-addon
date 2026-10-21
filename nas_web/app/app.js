@@ -752,7 +752,7 @@ function renderAllGallery(){
   pumpThumbs();
 }
 function render(){updateDesktopWorkspace();updateMobileFilesBreadcrumb();if(allPhotosMode){renderAllGallery();return}thumbQueue.length=0;photoObserver.takeRecords();const grid=el('entries');for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);grid.replaceChildren();grid.classList.toggle('list',view==='list');grid.classList.toggle('galleryMode',view==='gallery');el('gridView').classList.toggle('active',view==='grid');el('listView').classList.toggle('active',view==='list');el('galleryView').classList.toggle('active',view==='gallery');const shown=view==='gallery'?photoGalleryItems():sortedFiltered();renderGalleryYears(shown);let previousMonth=null;for(const f of shown){if(view==='gallery'){const month=photoDay(f);if(month!==previousMonth){const heading=document.createElement('h3');heading.className='galleryMonth';heading.textContent=month;heading.dataset.year=photoYear(f);grid.append(heading);previousMonth=month}}const tile=document.createElement('article');tile.className='item';if(view==='gallery')tile.classList.add('galleryPhoto');tile.tabIndex=0;tile.role='button';tile.title=f.name;tile.dataset.filename=f.name;
-if(f.directory)tile.classList.add('folderTile');else tile.classList.add('fileTile');
+if(f.directory)tile.classList.add('folderTile');else tile.classList.add('fileTile');if(f.directory&&f.name==='.recycle'&&dir==='')tile.classList.add('recycleTile');
 tile.onclick=()=>selectionMode?toggleSelected(f.name):openPreview(f);
 tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();selectionMode?toggleSelected(f.name):openPreview(f)}};
 let pressTimer=null,longPressed=false,startX=0,startY=0;
