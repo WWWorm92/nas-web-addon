@@ -532,7 +532,7 @@ async function openCollectionPhotos(albumId,favorites){
 // Memories now live above the gallery timeline, like Google Photos Stories.
 // Never replace allPhotos: opening a card uses the existing preview/filmstrip
 // and returns to exactly the same gallery when the viewer closes.
-let galleryMemoryGroups=[],galleryMemoriesGeneration=0;
+let galleryMemoryGroups=[],galleryMemoriesGeneration=0,galleryMemoriesRenderedSignature='';
 function groupGalleryMemories(photos,today=new Date()){
   const currentYear=today.getFullYear();
   const grouped=new Map();
@@ -555,7 +555,11 @@ function renderGalleryMemories(){
   const section=el('galleryMemories'),strip=el('galleryMemoryStories');
   const visible=allPhotosMode&&!allPhotoSubsetMode&&galleryMemoryGroups.length>0;
   section.classList.toggle('hidden',!visible);
-  if(!visible){strip.replaceChildren();return}
+  if(!visible){strip.replaceChildren();galleryMemoriesRenderedSignature='';return}
+  const signature=galleryMemoryGroups.map(g=>g.yearsAgo+'|'+g.items.length+'|'+
+    g.items[0].share+'|'+g.items[0].path+'|'+g.items[0].modified).join(';');
+  if(signature===galleryMemoriesRenderedSignature)return;
+  const previousScroll=strip.scrollLeft;
   const fragment=document.createDocumentFragment();
   for(const group of galleryMemoryGroups){
     const photo=group.items[0];
@@ -574,6 +578,8 @@ function renderGalleryMemories(){
     fragment.append(card);
   }
   strip.replaceChildren(fragment);
+  strip.scrollLeft=previousScroll;
+  galleryMemoriesRenderedSignature=signature;
 }
 function openMemoryStory(photos){
   if(!allPhotosMode||!photos?.length)return;
