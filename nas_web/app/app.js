@@ -960,7 +960,102 @@ function renderAllGallery(){
   message(allPhotos.length?'Показано '+shown.length+' из '+allPhotoTotal+' фотографий':'Ищем фотографии во всех доступных папках…');
   pumpThumbs();
 }
-function render(){updateDesktopWorkspace();updateMobileFilesBreadcrumb();if(allPhotosMode){renderAllGallery();return}thumbQueue.length=0;photoObserver.takeRecords();const grid=el('entries');for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);grid.replaceChildren();grid.classList.toggle('list',view==='list');grid.classList.toggle('galleryMode',view==='gallery');el('gridView').classList.toggle('active',view==='grid');el('listView').classList.toggle('active',view==='list');el('galleryView').classList.toggle('active',view==='gallery');const shown=view==='gallery'?photoGalleryItems():sortedFiltered();renderGalleryYears(shown);let previousMonth=null;for(const f of shown){if(view==='gallery'){const month=photoDay(f);if(month!==previousMonth){const heading=document.createElement('h3');heading.className='galleryMonth';heading.textContent=month;heading.dataset.year=photoYear(f);grid.append(heading);previousMonth=month}}const tile=document.createElement('article');tile.className='item';if(view==='gallery')tile.classList.add('galleryPhoto');tile.tabIndex=0;tile.role='button';tile.title=f.name;tile.dataset.filename=f.name;
+/* Bounded file browser DOM: only render rows close to the viewport.
+ * Photo gallery virtualization remains independent. */
+let fileVirtual=null;
+const FILE_VIRTUAL_THRESHOLD=160;
+function resetFileVirtual(){
+  if(fileVirtual?.frame)cancelAnimationFrame(fileVirtual.frame);
+  fileVirtual=null;
+}
+function fileVirtualWindow(total,cols,rowHeight,gap,top,scroll,viewport,overscan=780){
+  const rows=Math.ceil(total/cols),step=rowHeight+gap;
+  const first=Math.max(0,Math.min(rows,Math.floor(Math.max(0,scroll-top-overscan)/step)));
+  const last=Math.min(rows,Math.max(first+1,Math.ceil(Math.max(0,scroll-top+viewport+overscan)/step)));
+  return {first,last,rows};
+}
+function fileVirtualMetrics(grid){
+  const cs=getComputedStyle(grid);
+  const list=grid.classList.contains('list')||window.matchMedia('(max-width:700px)').matches;
+  const widths=cs.gridTemplateColumns.trim().split(/\s+/).filter(t=>t&&t!=='none');
+  const cols=list?1:Math.max(1,widths.length);
+  return {cols,list,gridWidth:grid.getBoundingClientRect().width,
+    gap:parseFloat(cs.rowGap)||0,
+    columnGap:parseFloat(cs.columnGap)||0};
+}
+function activateFileVirtual(shown){
+  const grid=el('entries'),metrics=fileVirtualMetrics(grid);
+  const probe=document.createElement('div');probe.className='fileVirtualRow';
+  probe.style.setProperty('--file-virtual-columns',String(metrics.cols));
+  probe.style.setProperty('--file-virtual-gap',metrics.columnGap+'px');
+  // Probe the first row plus a file to handle height differences between
+  // directory tiles and files with a size label.
+  for(const f of shown.slice(0,metrics.cols))probe.append(createFileTile(f));
+  if(!shown.slice(0,metrics.cols).some(f=>!f.directory)){
+    const regular=shown.find(f=>!f.directory);
+    if(regular)probe.append(createFileTile(regular));
+  }
+  grid.append(probe);
+  const measured=Math.ceil(probe.getBoundingClientRect().height);
+  const rowHeight=Math.max(1,measured|| (metrics.list?68:170));
+  for(const img of probe.querySelectorAll('img'))stopDetachedThumbnail(img);
+  grid.replaceChildren();
+  fileVirtual={...metrics,rowHeight,shown,first:-1,last:-1,frame:0};
+  renderFileVirtualWindow(true);
+}
+function renderFileVirtualWindow(force=false){
+  const v=fileVirtual;
+  if(!v||allPhotosMode||view==='gallery')return;
+  const grid=el('entries');
+  const top=grid.getBoundingClientRect().top+window.scrollY;
+  const range=fileVirtualWindow(v.shown.length,v.cols,v.rowHeight,v.gap,top,window.scrollY,innerHeight);
+  if(!force&&v.first===range.first&&v.last===range.last)return;
+  v.first=range.first;v.last=range.last;
+  const oldTiles=new Map([...grid.querySelectorAll('.item[data-filename]')].map(t=>[t.dataset.filename,t]));
+  const reused=new Set(),frag=document.createDocumentFragment();
+  const spacer=rows=>{
+    if(rows<=0)return;
+    const div=document.createElement('div');div.className='fileVirtualSpacer';
+    div.style.height=Math.max(0,rows*(v.rowHeight+v.gap)-v.gap)+'px';
+    div.setAttribute('aria-hidden','true');frag.append(div);
+  };
+  spacer(range.first);
+  const visible=document.createElement('div');visible.className='fileVirtualRow';
+  visible.style.setProperty('--file-virtual-columns',String(v.cols));
+  visible.style.setProperty('--file-virtual-gap',v.columnGap+'px');
+  // The grid wrapper uses the same gaps as the original file list.
+  visible.style.rowGap=v.gap+'px';
+  for(const f of v.shown.slice(range.first*v.cols,range.last*v.cols)){
+    const old=oldTiles.get(f.name);
+    if(old){reused.add(old);visible.append(old)}
+    else visible.append(createFileTile(f));
+  }
+  frag.append(visible);
+  spacer(range.rows-range.last);
+  const oldImages=[...grid.querySelectorAll('img')];
+  thumbQueue.length=0;photoObserver.takeRecords();
+  grid.replaceChildren(frag);
+  for(const img of oldImages)if(!img.isConnected)stopDetachedThumbnail(img);
+  updateSelection();
+  pumpThumbs();
+}
+function scheduleFileVirtualScroll(){
+  if(!fileVirtual||fileVirtual.frame||allPhotosMode)return;
+  const v=fileVirtual;
+  v.frame=requestAnimationFrame(()=>{if(fileVirtual!==v)return;v.frame=0;renderFileVirtualWindow()});
+}
+window.addEventListener('scroll',scheduleFileVirtualScroll,{passive:true});
+const fileVirtualResize=new ResizeObserver(()=>{
+  if(!fileVirtual||allPhotosMode)return;
+  const metrics=fileVirtualMetrics(el('entries'));
+  if(Math.abs(metrics.gridWidth-fileVirtual.gridWidth)>1||metrics.cols!==fileVirtual.cols||
+     Math.abs(metrics.gap-fileVirtual.gap)>0.5){
+    render();
+  }
+});
+fileVirtualResize.observe(el('entries'));
+function createFileTile(f){
+const tile=document.createElement('article');tile.className='item';if(view==='gallery')tile.classList.add('galleryPhoto');tile.tabIndex=0;tile.role='button';tile.title=f.name;tile.dataset.filename=f.name;
 if(f.directory)tile.classList.add('folderTile');else tile.classList.add('fileTile');if(f.directory&&f.name==='.recycle'&&dir==='')tile.classList.add('recycleTile');
 tile.onclick=event=>{if(event.ctrlKey||event.metaKey){toggleSelected(f.name);return}selectionMode?toggleSelected(f.name):openPreview(f)};
 tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();selectionMode?toggleSelected(f.name):openPreview(f)}};
@@ -970,8 +1065,88 @@ tile.addEventListener('touchmove',e=>{if(e.touches.length&&Math.hypot(e.touches[
 tile.addEventListener('touchend',()=>clearTimeout(pressTimer));tile.addEventListener('touchcancel',()=>clearTimeout(pressTimer));
 tile.addEventListener('contextmenu',e=>{if(e.target.closest('.more'))return;e.preventDefault();openMenu(f,tile)});
 tile.addEventListener('click',e=>{if(longPressed){e.stopImmediatePropagation();longPressed=false}},true);
-const check=document.createElement('button');check.type='button';check.className='selectionCheck';check.title='Выделить '+f.name;check.setAttribute('aria-label','Выделить '+f.name);check.onclick=e=>{e.stopPropagation();toggleSelected(f.name)};tile.append(check);const thumb=document.createElement('div');thumb.className='thumb';thumb.title=f.directory?'Открыть папку':'Просмотреть файл';if(f.directory)thumb.append(icon(f.name==='.recycle'&&dir===''?'trash':'folder'));else if(imageExt.includes(ext(f.name))){const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';img.onload=()=>img.classList.add('photoLoaded');img.dataset.src=imageURL(f,false,dir,selected);photoObserver.observe(img);img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};thumb.append(img)}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name==='.recycle'?'Корзина':f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'':size(f.size);if(!f.directory)details.append(meta);if(view!=='gallery')tile.append(details);const more=document.createElement('button');more.className='more';more.textContent='⋯';more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);attachFileDrag(tile,f);grid.append(tile)}updateSelection();if(!shown.length)message(view==='gallery'?'В этой папке нет фотографий. Переключитесь на плитки, чтобы увидеть файлы и папки.':el('search').value?'Ничего не найдено':'Папка пуста');else message(shown.length+(view==='gallery'?' фотографий':' элементов'))}
-async function refresh(){galleryDateGeneration++;if(!selected)return;selectedFiles.clear();selectionMode=false;updateSelection();hideMenu();message('Загрузка…');const share=selected,path=dir;renderBreadcrumb();el('entries').replaceChildren();el('up').disabled=!dir;try{const data=await api('/api/list?'+qs({share,path}));if(share!==selected||path!==dir)return;items=data.items;render();if(view==='gallery')scanGalleryDates()}catch(e){message(e.message)}}
+const check=document.createElement('button');check.type='button';check.className='selectionCheck';check.title='Выделить '+f.name;check.setAttribute('aria-label','Выделить '+f.name);check.onclick=e=>{e.stopPropagation();toggleSelected(f.name)};tile.append(check);const thumb=document.createElement('div');thumb.className='thumb';thumb.title=f.directory?'Открыть папку':'Просмотреть файл';if(f.directory)thumb.append(icon(f.name==='.recycle'&&dir===''?'trash':'folder'));else if(imageExt.includes(ext(f.name))){const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';img.onload=()=>img.classList.add('photoLoaded');img.dataset.src=imageURL(f,false,dir,selected);photoObserver.observe(img);img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};thumb.append(img)}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name==='.recycle'?'Корзина':f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'':size(f.size);if(!f.directory)details.append(meta);if(view!=='gallery')tile.append(details);const more=document.createElement('button');more.className='more';more.textContent='⋯';more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);attachFileDrag(tile,f);
+return tile;
+}
+function render(){
+  updateDesktopWorkspace();updateMobileFilesBreadcrumb();
+  if(allPhotosMode){resetFileVirtual();renderAllGallery();return}
+  thumbQueue.length=0;photoObserver.takeRecords();
+  const grid=el('entries');
+  for(const img of grid.querySelectorAll('img'))stopDetachedThumbnail(img);
+  grid.replaceChildren();
+  grid.classList.toggle('list',view==='list');
+  grid.classList.toggle('galleryMode',view==='gallery');
+  el('gridView').classList.toggle('active',view==='grid');
+  el('listView').classList.toggle('active',view==='list');
+  el('galleryView').classList.toggle('active',view==='gallery');
+  const shown=view==='gallery'?photoGalleryItems():sortedFiltered();
+  renderGalleryYears(shown);
+  if(view!=='gallery'&&shown.length>160){
+    activateFileVirtual(shown);
+  }else{
+    resetFileVirtual();
+    let previousMonth=null;
+    const fragment=document.createDocumentFragment();
+    for(const f of shown){
+      if(view==='gallery'){
+        const month=photoDay(f);
+        if(month!==previousMonth){
+          const heading=document.createElement('h3');heading.className='galleryMonth';
+          heading.textContent=month;heading.dataset.year=photoYear(f);
+          fragment.append(heading);previousMonth=month;
+        }
+      }
+      fragment.append(createFileTile(f));
+    }
+    grid.append(fragment);
+    updateSelection();
+  }
+  if(!shown.length)message(view==='gallery'?'В этой папке нет фотографий. Переключитесь на плитки, чтобы увидеть файлы и папки.':el('search').value?'Ничего не найдено':'Папка пуста');
+  else message(shown.length+(view==='gallery'?' фотографий':' элементов'));
+}
+const folderListCache=new Map();
+const FOLDER_CACHE_TTL=15000;
+const FOLDER_CACHE_LIMIT=12;
+let folderFetchGeneration=0;
+function cachedFolderList(share,path){
+  const key=folderScrollKey(share,path),record=folderListCache.get(key);
+  if(!record||Date.now()-record.at>FOLDER_CACHE_TTL){if(record)folderListCache.delete(key);return null}
+  folderListCache.delete(key);folderListCache.set(key,record);
+  return record.items;
+}
+function rememberFolderList(share,path,list){
+  const key=folderScrollKey(share,path);
+  folderListCache.delete(key);folderListCache.set(key,{items:list,at:Date.now()});
+  if(folderListCache.size>FOLDER_CACHE_LIMIT)folderListCache.delete(folderListCache.keys().next().value);
+}
+async function refresh(){
+  galleryDateGeneration++;
+  if(!selected)return;
+  const request=++folderFetchGeneration;
+  selectedFiles.clear();selectionMode=false;updateSelection();hideMenu();
+  const share=selected,path=dir;
+  renderBreadcrumb();el('up').disabled=!dir;
+  const cached=cachedFolderList(share,path);
+  if(cached){
+    items=cached;render();message('Проверяем содержимое папки…');
+  }else{
+    resetFileVirtual();el('entries').replaceChildren();message('Загрузка…');
+  }
+  try{
+    // Always revalidate with the authenticated SMB backend. Cached names
+    // must never authorize a file or survive an access-denied response.
+    const data=await api('/api/list?'+qs({share,path}));
+    if(request!==folderFetchGeneration||share!==selected||path!==dir)return;
+    items=data.items;rememberFolderList(share,path,items);
+    render();
+    if(view==='gallery')scanGalleryDates();
+  }catch(e){
+    if(request!==folderFetchGeneration||share!==selected||path!==dir)return;
+    folderListCache.delete(folderScrollKey(share,path));
+    items=[];render();message(e.message);
+  }
+}
 async function mutate(action,payload){try{await api('/api/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({share:selected,...payload})});await refresh()}catch(e){alert(e.message)}}
 let activeDialog=null;
 function askDialog({title,text,initial='',input=false,confirm='Продолжить',danger=false}){
@@ -1305,7 +1480,8 @@ async function bulkTransfer(operation){
 let fileClipboard=null,draggedFiles=null,fileTransferBusy=false;
 function resetFileManagerState(){
   fileClipboard=null;draggedFiles=null;fileTransferBusy=false;
-  folderScrollPositions.clear();
+  folderScrollPositions.clear();folderListCache.clear();folderFetchGeneration++;
+  resetFileVirtual();
 }
 function chosenFileEntries(){
   const chosen=items.filter(f=>selectedFiles.has(f.name));
