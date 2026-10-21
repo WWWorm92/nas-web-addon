@@ -312,6 +312,19 @@ function openMobileSheet(title,actions){
 }
 el('mobileSheetClose').onclick=closeMobileSheet;
 el('mobileSheetOverlay').addEventListener('click',e=>{if(e.target===el('mobileSheetOverlay'))closeMobileSheet()});
+// Desktop navigation stays visible even with the indexing panel collapsed.
+const desktopReturnToFiles=()=>{
+  leaveGlobalGallery();
+  window.scrollTo({top:0,behavior:'instant'});
+};
+for(const id of ['desktopFilesNav','sidebarFilesNav','desktopGalleryBack']){
+  el(id).onclick=desktopReturnToFiles;
+}
+for(const id of ['desktopPhotosNav','sidebarPhotosNav','quickOpenPhotos']){
+  el(id).onclick=()=>{enterGlobalGallery();window.scrollTo({top:0,behavior:'instant'})};
+}
+el('quickUpload').onclick=()=>el('upload').click();
+el('quickNewFolder').onclick=()=>el('folder').click();
 el('mobileHome').onclick=()=>{closeMobileSheet();leaveGlobalGallery();clearSelection();photoCacheClear();dir='';el('search').value='';refresh();window.scrollTo({top:0,behavior:'smooth'})};
 el('mobileSearch').onclick=()=>{
  closeMobileSheet();
@@ -477,10 +490,29 @@ el('filesSettingsToggle').onclick=()=>openMobileSheet('Файлы',[
  {label:'◐ Сменить тему',run:()=>el('theme').click()},
  {label:'⇥ Выйти',danger:true,run:()=>el('logout').click()}
 ]);
+function updateDesktopWorkspace(){
+  const gallery=allPhotosMode;
+  for(const id of ['desktopFilesNav','sidebarFilesNav']){
+    const b=el(id);b.classList.toggle('navSelected',!gallery);b.setAttribute('aria-current',gallery?'false':'page');
+  }
+  for(const id of ['desktopPhotosNav','sidebarPhotosNav']){
+    const b=el(id);b.classList.toggle('navSelected',gallery);b.setAttribute('aria-current',gallery?'page':'false');
+  }
+  const panel=el('desktopHomeOverview');
+  // The overview is intended for the root of each accessible SMB share.
+  // Never cover photos, nested folders, or operations in progress.
+  const home=!gallery&&!dir&&!!selected;
+  panel.classList.toggle('hidden',!home);
+  if(home){
+    el('homeOverviewTitle').textContent='Хранилище «'+selected+'»';
+    el('homeOverviewDescription').textContent='Файлы, папки и фотографии в одном месте. Выберите папку или быстрое действие.';
+  }
+}
 function updateMobileNav(){
   const photos=el('mobilePhotos');
   photos.classList.toggle('navSelected',allPhotosMode);
   el('mobileHome').classList.toggle('navSelected',!allPhotosMode);
+  updateDesktopWorkspace();
 }
 function hideMenu(){el('fileMenu').classList.add('hidden');el('fileMenu').replaceChildren()}
 function menuButton(text,fn,danger=false){const btn=document.createElement('button');btn.textContent=text;if(danger)btn.classList.add('danger');btn.onclick=()=>{hideMenu();fn()};return btn}
@@ -720,7 +752,7 @@ function renderAllGallery(){
   message(allPhotos.length?'Показано '+shown.length+' из '+allPhotoTotal+' фотографий':'Ищем фотографии во всех доступных папках…');
   pumpThumbs();
 }
-function render(){updateMobileFilesBreadcrumb();if(allPhotosMode){renderAllGallery();return}thumbQueue.length=0;photoObserver.takeRecords();const grid=el('entries');for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);grid.replaceChildren();grid.classList.toggle('list',view==='list');grid.classList.toggle('galleryMode',view==='gallery');el('gridView').classList.toggle('active',view==='grid');el('listView').classList.toggle('active',view==='list');el('galleryView').classList.toggle('active',view==='gallery');const shown=view==='gallery'?photoGalleryItems():sortedFiltered();renderGalleryYears(shown);let previousMonth=null;for(const f of shown){if(view==='gallery'){const month=photoDay(f);if(month!==previousMonth){const heading=document.createElement('h3');heading.className='galleryMonth';heading.textContent=month;heading.dataset.year=photoYear(f);grid.append(heading);previousMonth=month}}const tile=document.createElement('article');tile.className='item';if(view==='gallery')tile.classList.add('galleryPhoto');tile.tabIndex=0;tile.role='button';tile.title=f.name;tile.dataset.filename=f.name;
+function render(){updateDesktopWorkspace();updateMobileFilesBreadcrumb();if(allPhotosMode){renderAllGallery();return}thumbQueue.length=0;photoObserver.takeRecords();const grid=el('entries');for(const img of grid.querySelectorAll('img[data-src]'))photoObserver.unobserve(img);grid.replaceChildren();grid.classList.toggle('list',view==='list');grid.classList.toggle('galleryMode',view==='gallery');el('gridView').classList.toggle('active',view==='grid');el('listView').classList.toggle('active',view==='list');el('galleryView').classList.toggle('active',view==='gallery');const shown=view==='gallery'?photoGalleryItems():sortedFiltered();renderGalleryYears(shown);let previousMonth=null;for(const f of shown){if(view==='gallery'){const month=photoDay(f);if(month!==previousMonth){const heading=document.createElement('h3');heading.className='galleryMonth';heading.textContent=month;heading.dataset.year=photoYear(f);grid.append(heading);previousMonth=month}}const tile=document.createElement('article');tile.className='item';if(view==='gallery')tile.classList.add('galleryPhoto');tile.tabIndex=0;tile.role='button';tile.title=f.name;tile.dataset.filename=f.name;
 if(f.directory)tile.classList.add('folderTile');else tile.classList.add('fileTile');
 tile.onclick=()=>selectionMode?toggleSelected(f.name):openPreview(f);
 tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();selectionMode?toggleSelected(f.name):openPreview(f)}};
