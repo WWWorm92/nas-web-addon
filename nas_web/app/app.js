@@ -548,7 +548,7 @@ function groupGalleryMemories(photos,today=new Date()){
   return [...grouped].sort((a,b)=>a[0]-b[0]).map(([yearsAgo,items])=>({
     yearsAgo,items,title:yearsAgo===1?'Год назад':yearsAgo+' '+(
       yearsAgo%10===1&&yearsAgo%100!==11?'год':
-      yearsAgo%10>=2&&yearsAgo%10<=4&&!(yearsAgo%100>=12&&yearsAgo%100<=14)?'года':'лет')
+      yearsAgo%10>=2&&yearsAgo%10<=4&&!(yearsAgo%100>=12&&yearsAgo%100<=14)?'года':'лет')+' назад'
   }));
 }
 function renderGalleryMemories(){
@@ -571,7 +571,7 @@ function renderGalleryMemories(){
     const content=document.createElement('span');content.className='memoryStoryContent';
     const heading=document.createElement('strong');heading.textContent=group.title;
     const note=document.createElement('small');
-    note.textContent=group.items.length+' '+(group.items.length===1?'фотография':'фото')+' · В этот день';
+    note.textContent=group.items.length+' фото · В этот день';
     content.append(heading,note);
     card.append(cover,content);
     card.onclick=()=>openMemoryStory(group.items);
