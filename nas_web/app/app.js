@@ -148,6 +148,7 @@ function setGalleryColumns(n){
   el('galleryZoomLabel').textContent=galleryColumns+' в ряд';
 }
 function galleryJumpTo(year,month){
+  if(allPhotosMode&&galleryVirtualScrollTo(year,month))return;
   const heading=[...el('entries').querySelectorAll('.galleryMonth')].find(h=>h.dataset.year===year&&(!month||h.dataset.month===month));
   if(heading)heading.scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -198,8 +199,7 @@ function renderGalleryYears(photos){
         const firstMonth=months.find(m=>(m.month==='undated'?'Без даты':m.month.slice(0,4))===year);
         if(firstMonth)jumpToGlobalMonth(firstMonth.month);
       }else{
-        const heading=[...el('entries').querySelectorAll('.galleryMonth')].find(h=>h.dataset.year===year);
-        if(heading)heading.scrollIntoView({behavior:'smooth',block:'start'});
+        galleryJumpTo(year);
       }
       for(const b of bar.children)b.classList.toggle('galleryYearCurrent',b===button);
     };
@@ -583,9 +583,147 @@ const photoObserver=new IntersectionObserver(records=>{
   }
   pumpThumbs();
 },{root:null,rootMargin:'350px 0px',threshold:0});
+
+/* Keep only visible gallery rows in the DOM; the full timeline remains in SQLite. */
+let galleryVirtual={signature:'',rows:[],offsets:[0],cols:0,gap:0,width:0,from:-1,to:-1,anchor:-1,frame:0};
+function resetGalleryVirtual(){
+  if(galleryVirtual.frame)cancelAnimationFrame(galleryVirtual.frame);
+  galleryVirtual={signature:'',rows:[],offsets:[0],cols:0,gap:0,width:0,from:-1,to:-1,anchor:-1,frame:0};
+}
+function galleryVirtualMetrics(grid){
+  const css=getComputedStyle(grid);
+  const tracks=css.gridTemplateColumns.trim().split(/\s+/).filter(Boolean);
+  const cols=Math.max(1,tracks.length||galleryColumns);
+  const width=grid.getBoundingClientRect().width;
+  const gap=parseFloat(css.rowGap)||0;
+  const columnGap=parseFloat(css.columnGap)||0;
+  return {cols,width,gap,columnGap,tileSize:Math.max(32,(width-columnGap*(cols-1))/cols)};
+}
+function galleryVirtualLayout(photos,cols,tileSize,gap,compact){
+  const rows=[],offsets=[0];
+  let day='',group=[],headerAt=0;
+  function add(row){rows.push(row);offsets.push(offsets[offsets.length-1]+row.height+gap)}
+  function flush(){
+    for(let i=0;i<group.length;i+=cols)
+      add({kind:'photos',photos:group.slice(i,i+cols),height:tileSize,headerAt});
+    group=[];
+  }
+  for(const f of photos){
+    const displayed=globalGalleryOrder==='modified'?{...f,taken:null}:f;
+    const label=globalGalleryOrder==='taken'&&!f.taken?'Дата съёмки неизвестна':photoDay(displayed);
+    if(label!==day){
+      flush();day=label;headerAt=rows.length;
+      add({kind:'header',label,year:globalGalleryOrder==='taken'&&!f.taken?'Без даты':photoYear(displayed),
+        month:globalGalleryOrder==='taken'&&!f.taken?'':String(photoDate(displayed).getMonth()+1).padStart(2,'0'),
+        height:compact?40:44,headerAt});
+    }
+    group.push(f);
+  }
+  flush();
+  return {rows,offsets};
+}
+function galleryVirtualWindow(rows,offsets,top,height,scroll,overscan=850){
+  if(!rows.length)return {from:0,to:0,anchor:0};
+  const first=Math.max(0,scroll-top-overscan);
+  const last=Math.max(0,scroll-top+height+overscan);
+  // Binary search: first row whose bottom crosses the viewport boundary.
+  let lo=0,hi=rows.length;
+  while(lo<hi){const mid=(lo+hi)>>1;if(offsets[mid]+rows[mid].height<first)lo=mid+1;else hi=mid}
+  const from=Math.min(rows.length-1,Math.floor(lo/8)*8);
+  lo=from;hi=rows.length;
+  while(lo<hi){const mid=(lo+hi)>>1;if(offsets[mid]<=last)lo=mid+1;else hi=mid}
+  const to=Math.min(rows.length,Math.max(from+1,Math.ceil(lo/8)*8));
+  return {from,to,anchor:rows[from].headerAt};
+}
+function galleryVirtualScrollTo(year,month=''){
+  const v=galleryVirtual;
+  const index=v.rows.findIndex(row=>row.kind==='header'&&row.year===year&&(!month||row.month===month));
+  if(index<0)return false;
+  const grid=el('entries'),top=grid.getBoundingClientRect().top+window.scrollY+v.offsets[index];
+  window.scrollTo({top:Math.max(0,top-8),behavior:'smooth'});
+  return true;
+}
+function renderGalleryVirtualWindow(force=false){
+  if(!allPhotosMode||!galleryVirtual.rows.length)return;
+  const grid=el('entries'),v=galleryVirtual;
+  const top=grid.getBoundingClientRect().top+window.scrollY;
+  const range=galleryVirtualWindow(v.rows,v.offsets,top,innerHeight,window.scrollY);
+  if(!force&&v.from===range.from&&v.to===range.to&&v.anchor===range.anchor)return;
+  v.from=range.from;v.to=range.to;v.anchor=range.anchor;
+  const previous=[...grid.querySelectorAll('.galleryPhoto img')];
+  const reused=new Set();
+  const oldTiles=new Map([...grid.querySelectorAll('.galleryPhoto[data-photo-id]')].map(tile=>[tile.dataset.photoId,tile]));
+  const fragment=document.createDocumentFragment();
+  let cursor=0;
+  const appendGap=(start,end)=>{
+    if(end<=start)return;
+    const spacer=document.createElement('div');spacer.className='galleryVirtualSpacer';
+    spacer.style.height=Math.max(0,v.offsets[end]-v.offsets[start]-v.gap)+'px';
+    spacer.setAttribute('aria-hidden','true');fragment.append(spacer);
+  };
+  const displayIndices=[];
+  if(range.anchor<range.from)displayIndices.push(range.anchor);
+  for(let i=range.from;i<range.to;i++)displayIndices.push(i);
+  for(const index of displayIndices){
+    appendGap(cursor,index);
+    const row=v.rows[index];
+    if(row.kind==='header'){
+      const heading=document.createElement('h3');heading.className='galleryMonth galleryVirtualHeader';
+      heading.textContent=row.label;heading.dataset.year=row.year;heading.dataset.month=row.month;
+      fragment.append(heading);
+    }else{
+      const line=document.createElement('div');line.className='galleryVirtualRow';
+      line.style.setProperty('--virtual-cols',String(v.cols));
+      line.style.setProperty('--virtual-gap',v.gap+'px');
+      for(const f of row.photos){
+        const tile=document.createElement('article');tile.className='item galleryPhoto';tile.tabIndex=0;tile.role='button';
+        tile.title=f.share+' / '+f.path;tile.dataset.photoId=galleryId(f);
+        tile.setAttribute('aria-label','Открыть '+f.name+' — '+f.share+'/'+f.folder);
+        tile.onclick=()=>{if(tile.dataset.longPress){delete tile.dataset.longPress;return}if(galleryPickMode)toggleGalleryPick(f);else openPreview(f)};
+        let hold=null,sx=0,sy=0;
+        tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;hold=setTimeout(()=>{tile.dataset.longPress='1';navigator.vibrate?.(15);openMobileSheet(f.name,[{label:'Выбрать',run:()=>toggleGalleryPick(f)},{label:'Открыть фото',run:()=>openPreview(f)},{label:'★ В избранное / альбом',run:()=>addPhotoToCollection(f)},{label:'Открыть папку',run:()=>{leaveGlobalGallery();selected=f.share;dir=f.folder;renderShares();refresh()}},{label:'Сведения',run:()=>showPhotoDetails(f)},{label:'Скачать',run:()=>{const a=document.createElement('a');a.href='/api/file?'+qs({share:f.share,path:f.path});a.download=f.name;a.click()}}])},550)},{passive:true});
+        tile.addEventListener('touchmove',e=>{if(e.touches.length&&Math.hypot(e.touches[0].clientX-sx,e.touches[0].clientY-sy)>12)clearTimeout(hold)},{passive:true});
+        tile.addEventListener('touchend',()=>clearTimeout(hold));tile.addEventListener('touchcancel',()=>clearTimeout(hold));
+        tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openPreview(f)}};
+        const thumb=document.createElement('div');thumb.className='thumb';
+        const requestedSrc=imageURL(f,false,f.folder,f.share);
+        const oldTile=oldTiles.get(galleryId(f));
+        const previousImg=oldTile?.dataset.thumbSrc===requestedSrc?oldTile.querySelector('.thumb img'):null;
+        const img=previousImg||document.createElement('img');
+        if(previousImg)reused.add(img);
+        else{img.loading='lazy';img.decoding='async';img.alt='';img.onload=()=>img.classList.add('photoLoaded');img.dataset.src=requestedSrc}
+        img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};
+        tile.dataset.thumbSrc=requestedSrc;thumb.append(img);tile.append(thumb);line.append(tile);
+      }
+      fragment.append(line);
+    }
+    cursor=index+1;
+  }
+  appendGap(cursor,v.rows.length);
+  thumbQueue.length=0;
+  photoObserver.takeRecords();
+  grid.replaceChildren(fragment);
+  for(const img of previous)if(!reused.has(img))stopDetachedThumbnail(img);
+  for(const img of grid.querySelectorAll('.galleryPhoto img[data-src]')){photoObserver.unobserve(img);photoObserver.observe(img)}
+  updateGalleryPick();pumpThumbs();
+}
+function scheduleGalleryVirtualScroll(){
+  if(!allPhotosMode||galleryVirtual.frame||!galleryVirtual.rows.length)return;
+  galleryVirtual.frame=requestAnimationFrame(()=>{galleryVirtual.frame=0;renderGalleryVirtualWindow()});
+}
+window.addEventListener('scroll',scheduleGalleryVirtualScroll,{passive:true});
+const galleryVirtualResize=new ResizeObserver(()=>{
+  if(!allPhotosMode||!galleryVirtual.rows.length)return;
+  const grid=el('entries'),metrics=galleryVirtualMetrics(grid);
+  if(Math.abs(metrics.width-galleryVirtual.width)>1||metrics.cols!==galleryVirtual.cols){
+    resetGalleryVirtual();galleryRenderSignature='';renderAllGallery();
+  }
+});
+galleryVirtualResize.observe(el('entries'));
+
 let galleryRenderSignature='';
 function leaveGlobalGallery(){
-  galleryRenderSignature='';clearGalleryPick();
+  galleryRenderSignature='';resetGalleryVirtual();clearGalleryPick();
   if(!allPhotosMode)return;
   if(previewIndex>=0)closePreview();
   gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
@@ -735,61 +873,28 @@ function renderAllGallery(){
   const grid=el('entries');
   const search=el('search').value.trim().toLocaleLowerCase();
   const shown=allPhotos.filter(f=>!search||f.name.toLocaleLowerCase().includes(search)||f.folder.toLocaleLowerCase().includes(search));
-  const signature=shown.map(f=>[f.share,f.path,f.modified,f.size,f.taken||''].join('|')).join('\n');
-  if(galleryRenderSignature===signature&&grid.classList.contains('galleryMode')&&grid.children.length){
-    renderGlobalProgress();pumpThumbs();return;
+  setGalleryColumns(galleryColumns);
+  grid.classList.remove('list');grid.classList.add('galleryMode');
+  const metrics=galleryVirtualMetrics(grid);
+  const signature=shown.map(f=>[f.share,f.path,f.modified,f.size,f.taken||''].join('|')).join('\n')
+    +'|'+globalGalleryOrder+'|'+metrics.cols+'|'+metrics.width+'|'+metrics.gap;
+  if(galleryRenderSignature===signature&&galleryVirtual.rows.length){
+    renderGlobalProgress();scheduleGalleryVirtualScroll();return;
   }
-  galleryRenderSignature=signature;thumbQueue.length=0;
-  setGalleryColumns(galleryColumns);photoObserver.takeRecords();
-  // Reuse already loaded/in-flight <img> nodes during EXIF updates or paging.
-  // Recreating them used to cause every visible thumbnail to be fetched again.
-  const previousTiles=new Map([...grid.querySelectorAll('.galleryPhoto[data-photo-id]')]
-    .map(tile=>[tile.dataset.photoId,tile]));
-  const keptImages=new Set();
-  grid.replaceChildren();grid.classList.remove('list');grid.classList.add('galleryMode');
-  if(!allPhotos.length&&!allPhotoStatus){for(let i=0;i<12;i++){const sk=document.createElement('div');sk.className='photoSkeleton';grid.append(sk)}}
+  galleryRenderSignature=signature;
+  const layout=galleryVirtualLayout(shown,metrics.cols,metrics.tileSize,metrics.gap,innerWidth<=700);
+  resetGalleryVirtual();
+  galleryVirtual={...galleryVirtual,...metrics,...layout,signature};
+  if(!layout.rows.length){
+    thumbQueue.length=0;photoObserver.takeRecords();
+    for(const img of grid.querySelectorAll('.galleryPhoto img'))stopDetachedThumbnail(img);
+    grid.replaceChildren();
+    if(!allPhotos.length&&!allPhotoStatus){
+      for(let i=0;i<12;i++){const sk=document.createElement('div');sk.className='photoSkeleton';grid.append(sk)}
+    }
+  }else renderGalleryVirtualWindow(true);
   el('galleryYears').classList.remove('hidden');
   el('globalGallerySummary').classList.remove('hidden');
-  let month='';
-  for(const f of shown){
-    const label=globalGalleryOrder==='taken'&&!f.taken?'Дата съёмки неизвестна':photoDay(globalGalleryOrder==='modified'?{...f,taken:null}:f);
-    if(label!==month){
-      const heading=document.createElement('h3');heading.className='galleryMonth';
-      heading.textContent=label;heading.dataset.year=globalGalleryOrder==='taken'&&!f.taken?'Без даты':photoYear(globalGalleryOrder==='modified'?{...f,taken:null}:f);heading.dataset.month=globalGalleryOrder==='taken'&&!f.taken?'':String(photoDate(globalGalleryOrder==='modified'?{...f,taken:null}:f).getMonth()+1).padStart(2,'0');grid.append(heading);month=label;
-    }
-    const tile=document.createElement('article');tile.className='item galleryPhoto';tile.tabIndex=0;tile.role='button';tile.title=f.share+' / '+f.path;
-    tile.setAttribute('aria-label','Открыть '+f.name+' — '+f.share+'/'+f.folder);
-    tile.dataset.photoId=galleryId(f);
-    tile.onclick=()=>{if(tile.dataset.longPress){delete tile.dataset.longPress;return}if(galleryPickMode)toggleGalleryPick(f);else openPreview(f)};
-    let hold=null,sx=0,sy=0;
-    tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;hold=setTimeout(()=>{tile.dataset.longPress='1';navigator.vibrate?.(15);openMobileSheet(f.name,[{label:'Выбрать',run:()=>toggleGalleryPick(f)},{label:'Открыть фото',run:()=>openPreview(f)},{label:'★ В избранное / альбом',run:()=>addPhotoToCollection(f)},{label:'Открыть папку',run:()=>{leaveGlobalGallery();selected=f.share;dir=f.folder;renderShares();refresh()}},{label:'Сведения',run:()=>showPhotoDetails(f)},{label:'Скачать',run:()=>{const a=document.createElement('a');a.href='/api/file?'+qs({share:f.share,path:f.path});a.download=f.name;a.click()}}])},550)},{passive:true});
-    tile.addEventListener('touchmove',e=>{if(e.touches.length&&Math.hypot(e.touches[0].clientX-sx,e.touches[0].clientY-sy)>12)clearTimeout(hold)},{passive:true});
-    tile.addEventListener('touchend',()=>clearTimeout(hold));tile.addEventListener('touchcancel',()=>clearTimeout(hold));
-    tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openPreview(f)}};
-    const thumb=document.createElement('div');thumb.className='thumb';
-    const requestedSrc=imageURL(f,false,f.folder,f.share);
-    const oldTile=previousTiles.get(galleryId(f));
-    const previousImg=oldTile?.dataset.thumbSrc===requestedSrc?oldTile.querySelector('.thumb img'):null;
-    const img=previousImg||document.createElement('img');
-    if(previousImg){keptImages.add(img)}
-    else{
-      img.loading='lazy';img.decoding='async';img.alt='';
-      img.onload=()=>img.classList.add('photoLoaded');
-      img.dataset.src=requestedSrc;
-    }
-    // A reused image must target its new thumbnail container on errors.
-    img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};
-    tile.dataset.thumbSrc=requestedSrc;
-    thumb.append(img);tile.append(thumb);
-    // The source folder remains available in the photo details panel.
-
-    grid.append(tile);
-    if(img.dataset.src){photoObserver.unobserve(img);photoObserver.observe(img)}
-  }
-  for(const tile of previousTiles.values()){
-    const img=tile.querySelector('.thumb img');
-    if(img&&!keptImages.has(img))stopDetachedThumbnail(img);
-  }
   renderGalleryYears(shown);updateGalleryPick();
   const status=allPhotoStatus;
   el('globalGalleryProgress').textContent=status
@@ -1075,8 +1180,8 @@ el('selectionDelete').onclick=async()=>{
   clearSelection();await refresh();
   if(failed)message('Успешно: '+removed+'. Ошибок: '+failed+'. Если удаление прервалось, содержимое папки могло быть удалено частично.');
 };
-el('galleryZoomOut').onclick=()=>setGalleryColumns(galleryColumns-1);
-el('galleryZoomIn').onclick=()=>setGalleryColumns(galleryColumns+1);
+el('galleryZoomOut').onclick=()=>{setGalleryColumns(galleryColumns-1);if(allPhotosMode){galleryRenderSignature='';resetGalleryVirtual();renderAllGallery()}};
+el('galleryZoomIn').onclick=()=>{setGalleryColumns(galleryColumns+1);if(allPhotosMode){galleryRenderSignature='';resetGalleryVirtual();renderAllGallery()}};
 el('galleryMonthJump').onchange=e=>{
   const key=e.target.value;if(!key)return;
   if(allPhotosMode&&!allPhotoSubsetMode)jumpToGlobalMonth(key);
