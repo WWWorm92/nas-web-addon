@@ -1,3 +1,11 @@
+## 0.22.28
+
+- Add editable SMB-linked personal profiles with display names and avatar colors. Profile names are cosmetic; Simple NAS remains the only SMB login and ACL authority.
+- Let signed-in users bind readable non-root folders from the file manager to their own profiles. Prevent duplicate and overlapping folder ownership across accounts.
+- Allow the owning user to hide or reveal a bound folder in the unified photo gallery for every authenticated SMB account, without changing any SMB permissions or deleting the file, photo index, thumbnail cache or EXIF metadata.
+- Apply shared visibility to gallery pagination, totals, full-index month navigation, albums, favorites, memories and gallery statistics; notify already-open galleries using index revisions.
+- Add mobile and desktop profile UI, folder bindings with remove and show/hide controls, and regression tests for ownership and multiple SMB users.
+
 ## 0.22.27
 
 - Improve the existing streamed SMB video viewer on desktop and mobile. Remember MP4/M4V/MOV/WebM playback position locally in the current browser, scoped to the logged-in SMB username, share, file path, file size and modification time. Automatically seek to that position after metadata loads, without forcing autoplay. Clear positions when viewing is finished; retain at most 150 recent positions for 60 days.
