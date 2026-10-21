@@ -6,7 +6,7 @@ const main=fs.readFileSync('nas_web/app/main.py','utf8');
 const imp=fs.readFileSync('nas_web/app/google_photos_import.py','utf8');
 const html=fs.readFileSync('nas_web/app/index.html','utf8');
 const js=fs.readFileSync('nas_web/app/app.js','utf8');
-assert.match(config,/version: "0\.22\.33"/);
+assert.match(config,/version: "\d+\.\d+\.\d+"/);
 assert.match(config,/max_import_mb: 8192/);
 assert.match(config,/max_import_mb: int\(1,32768\)/);
 assert.match(main,/min\(32768, int\(opts\.get\("max_import_mb", 8192\)\)\)/);
