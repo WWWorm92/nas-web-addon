@@ -1351,12 +1351,12 @@ document.addEventListener('pointerdown',e=>{if(!el('fileMenu').contains(e.target
 let dragDepth=0;const work=el('workspace');work.addEventListener('dragenter',e=>{e.preventDefault();dragDepth++;work.classList.add('drop')});work.addEventListener('dragover',e=>e.preventDefault());work.addEventListener('dragleave',e=>{e.preventDefault();dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)work.classList.remove('drop')});work.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;work.classList.remove('drop');uploadFiles([...e.dataTransfer.files])});
 
 // Global file search uses its own persistent index, not the photo/EXIF index.
-let nasSearchKind='all',nasSearchOffset=0,nasSearchGeneration=0;
+let nasSearchKind='all',nasSearchOffset=0,nasSearchGeneration=0,nasSearchSession=0;
 let nasSearchTimer=null,nasSearchPoll=null,nasSearchBusy=false,nasSearchHasMore=false;
 let nasSearchScanned=0,nasSearchComplete=false;
 const nasSearchOpen=()=>!el('nasSearchOverlay').classList.contains('hidden');
 function closeNasSearch(){
-  ++nasSearchGeneration;clearTimeout(nasSearchTimer);clearInterval(nasSearchPoll);
+  ++nasSearchSession;++nasSearchGeneration;clearTimeout(nasSearchTimer);clearInterval(nasSearchPoll);
   nasSearchPoll=null;nasSearchBusy=false;
   el('nasSearchOverlay').classList.add('hidden');
   document.body.classList.remove('nasSearchOpen');
@@ -1463,15 +1463,15 @@ async function openNasSearch(){
   el('nasSearchMore').classList.add('hidden');
   el('nasSearchStatusText').textContent='Подготавливаем поиск…';
   el('nasSearchInput').focus();
-  const session=++nasSearchGeneration;
+  const session=++nasSearchSession;
   try{
     await api('/api/search/index',{method:'POST'});
-    if(!nasSearchOpen()||session!==nasSearchGeneration)return;
+    if(!nasSearchOpen()||session!==nasSearchSession)return;
     await pollNasSearchStatus();
     if(!nasSearchPoll)nasSearchPoll=setInterval(pollNasSearchStatus,2200);
     if(el('nasSearchInput').value.trim().length>=2)scheduleNasSearch(0);
     else nasSearchEmpty('Введите минимум 2 символа');
-  }catch(err){if(session===nasSearchGeneration&&nasSearchOpen())el('nasSearchStatusText').textContent=err.message}
+  }catch(err){if(session===nasSearchSession&&nasSearchOpen())el('nasSearchStatusText').textContent=err.message}
 }
 el('openGlobalSearch').onclick=openNasSearch;
 el('mobileSearch').onclick=()=>{closeMobileSheet();openNasSearch()};
