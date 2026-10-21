@@ -1,3 +1,12 @@
+## 0.22.19
+
+- Prioritize visible gallery and file-manager thumbnails; defer offscreen images that moved away while queued and resume them when they scroll back into view. Keep the three-request client concurrency cap.
+- Avoid repeated layout measurements during thumbnail queue sorting, and continue giving fullscreen image downloads priority over queued thumbnails.
+- Bound background original-photo prefetch to images up to 12 MiB, available 48 MiB in-memory cache capacity, and respect browser data-saver mode. Do not evict recently viewed originals solely for speculative prefetch.
+- Discard responses from aborted photo fetches before adding browser-memory cache entries.
+- Add Node.js regression tests for thumbnail priority, scroll-away/return, viewer pause, and cancellation; execute them in GitHub Actions.
+- No changes to SMB permissions, server-side thumbnail cache, HTTPS settings, SQLite photo index, or stored files.
+
 ## 0.22.17
 
 - Keep already downloaded gallery thumbnail images when the photo list grows or refreshes; avoid repeated image downloads and avoid stalled loading slots after cancelled requests.
