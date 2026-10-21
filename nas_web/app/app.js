@@ -443,6 +443,8 @@ function isMobileLayout(){return window.matchMedia('(max-width:760px)').matches}
 function closeMobileSheet(){
   el('mobileSheetOverlay').classList.add('hidden');
   el('mobileSheetActions').replaceChildren();
+  el('mobileSheetActions').classList.remove('moreMenuContent');
+  el('mobileSheetOverlay').querySelector('.mobileSheet').classList.remove('moreMenuSheet');
   document.body.classList.remove('sheetOpen');
 }
 function openMobileSheet(title,actions){
@@ -486,15 +488,95 @@ el('mobileAdd').onclick=()=>openMobileSheet('Добавить',[
   {label:'↑ Загрузить файлы',run:()=>el('upload').click()}
 ]);
 el('mobilePhotos').onclick=()=>{closeMobileSheet();enterGlobalGallery()};
-el('mobileMore').onclick=()=>openMobileSheet('Ещё',[
-  {label:'Мой профиль',run:()=>openProfile()},
-  {label:'★ Избранное и альбомы',run:()=>openCollections()},
-  {label:'Статистика фотографий',run:()=>openNasStats()},
-  {label:'Обновить список',run:()=>allPhotosMode?el('globalGalleryRescan').click():refresh()},
-  {label:'Выбрать файлы',run:()=>{leaveGlobalGallery();el('selectionModeButton').click()}},
-  {label:'Сменить тему',run:()=>el('theme').click()},
-  {label:'Выйти из NAS Web',danger:true,run:()=>el('logout').click()}
-]);
+// 'Ещё' is a small account/library drawer. File actions live in the
+// dedicated Files ⋮ menu; refreshing is available there and in gallery settings.
+const moreMenuIconPaths={
+  albums:'<rect x="3.5" y="5" width="17" height="16" rx="2.4"/><path d="M7 3.5h10M7.5 11.5h9m-4.5-4.5v9"/>',
+  stats:'<path d="M4 20V12m5 8V7m5 13v-5m5 5V4"/><path d="M2.5 20.5h19"/>',
+  theme:'<path d="M20.8 13.2A8.5 8.5 0 0 1 10.8 3.3 8.7 8.7 0 1 0 20.8 13.2z"/>',
+  logout:'<path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5"/><path d="M15 7l5 5-5 5m5-5H9"/>'
+};
+function moreMenuIcon(kind){
+  const wrap=document.createElement('span');wrap.className='moreMenuIcon';
+  wrap.setAttribute('aria-hidden','true');
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');
+  svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.75');
+  svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');
+  svg.innerHTML=moreMenuIconPaths[kind];
+  wrap.append(svg);return wrap;
+}
+function openMoreMenu(){
+  openMobileSheet('Ещё',[]);
+  el('mobileSheetOverlay').querySelector('.mobileSheet').classList.add('moreMenuSheet');
+  const container=el('mobileSheetActions');
+  container.classList.add('moreMenuContent');
+  const button=(label,run)=>{
+    const node=document.createElement('button');node.type='button';
+    node.onclick=()=>{closeMobileSheet();run()};
+    node.setAttribute('aria-label',label);
+    return node;
+  };
+  const profile=button('Открыть мой профиль',()=>openProfile());
+  profile.className='moreMenuProfile';
+  profile.dataset.moreAction='profile';
+  const avatar=document.createElement('span');avatar.className='moreMenuAvatar';
+  const username=profileData?.display_name||el('who').textContent||'Мой профиль';
+  avatar.textContent=Array.from(String(username).trim())[0]?.toLocaleUpperCase()||'?';
+  avatar.style.backgroundColor=profileData?.avatar_color||'#4b80db';
+  const identity=document.createElement('span');identity.className='moreMenuIdentity';
+  const caption=document.createElement('small');caption.textContent='МОЙ ПРОФИЛЬ';
+  const user=document.createElement('strong');user.textContent=username;
+  identity.append(caption,user);
+  const arrow=document.createElement('span');arrow.className='moreMenuArrow';
+  arrow.textContent='›';arrow.setAttribute('aria-hidden','true');
+  profile.append(avatar,identity,arrow);
+  container.append(profile);
+
+  const group=(title,items)=>{
+    const section=document.createElement('section');section.className='moreMenuGroup';
+    const titleNode=document.createElement('h3');titleNode.className='moreMenuGroupTitle';
+    titleNode.textContent=title;
+    const list=document.createElement('div');list.className='moreMenuList';
+    for(const item of items){
+      const row=button(item.label,item.run);
+      row.className='moreMenuRow'+(item.danger?' moreMenuDanger':'');
+      row.dataset.moreAction=item.id;
+      const name=document.createElement('span');name.className='moreMenuRowLabel';
+      name.textContent=item.label;
+      row.append(moreMenuIcon(item.icon),name);
+      if(item.detail){
+        const detail=document.createElement('span');detail.className='moreMenuRowDetail';
+        detail.textContent=item.detail;row.append(detail);
+      }
+      if(!item.danger){
+        const chevron=document.createElement('span');
+        chevron.className='moreMenuChevron';chevron.textContent='›';
+        chevron.setAttribute('aria-hidden','true');row.append(chevron);
+      }
+      list.append(row);
+    }
+    section.append(titleNode,list);container.append(section);
+  };
+  group('ФОТОТЕКА',[
+    {id:'albums',icon:'albums',label:'Избранное и альбомы',run:()=>openCollections()},
+    {id:'statistics',icon:'stats',label:'Статистика фотографий',run:()=>openNasStats()}
+  ]);
+  group('ПРИЛОЖЕНИЕ',[
+    {id:'appearance',icon:'theme',label:'Оформление',
+     detail:document.documentElement.dataset.theme==='dark'?'Тёмная':'Светлая',
+     run:()=>el('theme').click()}
+  ]);
+  const exit=document.createElement('div');exit.className='moreMenuExit';
+  const logout=button('Выйти из NAS Web',()=>el('logout').click());
+  logout.className='moreMenuRow moreMenuDanger';
+  logout.dataset.moreAction='logout';
+  const exitText=document.createElement('span');exitText.className='moreMenuRowLabel';
+  exitText.textContent='Выйти из NAS Web';
+  logout.append(moreMenuIcon('logout'),exitText);
+  exit.append(logout);container.append(exit);
+}
+el('mobileMore').onclick=openMoreMenu;
 
 async function collectionPost(url,data,method='POST'){
  return api(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
