@@ -975,7 +975,7 @@ function resetFileVirtual(){
 }
 function fileVirtualWindow(total,cols,rowHeight,gap,top,scroll,viewport,overscan=780){
   const rows=Math.ceil(total/cols),step=rowHeight+gap;
-  const first=Math.max(0,Math.min(rows,Math.floor(Math.max(0,scroll-top-overscan)/step)));
+  const first=Math.max(0,Math.min(rows-1,Math.floor(Math.max(0,scroll-top-overscan)/step)));
   const last=Math.min(rows,Math.max(first+1,Math.ceil(Math.max(0,scroll-top+viewport+overscan)/step)));
   return {first,last,rows};
 }
