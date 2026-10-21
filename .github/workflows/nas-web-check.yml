@@ -222,6 +222,44 @@ jobs:
                   assert db.execute("SELECT COUNT(*) FROM photos").fetchone()[0]==1
           print("Legacy denial cooldowns expired once without altering photo index")
           PY
+      - name: Per-user admin EXIF totals and index preservation
+        run: |
+          PYTHONPATH=nas_web python - <<'PY'
+          import tempfile
+          from pathlib import Path
+          from types import SimpleNamespace
+          from app import gallery_index as g
+          def file(name):
+              return SimpleNamespace(filename=name,isDirectory=False,file_size=100,last_write_time=100)
+          with tempfile.TemporaryDirectory() as tmp:
+              g.DB=Path(tmp)/"gallery.sqlite3"
+              a,b=g.key("alice"),g.key("bob")
+              with g.connect() as db:
+                  g.begin(db,a,["Photos"])
+                  g.add_folder_contents(db,a,"Photos","",[
+                      file("dated.jpg"),file("no-date.jpg"),file("denied.jpg")])
+                  g.save_date(db,a,"Photos","dated.jpg","2018-07-26T12:00:00")
+                  g.save_date(db,a,"Photos","no-date.jpg",None)
+                  row=g.next_unchecked(db,a,["Photos"])
+                  assert row["path"]=="denied.jpg"
+                  g.mark_exif_denied(db,a,row)
+                  g.begin(db,b,["Private"])
+                  g.add_folder_contents(db,b,"Private","",[file("new.jpg")])
+                  before=db.execute("SELECT owner,share,path,taken,exif_checked FROM photos ORDER BY owner,path").fetchall()
+                  groups={r["owner"]:r for r in g.summaries_by_owner(db)}
+                  assert len(groups)==2
+                  assert groups[a]["photos"]==3 and groups[b]["photos"]==1
+                  assert groups[a]["dated"]==1 and groups[a]["checked_without_date"]==1
+                  assert groups[a]["pending"]==1 and groups[a]["blocked"]==1
+                  assert groups[a]["actionable"]==0
+                  assert groups[b]["pending"]==1 and groups[b]["blocked"]==0
+                  assert groups[b]["actionable"]==1
+                  after=db.execute("SELECT owner,share,path,taken,exif_checked FROM photos ORDER BY owner,path").fetchall()
+                  assert [tuple(x) for x in before]==[tuple(x) for x in after]
+              assert g.page(a,["Photos"],0,10,"taken")[0]["name"]=="dated.jpg"
+              assert g.page(a,["Photos"],0,10,"modified")[0]["name"]=="dated.jpg"
+          print("Admin counts are per owner, aggregated totals are separate and dates are unchanged")
+          PY
       - name: Unified gallery index tests
         run: |
           PYTHONPATH=nas_web python - <<'PY'
