@@ -176,8 +176,16 @@ button is used. Choose a **writable SMB folder** as the destination.
 
 1. Export **Google Photos** from [Google Takeout](https://takeout.google.com/),
    choose ZIP format and split your archive into parts of at most `max_import_mb`
-   (default 2048 MiB; the maximum add-on setting is 4096 MiB). On a Pi with
-   limited free HA `/data` space, choose **1 GB** archive parts.
+   (default 8192 MiB for new installs; maximum configurable is 32768 MiB). On a Pi with
+   limited free HA `/data` space, choose **1 GB** archive parts. Large single archives are supported up to
+   **32 GiB** by setting `max_import_mb` in the NAS Web add-on options;
+   for a **6.5 GB** archive choose `8192` or `10240` (MiB). The add-on
+   stages the entire compressed ZIP temporarily under `/data/nasweb-import`,
+   **not** on the selected SMB share: allow at least the archive size plus
+   512 MiB free space on the Home Assistant host volume. NAS Web displays
+   this capacity in Profile and checks it before starting. Home Assistant
+   **preserves existing `max_import_mb` values** (e.g. `2048`) across upgrades;
+   change the existing value manually and restart the add-on.
 2. In the Profile import section select all ZIP parts. NAS Web sends each ZIP
    as **1 MiB chunks**, then streams individual media entries directly to the
    SMB folder; it does not extract the full archive to the Pi. A private local
