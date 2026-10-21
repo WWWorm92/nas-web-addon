@@ -1,3 +1,12 @@
+## 0.22.15
+
+- Fix contradictory deletion dialog: ordinary files and nonempty folders are moved intact to their share's recycle folder; they do not require empty directories and are not permanently removed.
+- Add a separate, explicit **permanent** deletion for items already within `.recycle/`. Directories can be removed together with their children; the confirmation requires manually typing УДАЛИТЬ. Selected files and multi-selection also receive an irreversible action warning.
+- Enforce SMB user/share authorization, origin and CSRF checks, selected filename matching, recycle-only containment and ancestor reparse-point checks on the server.
+- Preflight the full selected subtree with a bounded 5,000-entry / 64-level limit before deleting anything; refuse SMB directory links, invalid paths and oversized trees.
+- Never delete the share recycle root or normal live files via the permanent-delete endpoint. If deletion encounters a write/permission failure mid-process, a subset may already have been removed.
+- No changes to photo gallery index, known EXIF dates, SMB ACLs, or home screen layout.
+
 ## 0.22.14
 
 - Remove duplicated desktop sidebar section links ('My files' / 'All photos'); navigation lives only in the top Files/Photos tabs.
