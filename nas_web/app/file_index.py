@@ -148,12 +148,15 @@ def record_folder(owner, share, folder, items=None, failed=False):
                  max(0,int(item.file_size or 0)),float(item.last_write_time or 0),stamp))
             count+=0 if exists else 1
             if is_dir:
-                added=db.execute(
-                    "INSERT OR IGNORE INTO folders(owner,share,path,parent) VALUES (?,?,?,?)",
-                    (owner,share,path,folder))
-                folders+=max(0,added.rowcount)
-                if folders>=MAX_FOLDERS:
+                present=db.execute("SELECT 1 FROM folders WHERE owner=? AND share=? AND path=?",
+                                   (owner,share,path)).fetchone()
+                if not present and folders>=MAX_FOLDERS:
                     db.execute("UPDATE jobs SET limited=1 WHERE owner=?",(owner,))
+                else:
+                    added=db.execute(
+                        "INSERT OR IGNORE INTO folders(owner,share,path,parent) VALUES (?,?,?,?)",
+                        (owner,share,path,folder))
+                    folders+=max(0,added.rowcount)
         # Entries missing from a successfully relisted folder are stale.
         missing=db.execute(
             "SELECT path,directory FROM entries WHERE owner=? AND share=? AND folder=? AND seen<>?",
