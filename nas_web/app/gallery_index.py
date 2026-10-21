@@ -254,6 +254,43 @@ def denied_count(db, owner, shares):
     ).fetchone()[0]
 
 
+def summaries_by_owner(db):
+    """Non-identifying, per-account index totals for the service administrator.
+
+    Counts each owner's rows exactly as the gallery does, in contrast with
+    aggregate dashboard counts. Does not read SMB or modify indexed dates.
+    """
+    rows=db.execute("""
+        SELECT owner,COUNT(*) AS photos,
+            SUM(CASE WHEN taken IS NOT NULL THEN 1 ELSE 0 END) AS dated,
+            SUM(CASE WHEN exif_checked=0 AND
+                (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg'
+                 OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')
+                THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN exif_checked=1 AND taken IS NULL AND
+                (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg'
+                 OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')
+                THEN 1 ELSE 0 END) AS checked_without_date
+        FROM photos GROUP BY owner ORDER BY owner
+    """).fetchall()
+    blocked_rows=db.execute("""
+        SELECT p.owner,COUNT(*) AS total FROM exif_denied d
+        JOIN photos p ON p.owner=d.owner AND p.share=d.share AND p.path=d.path
+            AND p.size=d.size AND p.modified=d.modified
+        WHERE p.exif_checked=0 AND d.retry_after>?
+            AND (lower(p.name) LIKE '%.jpg' OR lower(p.name) LIKE '%.jpeg'
+             OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp')
+        GROUP BY p.owner
+    """,(time.time(),)).fetchall()
+    blocked={row["owner"]:row["total"] for row in blocked_rows}
+    return [{
+        "owner":row["owner"],"photos":row["photos"],"dated":row["dated"],
+        "checked_without_date":row["checked_without_date"],
+        "pending":row["pending"],"blocked":blocked.get(row["owner"],0),
+        "actionable":max(0,row["pending"]-blocked.get(row["owner"],0))
+    } for row in rows]
+
+
 def next_unchecked(db, owner, shares, excluded=()):
     if not shares:
         return None
