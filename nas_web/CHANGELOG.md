@@ -1,3 +1,12 @@
+## 0.22.27
+
+- Improve the existing streamed SMB video viewer on desktop and mobile. Remember MP4/M4V/MOV/WebM playback position locally in the current browser, scoped to the logged-in SMB username, share, file path, file size and modification time. Automatically seek to that position after metadata loads, without forcing autoplay. Clear positions when viewing is finished; retain at most 150 recent positions for 60 days.
+- Add small 10-second backward/forward and fullscreen controls beneath the native video player; Left/Right keys seek through video rather than invoking photo navigation while a video is open.
+- Display video frame thumbnails in the regular file manager using the existing visibility-aware image queue. Extract just the first reduced frame from up to 8 MiB of the authenticated SMB file prefix using a 12-second, one-worker FFmpeg limit. Cache WebP posters separately for each SMB account and file version; use the standard video icon if a video cannot provide a frame without full download.
+- Perform live SMB can-read and share authorization checks even on cache hits, and keep FFmpeg processing separate from the SMB connection. Do not auto-transcode videos or alter originals, gallery EXIF indexes, storage, trash or HTTPS.
+- Preserve explicit, bounded MOV-to-MP4 compatibility fallback and display clearer codec-related playback failures for other formats.
+- Add regression tests for user/version-isolated resume, playback controls, bounded FFmpeg extraction, negative cache and SMB ACL checks.
+
 ## 0.22.26
 
 - Virtualize folders containing more than 160 files in the file manager (grid and list layouts). Render only nearby rows while retaining the complete folder metadata for selection, sorting, file actions and navigation. Reuse mounted tile nodes and re-observe lazy thumbnails after a scroll update.
