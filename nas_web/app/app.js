@@ -42,7 +42,8 @@ function updateSelection(){
     const selected=selectedFiles.has(tile.dataset.filename);
     tile.classList.toggle('selectedItem',selected);
     const check=tile.querySelector('.selectionCheck');
-    if(check){check.textContent=selected?'✓':'○';check.setAttribute('aria-pressed',String(selected))}
+    if(check){if(typeof NASIcons!=='undefined')NASIcons.set(check,selected?'check-square':'square',null);
+      else check.textContent=selected?'✓':'○';check.setAttribute('aria-pressed',String(selected))}
   }
 }
 function clearSelection(){selectedFiles.clear();selectionMode=false;updateSelection()}
@@ -1973,7 +1974,7 @@ async function uploadFiles(files,initialTarget=null){
     }
   }
 }
-el('togglePassword').onclick=()=>{const password=el('password'),visible=password.type==='password';password.type=visible?'text':'password';el('togglePassword').textContent=visible?'Скрыть':'Показать';password.focus()};
+el('togglePassword').onclick=()=>{const password=el('password'),visible=password.type==='password';password.type=visible?'text':'password';NASIcons.set(el('togglePassword'),visible?'eye-off':'eye',visible?'Скрыть':'Показать');password.focus()};
 el('loginForm').onsubmit=async e=>{e.preventDefault();++loginGeneration;el('loginError').textContent='';const submit=el('submitLogin');submit.disabled=true;submit.textContent='Проверяем доступ…';try{const form=new FormData();form.set('username',el('username').value);form.set('password',el('password').value);form.set('remember',el('remember').checked?'true':'false');const user=await api('/api/login',{method:'POST',body:form});el('password').value='';showApp(user)}catch(e){el('loginError').textContent=e.message}finally{submit.disabled=false;NASIcons.set(submit,'log-out','Войти в NAS Web')}};
 el('logout').onclick=async()=>{try{await api('/api/logout',{method:'POST'})}catch{}showLogin()};
 el('up').onclick=()=>{if(dir)navigateFiles(dir.split('/').slice(0,-1).join('/'),{restore:true})};
