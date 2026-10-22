@@ -36,7 +36,7 @@ class RouteContracts(unittest.TestCase):
                       and node.name == "storeFileNew")
         segment = ast.get_source_segment(adapter, method)
         self.assertIn("mode=FILE_CREATE", segment)
-        self.assertIn("from impacket.smb3structs import FILE_CREATE", adapter)
+        self.assertIn("FILE_CREATE = 0x00000002", adapter)
         self.assertNotIn("deleteFiles", segment)
 
     def test_existing_rename_and_gallery_are_not_reimplemented(self):
