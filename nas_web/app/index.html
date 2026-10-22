@@ -778,6 +778,21 @@ button:active{transform:scale(.975)}
 .profileGooglePickerActions span{color:var(--muted)}
 .profileGooglePickerActions button{min-height:44px}
 .profileImportJobs{margin-top:17px}.profileImportJobs>strong{font-size:13px}
+
+.profileImportErrorsToggle,.profileImportErrorDownload{
+  margin-top:9px;min-height:40px;padding:8px 12px;border:1px solid var(--border);
+  border-radius:9px;font-weight:600;font-size:12px;color:var(--accent);background:var(--panel);
+}
+.profileImportErrorDetails{
+  border-top:1px solid var(--border);margin-top:10px;padding:9px 2px;
+  font-size:12px;line-height:1.55;overflow-wrap:anywhere;color:var(--text);
+}
+.profileImportErrorDetails[hidden]{display:none}
+.profileImportErrorSummary{color:var(--muted);margin:0 0 8px}
+.profileImportErrorList{margin:0;padding-left:20px;max-height:210px;overflow:auto}
+.profileImportErrorList li{margin:0 0 6px;overflow-wrap:anywhere}
+.profileImportErrorDetails small{color:var(--muted)}
+
 .profileImportJob{margin-top:8px;padding:10px;border-radius:9px;background:var(--panel2);font-size:12px;line-height:1.55;overflow-wrap:anywhere}
 .profileImportUploadProgress{display:flex;flex-direction:column;gap:7px;font-size:11px;color:var(--muted)}
 .profileImportUploadProgress progress{width:100%;height:8px;accent-color:var(--accent)}
