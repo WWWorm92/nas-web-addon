@@ -3,7 +3,7 @@ const el=id=>document.getElementById(id);
 const message=s=>el('status').textContent=s;
 const qs=o=>new URLSearchParams(o).toString();
 const ext=n=>(n.split('.').pop()||'').toLowerCase();
-const imageExt=['jpg','jpeg','png','gif','webp'];
+const imageExt=['jpg','jpeg','png','gif','webp','heic','heif'];
 const videoExt=['mp4','webm','m4v','mov','mp3','ogg'];
 
 const ICON_PATHS={
