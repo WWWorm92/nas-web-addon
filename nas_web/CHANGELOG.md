@@ -1,3 +1,12 @@
+## 0.22.37
+
+- Speed up multi-select Move to Trash: send up to 500 selected siblings per request, reuse one authorized SMB session, list the source and trash folders once per batch, use atomic SMB renames, and record all successful recycle moves in one SQLite transaction. Return honest partial-success counts and retain separate permanent deletion rules inside .recycle.
+- Exclude the .recycle subtree from gallery discovery and EXIF scanning; one-time migration removes previously indexed trash photos/folders from the SQLite gallery index **without deleting SMB files**.
+- Remove successfully trashed photo paths, including whole folder subtrees, from all affected users' gallery indices immediately. Leave failed paths intact for retry.
+- Introduce small photo ⋯ menus in the global gallery grid and fullscreen preview. Provide **Share** (native file sharing on supported HTTPS browsers), **Info**, **Favorites and albums**, **Download original**, and **Move to Trash** with confirmation.
+- Keep native share private: no unauthenticated public URLs are generated; browsers without file-sharing support offer download instead. Photo actions remain scoped to authenticated SMB permissions.
+- Add regression coverage for batch listing count, trash collisions, old recycle index migration, immediate gallery invalidation and photo menu wiring.
+
 ## 0.22.36
 
 - Keep background EXIF indexing active when photo folders are hidden from the unified gallery. The worker now checks the actual unfinished EXIF queue (including hidden folders) rather than the visibility-filtered count.

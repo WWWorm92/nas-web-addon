@@ -696,6 +696,29 @@ button:active{transform:scale(.975)}
  .photoStage .videoQuickActions button{min-height:42px;min-width:72px}
 }
 
+/* Photo gallery actions: subtle per-tile menu and a single viewer menu. */
+#app .galleryMode .galleryPhoto{position:relative}
+#app .galleryMode .photoTileMore{
+  position:absolute;z-index:3;top:7px;right:7px;
+  display:grid;place-items:center;width:37px;height:37px;min-height:37px;padding:0;
+  font-size:24px;font-weight:700;line-height:1;border-radius:11px;
+  border:1px solid #ffffff40;color:#fff;background:#152237bb;
+  box-shadow:0 2px 9px #080f1b3b;opacity:0;
+}
+@media(hover:hover) and (pointer:fine){
+  #app .galleryMode .galleryPhoto:hover .photoTileMore,
+  #app .galleryMode .photoTileMore:focus-visible,
+  #app .galleryMode .galleryPhoto:focus-within .photoTileMore{opacity:1}
+}
+@media(hover:none),(pointer:coarse){
+  #app .galleryMode .photoTileMore{opacity:1;width:39px;height:39px;min-height:39px}
+}
+#app .galleryMode .galleryPhoto .photoTileMore:active{background:#354868}
+#app .galleryMode .galleryPhoto .photoTileMore:focus-visible{outline:2px solid #c3d9ff}
+#app .galleryMode .galleryPhoto.selectedItem .photoTileMore{display:none}
+#preview .photoActions #previewPhotoMenu{font-size:25px;font-weight:720}
+#fileMenu.photoPreviewMenu{z-index:65}
+
 /* 0.22.31: Google Photos-like memories are part of the gallery, not a menu. */
 #app:not(.globalGalleryOpen) #galleryMemories,
 #app #galleryMemories.hidden{display:none!important}
@@ -886,5 +909,5 @@ button:active{transform:scale(.975)}
 </div>
 <div id="destinationOverlay" class="hidden" role="presentation"><section class="destinationBox" role="dialog" aria-modal="true" aria-labelledby="destinationTitle"><h2 id="destinationTitle">Выберите папку назначения</h2><select id="destinationShare" aria-label="SMB-шара"></select><div id="destinationPath" class="destinationPath"></div><div id="destinationFolders" class="destinationFolders"></div><p id="destinationError" role="alert"></p><div class="destinationActions"><button id="destinationCancel" type="button">Отмена</button><button id="destinationApply" type="button" class="primary">Копировать сюда</button></div></section></div>
 <div id="dialogOverlay" class="hidden" role="presentation"><form id="actionDialog" class="dialogBox" role="dialog" aria-modal="true" aria-labelledby="dialogTitle"><div id="dialogIcon" class="dialogIcon">▱</div><h2 id="dialogTitle">Действие</h2><p id="dialogText"></p><input id="dialogInput" class="hidden" autocomplete="off" maxlength="240" aria-label="Имя папки"><div class="dialogActions"><button id="dialogCancel" type="button">Отмена</button><button id="dialogAccept" type="submit" class="primary">Продолжить</button></div></form></div><div id="fileMenu" class="hidden" role="menu"></div>
-<div id="preview" role="dialog" aria-label="Просмотр файлов" aria-modal="true"><div class="photoHeader"><div class="photoInfo"><div id="previewCounter" class="photoCount">1 / 1</div><div id="previewTitle" class="photoName"></div></div><div class="photoActions"><button id="previewInfo" title="Информация о файле" aria-label="Информация о файле">ⓘ</button><button id="previewDownload" title="Скачать оригинал" aria-label="Скачать оригинал">↓</button><button id="closePreview" title="Закрыть" aria-label="Закрыть">✕</button></div></div><div class="photoStage" id="photoStage"><div class="previewContent" id="previewBody"></div><div id="viewerSpinner" class="viewerSpinner hidden">Загрузка…</div></div><div id="filmstrip" class="filmstrip" role="listbox" aria-label="Фотографии"></div></div>
+<div id="preview" role="dialog" aria-label="Просмотр файлов" aria-modal="true"><div class="photoHeader"><div class="photoInfo"><div id="previewCounter" class="photoCount">1 / 1</div><div id="previewTitle" class="photoName"></div></div><div class="photoActions"><button id="previewPhotoMenu" title="Действия с фотографией" aria-label="Действия с фотографией">⋯</button><button id="previewDownload" title="Скачать оригинал" aria-label="Скачать оригинал">↓</button><button id="closePreview" title="Закрыть" aria-label="Закрыть">✕</button></div></div><div class="photoStage" id="photoStage"><div class="previewContent" id="previewBody"></div><div id="viewerSpinner" class="viewerSpinner hidden">Загрузка…</div></div><div id="filmstrip" class="filmstrip" role="listbox" aria-label="Фотографии"></div></div>
 <script src="/static/app.js" defer></script></body></html>
