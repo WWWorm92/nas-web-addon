@@ -34,7 +34,7 @@ window.NASIcons=(()=>{
   'more-vertical':'<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
   refresh:'<path d="M3 11a9 9 0 0 1 15-6l2 2M20 3v4h-4M21 13a9 9 0 0 1-15 6l-2-2M4 21v-4h4"/>',
   'sort-vertical':'<path d="m7 17-4 4-4-4M3 21V4m14 3 4-4 4 4M21 3v17" transform="translate(2 0)"/>',
-  'arrow-up-down':'<path d="m7 4 4 4-4 4M11 8H3m14 12-4-4 4-4m-4 4h8"/>',
+  'arrow-up-down':'<path d="M8 3v18m-4-4 4 4 4-4M16 21V3m-4 4 4-4 4 4"/>',
   'layout-grid':'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   list:'<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
   check:'<path d="m5 12 4 4L19 6"/>',
@@ -93,7 +93,7 @@ window.NASIcons=(()=>{
    node.dataset.nasIcon=name;
    node.append(create(name));
    if(label!==null&&label!==undefined&&String(label).length){
-     const text=document.createElement('span');
+     const text=document.createElement(node.closest?.('#mobileNav')?'small':'span');
      text.className='nasIconLabel';
      text.textContent=String(label);
      node.append(text);
