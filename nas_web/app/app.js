@@ -1974,20 +1974,37 @@ el('selectionDelete').onclick=async()=>{
     confirm:'В корзину',danger:true
   });
   if(!approved)return;
-  let removed=0,failed=0;
-  for(const f of targets){
-    const path=fpath(f.name);
-    const permanent=isTrashItemPath(path);
-    try{
-      await api(permanent?'/api/trash/permanent-delete':'/api/delete',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({share:selected,path,directory:!!f.directory})
-      });
-      removed++;
-    }catch(e){failed++}
+  let removed=0,failed=0,details='';
+  if(!inTrash){
+    // One SMB session, one source and recycle folder listing, one DB commit.
+    // Keep the trash and ordinary delete paths strictly separate.
+    for(let start=0;start<targets.length;start+=500){
+      const chunk=targets.slice(start,start+500);
+      try{
+        const result=await api('/api/delete/batch',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({share:selected,path:dir,
+            files:chunk.map(f=>({name:f.name,directory:!!f.directory}))})
+        });
+        removed+=Number(result.removed||0);
+        failed+=Number(result.failed||0);
+        if(result.errors?.length)details=result.errors[0].name+': '+result.errors[0].reason;
+      }catch(e){failed+=chunk.length;details=e.message}
+    }
+  }else{
+    for(const f of targets){
+      try{
+        await api('/api/trash/permanent-delete',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({share:selected,path:fpath(f.name),directory:!!f.directory})
+        });
+        removed++;
+      }catch(e){failed++;details=e.message}
+    }
   }
   clearSelection();await refresh();
-  if(failed)message('Успешно: '+removed+'. Ошибок: '+failed+'. Если удаление прервалось, содержимое папки могло быть удалено частично.');
+  message('Успешно: '+removed+(failed?'. Ошибок: '+failed+(details?'. '+details:''):'')+
+    (inTrash&&failed?'. Удаление папки могло завершиться частично.':''));
 };
 el('galleryZoomOut').onclick=()=>{setGalleryColumns(galleryColumns-1);if(allPhotosMode){galleryRenderSignature='';resetGalleryVirtual();renderAllGallery()}};
 el('galleryZoomIn').onclick=()=>{setGalleryColumns(galleryColumns+1);if(allPhotosMode){galleryRenderSignature='';resetGalleryVirtual();renderAllGallery()}};
