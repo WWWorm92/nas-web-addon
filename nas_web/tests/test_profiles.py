@@ -56,6 +56,49 @@ class ProfileVisibilityTests(unittest.TestCase):
         profiles.unbind("alice", "Photo", "Alice")
         self.assertEqual(len(self.names("bob")), 4)
 
+    def test_hidden_folder_does_not_remove_pending_exif_work(self):
+        """The visible UI may say 0 remaining, while hidden photos still need EXIF."""
+        owner = g.key("alice")
+        target = "Alice/unchecked.jpg"
+        # Add a unique pending photo: existing fixture photos share known dates
+        # with another owner, and shared-metadata reuse would complete those
+        # checks automatically before the background worker sees them.
+        with g.connect() as db:
+            db.execute(
+                "INSERT INTO photos(owner,share,path,folder,name,size,modified,"
+                "taken,exif_checked,sort_key) VALUES (?,?,?,?,?,?,?,NULL,0,?)",
+                (owner, "Photo", target, "Alice", "unchecked.jpg",
+                 10, 1700000000, "2023-11-14T22:13:20"))
+        profiles.bind("alice", "Photo", "Alice")
+        profiles.set_visibility("alice", "Photo", "Alice", False)
+
+        # The public gallery and its counters respect profile visibility.
+        self.assertNotIn(target, self.names("alice"))
+        self.assertEqual(g.state(owner, ["Photo"])["dates_available"], 0)
+
+        # The worker must query photos (not visible_photos) for unfinished EXIF.
+        with g.connect() as db:
+            entry = g.next_unchecked(db, owner, ["Photo"])
+            self.assertIsNotNone(entry)
+            self.assertEqual(entry["path"], target)
+            g.save_date(db, owner, "Photo", target, "2018-07-02T13:00:00")
+
+        # No hidden photo leaks into the gallery while it is disabled.
+        self.assertNotIn(target, self.names("alice"))
+        profiles.set_visibility("alice", "Photo", "Alice", True)
+        result = next(p for p in g.page(owner, ["Photo"], 0, 20)
+                      if p["path"] == target)
+        self.assertEqual(result["taken"], "2018-07-02T13:00:00")
+
+    def test_background_worker_stops_only_when_real_exif_queue_empty(self):
+        """Ensure the worker termination criterion includes hidden folders."""
+        source = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+        part = source.split("def _gallery_background(", 1)[1].split(
+            "\n\nGALLERY_BACKGROUND_LOCK", 1)[0]
+        self.assertNotIn('if state["complete"] and not state["dates_available"]', part)
+        self.assertIn("gallery_index.next_unchecked(db, owner, shares, skipped)", part)
+        self.assertIn("if remaining is None:", part)
+
     def test_ownership_overlap_and_authorization(self):
         profiles.bind("alice", "Photo", "Alice")
         with self.assertRaises(ValueError):

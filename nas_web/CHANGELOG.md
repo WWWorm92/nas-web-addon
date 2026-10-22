@@ -1,3 +1,9 @@
+## 0.22.36
+
+- Keep background EXIF indexing active when photo folders are hidden from the unified gallery. The worker now checks the actual unfinished EXIF queue (including hidden folders) rather than the visibility-filtered count.
+- Preserve privacy: gallery photo counts, month navigation and the visible "EXIF: to check" indicator still exclude hidden folders. No hidden items or their metadata leak into the gallery.
+- The change does not reset the shared photo index or trigger a new full scan. Tests cover hidden-folder metadata being processed and retaining its correct capture date when shown again.
+
 ## 0.22.35
 
 - Исправлен поиск JSON-метаданных Google Takeout для длинных и обрезанных имён файлов, включая распространённые варианты имён копий.
