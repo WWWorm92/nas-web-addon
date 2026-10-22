@@ -468,6 +468,8 @@ jobs:
         run: node nas_web/tests/file_manager_ui.test.cjs
       - name: Large-folder virtual scrolling and cache regressions
         run: node nas_web/tests/file_virtual_scroll.test.cjs
+      - name: Mobile file header and breadcrumb sticky group
+        run: node nas_web/tests/mobile_file_header.test.cjs
       - name: Folder photo fullscreen order matches file manager
         run: node nas_web/tests/folder_preview_order.test.cjs
       - name: Upload destination selection on mobile and desktop
