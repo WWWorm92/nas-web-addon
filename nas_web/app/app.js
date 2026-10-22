@@ -6,17 +6,13 @@ const ext=n=>(n.split('.').pop()||'').toLowerCase();
 const imageExt=['jpg','jpeg','png','gif','webp','heic','heif'];
 const videoExt=['mp4','webm','m4v','mov','mp3','ogg'];
 
-const ICON_PATHS={
- folder:'<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3z"/>',
- trash:'<path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13M10 11v6m4-6v6"/>',
- image:'<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="9" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 6"/>',
- video:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="m10 8 6 4-6 4z"/>',
- file:'<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5"/>',
- pdf:'<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 14h6m-6 3h4"/>',
- disk:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M6 15h12M8 18h.01"/>',
- music:'<path d="M9 18V6l11-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>'
-};
-function icon(kind,cls=''){const span=document.createElement('span');span.className='vectorIcon '+cls;const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.6');svg.setAttribute('stroke-linejoin','round');svg.setAttribute('stroke-linecap','round');svg.innerHTML=ICON_PATHS[kind]||ICON_PATHS.file;span.append(svg);return span}
+// All file-type icons use the same self-hosted stroke design as the controls.
+function icon(kind,cls=''){
+  const span=document.createElement('span');
+  span.className='vectorIcon '+cls;
+  span.append(NASIcons.create(kind==='pdf'?'file':kind));
+  return span;
+}
 const fileKind=f=>f.directory?'folder':imageExt.includes(ext(f.name))?'image':videoExt.includes(ext(f.name))?(['mp3','ogg'].includes(ext(f.name))?'music':'video'):ext(f.name)==='pdf'?'pdf':'file';
 
 const canPreview=f=>!f.directory&&(imageExt.includes(ext(f.name))||videoExt.includes(ext(f.name))||ext(f.name)==='pdf');
@@ -512,7 +508,7 @@ function openMobileSheet(title,actions){
   const container=el('mobileSheetActions');container.replaceChildren();
   for(const action of actions){
     const btn=document.createElement('button');btn.type='button';
-    btn.textContent=action.label;
+    NASIcons.decorateLabel(btn,action.label);
     if(action.danger)btn.classList.add('sheetDanger');
     btn.onclick=()=>{closeMobileSheet();action.run()};
     container.append(btn);
@@ -557,6 +553,10 @@ const moreMenuIconPaths={
 };
 function moreMenuIcon(kind){
   const wrap=document.createElement('span');wrap.className='moreMenuIcon';
+  if(typeof NASIcons!=='undefined'){
+    wrap.append(NASIcons.create({albums:'images',stats:'panel-top',theme:'moon',logout:'log-out'}[kind]||'more-horizontal'));
+    return wrap;
+  }
   wrap.setAttribute('aria-hidden','true');
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');
@@ -588,7 +588,7 @@ function openMoreMenu(){
   const user=document.createElement('strong');user.textContent=username;
   identity.append(caption,user);
   const arrow=document.createElement('span');arrow.className='moreMenuArrow';
-  arrow.textContent='›';arrow.setAttribute('aria-hidden','true');
+  arrow.append(NASIcons.create('chevron-right'));arrow.setAttribute('aria-hidden','true');
   profile.append(avatar,identity,arrow);
   container.append(profile);
 
@@ -610,7 +610,7 @@ function openMoreMenu(){
       }
       if(!item.danger){
         const chevron=document.createElement('span');
-        chevron.className='moreMenuChevron';chevron.textContent='›';
+        chevron.className='moreMenuChevron';chevron.append(NASIcons.create('chevron-right'));
         chevron.setAttribute('aria-hidden','true');row.append(chevron);
       }
       list.append(row);
@@ -807,7 +807,7 @@ function updateMobileFilesBreadcrumb(){
  if(!node)return;
  node.replaceChildren();
  const back=document.createElement('button');back.type='button';back.className='mobilePathBack';
- back.textContent='←';back.setAttribute('aria-label','На уровень выше');
+ NASIcons.set(back,'arrow-left',null);back.setAttribute('aria-label','На уровень выше');
  back.onclick=()=>{if(dir)mobileNavigateTo(dir.split('/').slice(0,-1).join('/'));else mobileSharesMenu()};
  node.append(back);
  const trail=document.createElement('div');trail.className='mobilePathTrail';
@@ -857,7 +857,7 @@ function updateMobileNav(){
   updateDesktopWorkspace();
 }
 function hideMenu(){el('fileMenu').classList.add('hidden');el('fileMenu').classList.remove('photoPreviewMenu');el('fileMenu').replaceChildren()}
-function menuButton(text,fn,danger=false){const btn=document.createElement('button');btn.textContent=text;if(danger)btn.classList.add('danger');btn.onclick=()=>{hideMenu();fn()};return btn}
+function menuButton(text,fn,danger=false){const btn=document.createElement('button');NASIcons.decorateLabel(btn,text,(/скачать/i.test(text)?'download':/переименовать/i.test(text)?'pencil':/удалить|корзин/i.test(text)?'trash-2':/открыть/i.test(text)?'folder-open':'check'));if(danger)btn.classList.add('danger');btn.onclick=()=>{hideMenu();fn()};return btn}
 function openMenu(f,button){
 const inTrash=dir==='.recycle'||dir.startsWith('.recycle/');
 if(isMobileLayout()){
@@ -1126,7 +1126,7 @@ function renderGalleryVirtualWindow(force=false){
         tile.dataset.thumbSrc=requestedSrc;thumb.append(img);tile.append(thumb);
         const actions=document.createElement('button');
         actions.type='button';actions.className='photoTileMore';
-        actions.textContent='⋯';actions.title='Действия с фотографией';
+        NASIcons.set(actions,'more-horizontal',null);actions.title='Действия с фотографией';
         actions.setAttribute('aria-label','Действия с фотографией: '+f.name);
         actions.onclick=e=>{e.preventDefault();e.stopPropagation();openGalleryPhotoMenu(f,actions)};
         actions.onkeydown=e=>e.stopPropagation();
@@ -1583,8 +1583,8 @@ const check=document.createElement('button');check.type='button';check.className
   img.onerror=()=>{photoObserver.unobserve(img);img.remove();thumb.replaceChildren(icon('video'))};
   photoObserver.observe(img);thumb.append(img);
   const play=document.createElement('span');play.className='videoPosterPlay';
-  play.textContent='▶';play.setAttribute('aria-hidden','true');thumb.append(play);
-}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name==='.recycle'?'Корзина':f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'':size(f.size);if(!f.directory)details.append(meta);if(view!=='gallery')tile.append(details);const more=document.createElement('button');more.className='more';more.textContent='⋯';more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);attachFileDrag(tile,f);
+  NASIcons.set(play,'play',null);play.setAttribute('aria-hidden','true');thumb.append(play);
+}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name==='.recycle'?'Корзина':f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'':size(f.size);if(!f.directory)details.append(meta);if(view!=='gallery')tile.append(details);const more=document.createElement('button');more.className='more';NASIcons.set(more,'more-horizontal',null);more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);attachFileDrag(tile,f);
 return tile;
 }
 function render(){
@@ -1745,7 +1745,7 @@ function chooseUploadDestination(files,onConfirmed=null){
     };
     overlay.onclick=e=>{if(e.target===overlay)close(null)};
     const addFolder=(name,path)=>{
-      const btn=document.createElement('button');btn.type='button';btn.textContent='📁 '+name;
+      const btn=document.createElement('button');btn.type='button';NASIcons.set(btn,'folder',name);
       btn.style.cssText='text-align:left;padding:10px;border-radius:9px;overflow-wrap:anywhere';
       btn.onclick=()=>{folder=path;load()};listing.append(btn);
     };
@@ -1812,7 +1812,7 @@ function notifyUploadJobs(force=false){
   uploadPaintAt=now;
   el('app').classList.toggle('nasUploadsActive',uploadBatchBusy);
   const active=uploadQueue.filter(uploadCanCancel).length;
-  el('uploadCenterButton').textContent=active?'⇧ Загрузки: '+active:'⇧ Центр загрузок';
+  NASIcons.set(el('uploadCenterButton'),'upload',active?'Загрузки: '+active:'Центр загрузок');
   document.dispatchEvent(new Event('nas-upload-progress'));
 }
 function setUploadStage(job,stage,progress=job.progress){
@@ -1968,7 +1968,7 @@ async function uploadFiles(files,initialTarget=null){
   }
 }
 el('togglePassword').onclick=()=>{const password=el('password'),visible=password.type==='password';password.type=visible?'text':'password';el('togglePassword').textContent=visible?'Скрыть':'Показать';password.focus()};
-el('loginForm').onsubmit=async e=>{e.preventDefault();++loginGeneration;el('loginError').textContent='';const submit=el('submitLogin');submit.disabled=true;submit.textContent='Проверяем доступ…';try{const form=new FormData();form.set('username',el('username').value);form.set('password',el('password').value);form.set('remember',el('remember').checked?'true':'false');const user=await api('/api/login',{method:'POST',body:form});el('password').value='';showApp(user)}catch(e){el('loginError').textContent=e.message}finally{submit.disabled=false;submit.innerHTML='Войти в NAS Web <span aria-hidden="true">→</span>'}};
+el('loginForm').onsubmit=async e=>{e.preventDefault();++loginGeneration;el('loginError').textContent='';const submit=el('submitLogin');submit.disabled=true;submit.textContent='Проверяем доступ…';try{const form=new FormData();form.set('username',el('username').value);form.set('password',el('password').value);form.set('remember',el('remember').checked?'true':'false');const user=await api('/api/login',{method:'POST',body:form});el('password').value='';showApp(user)}catch(e){el('loginError').textContent=e.message}finally{submit.disabled=false;NASIcons.set(submit,'log-out','Войти в NAS Web')}};
 el('logout').onclick=async()=>{try{await api('/api/logout',{method:'POST'})}catch{}showLogin()};
 el('up').onclick=()=>{if(dir)navigateFiles(dir.split('/').slice(0,-1).join('/'),{restore:true})};
 el('folder').onclick=async()=>{const name=await askDialog({title:'Новая папка',text:'Папка будет создана в текущем расположении.',input:true,confirm:'Создать'});if(name)await mutate('mkdir',{path:dir,name})};
@@ -1980,11 +1980,11 @@ async function showDestinationFolders(){
   try{
     const data=await api('/api/list?'+qs({share,path:destinationDir}));
     if(el('destinationOverlay').classList.contains('hidden')||share!==el('destinationShare').value)return;
-    const upper=document.createElement('button');upper.textContent='↑ На уровень выше';upper.disabled=!destinationDir;
+    const upper=document.createElement('button');NASIcons.set(upper,'arrow-up','На уровень выше');upper.disabled=!destinationDir;
     upper.onclick=()=>{destinationDir=destinationDir.split('/').slice(0,-1).join('/');showDestinationFolders()};
     box.append(upper);
     for(const folder of data.items.filter(x=>x.directory).sort((a,b)=>a.name.localeCompare(b.name,'ru'))){
-      const btn=document.createElement('button');btn.textContent='▱  '+folder.name;
+      const btn=document.createElement('button');NASIcons.set(btn,'folder',folder.name);
       btn.onclick=()=>{destinationDir=[destinationDir,folder.name].filter(Boolean).join('/');showDestinationFolders()};
       box.append(btn);
     }
@@ -2767,7 +2767,7 @@ function importErrorsView(job,host){
   }
   const download=document.createElement('button');download.type='button';
   download.className='profileImportErrorDownload';
-  download.textContent='↓ Скачать полный отчёт JSON';
+  NASIcons.set(download,'download','Скачать полный отчёт JSON');
   download.onclick=()=>{
     const blob=new Blob([JSON.stringify(report,null,2)],{type:'application/json;charset=utf-8'});
     const uri=URL.createObjectURL(blob);
@@ -3067,5 +3067,6 @@ const oauthResult=new URLSearchParams(window.location.search).get('nas_google');
 if(oauthResult){
   window.history.replaceState({},'',window.location.pathname);
 }
+NASIcons.applyStatic();
 const startupLoginGeneration=loginGeneration;
 api('/api/me').then(user=>{if(loginGeneration===startupLoginGeneration){showApp(user);if(oauthResult){openProfile().then(()=>importNotice(oauthResult==='connected'?'Google Фото подключён':'Google OAuth не завершён'))}}}).catch(()=>{if(loginGeneration===startupLoginGeneration)showLogin()});
