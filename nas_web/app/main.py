@@ -1892,6 +1892,52 @@ def permanently_delete_trashed_item(request: Request, payload: dict,
     return {"ok": True, "permanent": True, "deleted_entries": count}
 
 
+@app.post("/api/delete/batch")
+def delete_many(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+    """Move many siblings to trash in one SMB session and one metadata commit."""
+    from . import trash_store, trash_batch
+    check_origin(request)
+    u = protected(request, x_csrf_token)
+    share = name_ok(payload.get("share", ""))
+    folder = path_ok(payload.get("path", ""))
+    if folder == ".recycle" or folder.startswith(".recycle/"):
+        fail(400, "Для корзины используйте отдельное безвозвратное удаление")
+    requested = payload.get("files")
+    if not isinstance(requested, list) or not 1 <= len(requested) <= 500:
+        fail(400, "Выберите от 1 до 500 файлов в одной папке")
+    files, unique = [], set()
+    for item in requested:
+        if not isinstance(item, dict) or not isinstance(item.get("directory"), bool):
+            fail(400, "Некорректные элементы выбора")
+        name = name_ok(item.get("name"))
+        if name == ".recycle" or name in unique:
+            fail(400, "Нельзя удалять корзину или повторять имена файлов")
+        unique.add(name)
+        files.append({"name": name, "directory": item["directory"]})
+    with trash_store.OP_LOCK, smb(u) as conn:
+        check_share(conn, share)
+        try:
+            moved, failed = trash_batch.move_many(conn, share, folder, files)
+        except ValueError as exc:
+            fail(409, str(exc))
+        except Exception as exc:
+            smb_action_error("bulk move to recycle", exc)
+        if moved:
+            # Even when the metadata database is temporarily unavailable, the
+            # SMB moves have already succeeded. Never redo those renames.
+            try:
+                trash_store.record_moves(u, share, moved)
+            except Exception:
+                logger.exception("Failed recording recycle metadata for bulk move")
+            try:
+                gallery_index.forget_moved_to_recycle(
+                    share, [entry["path"] for entry in moved])
+            except Exception:
+                logger.exception("Failed updating gallery cache after bulk recycle")
+    return {"ok": not failed, "removed": len(moved), "failed": len(failed),
+            "errors": failed[:30]}
+
+
 @app.post("/api/delete")
 def delete(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
     check_origin(request)
@@ -1939,6 +1985,10 @@ def delete(request: Request, payload: dict, x_csrf_token: str = Header(default="
                 # The SMB rename has succeeded. The item remains recoverable
                 # and can be registered as a legacy item on the next listing.
                 logger.exception("Unable to record recycle metadata after SMB rename")
+            try:
+                gallery_index.forget_moved_to_recycle(share, [path])
+            except Exception:
+                logger.exception("Failed removing trashed item from gallery index")
         except HTTPException:
             raise
         except Exception as exc:
