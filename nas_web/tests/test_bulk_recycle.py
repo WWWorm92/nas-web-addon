@@ -97,8 +97,7 @@ class BulkRecycleTests(unittest.TestCase):
                 [dict(row)["path"] for row in db.execute(
                     "SELECT path FROM folders WHERE owner=? AND path !=''",
                     (owner,))],["Family"])
-            self.assertIsNone(gallery.pending_folder(db,owner) is None and
-                              next(iter([]),None))
+            self.assertEqual(gallery.pending_folder(db,owner)["path"],"Family")
             gallery.add_folder_contents(db,owner,"Photo","Family",[file("real.jpg")])
         self.assertFalse(gallery.record_upload(owner,"Photo",".recycle/recycled.jpg",
                                                42,1740000000))
