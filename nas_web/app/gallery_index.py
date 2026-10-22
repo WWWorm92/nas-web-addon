@@ -90,6 +90,19 @@ def connect():
                 added = db.execute("INSERT OR IGNORE INTO index_migrations(name) VALUES (?)", (name,))
                 if added.rowcount:
                     db.execute("UPDATE exif_denied SET retry_after=0")
+            # Older builds recursively indexed .recycle. Purge ONLY their
+            # cached rows once, leaving every actual SMB file untouched.
+            migration = "exclude_recycle_from_gallery_02237"
+            if db.execute("INSERT OR IGNORE INTO index_migrations(name) VALUES (?)",
+                          (migration,)).rowcount:
+                photos_deleted = db.execute(
+                    "DELETE FROM photos WHERE path='.recycle' OR substr(path,1,9)='.recycle/'"
+                ).rowcount
+                db.execute(
+                    "DELETE FROM folders WHERE path='.recycle' OR substr(path,1,9)='.recycle/'"
+                )
+                if photos_deleted:
+                    bump_all_revisions(db)
             yield db
     finally:
         db.close()
@@ -250,6 +263,9 @@ def add_folder_contents(db, owner, share, folder, entries):
         if name in (".", "..") or "/" in name or "\\" in name or not name:
             continue
         path = "/".join(x for x in (folder, name) if x)
+        # .recycle is private file-manager space, never a photo collection.
+        if path == ".recycle" or path.startswith(".recycle/"):
+            continue
         if entry.isDirectory:
             if folders_count >= MAX_FOLDERS:
                 db.execute("UPDATE jobs SET limited=1 WHERE owner=?", (owner,))
@@ -285,6 +301,8 @@ def add_folder_contents(db, owner, share, folder, entries):
 
 def record_upload(owner, share, path, size, modified):
     """Insert a successfully uploaded image without resetting a scan in progress."""
+    if path == ".recycle" or path.startswith(".recycle/"):
+        return False
     if not path.lower().endswith(IMAGE_EXTS):
         return False
     folder, _, name = path.rpartition("/")
@@ -306,6 +324,35 @@ def record_upload(owner, share, path, size, modified):
                    (owner, share, path, folder, name, size, modified, taken, checked, taken or stamp))
         bump_revision(db, owner)
     return True
+
+
+def forget_moved_to_recycle(share, paths):
+    """Immediately remove moved images from every user's gallery index.
+
+    SMB already confirmed the successful rename. The method never deletes
+    any media bytes. Prevents moved photos lingering until a periodic rescan.
+    """
+    if not paths:
+        return
+    with LOCK, connect() as db:
+        changed = set()
+        for path in paths:
+            prefix = path + "/"
+            for row in db.execute(
+                "SELECT DISTINCT owner FROM photos WHERE share=? AND "
+                "(path=? OR substr(path,1,?)=?)",
+                (share, path, len(prefix), prefix)):
+                changed.add(row["owner"])
+            db.execute(
+                "DELETE FROM photos WHERE share=? AND "
+                "(path=? OR substr(path,1,?)=?)",
+                (share, path, len(prefix), prefix))
+            db.execute(
+                "DELETE FROM folders WHERE share=? AND "
+                "(path=? OR substr(path,1,?)=?)",
+                (share, path, len(prefix), prefix))
+        for owner in changed:
+            bump_revision(db, owner)
 
 
 def retry_missing_dates(db, owner, shares):
