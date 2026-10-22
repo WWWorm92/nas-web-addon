@@ -63,6 +63,9 @@ window.NASIcons=(()=>{
   'panel-top':'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/>',
   'log-out':'<path d="M10 17l5-5-5-5M15 12H3M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/>',
   pause:'<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+  'rotate-ccw':'<path d="M3 12a9 9 0 1 0 3-6.7M3 3v6h6"/>',
+  'rotate-cw':'<path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6"/>',
+  maximize:'<path d="M8 3H3v5m13-5h5v5m0 8v5h-5M3 16v5h5"/>',
   'zoom-in':'<circle cx="10.5" cy="10.5" r="7"/><path d="M10.5 7v7m-3.5-3.5h7m7 10-5-5"/>',
   'zoom-out':'<circle cx="10.5" cy="10.5" r="7"/><path d="M7 10.5h7m7 10-5-5"/>'
  };
