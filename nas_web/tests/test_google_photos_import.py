@@ -7,6 +7,7 @@ import unittest
 import urllib.parse
 import zipfile
 from pathlib import Path
+from contextlib import contextmanager
 from unittest.mock import patch
 
 from app import gallery_index as g, google_photos_import as importer
@@ -79,7 +80,8 @@ class GoogleImportTests(unittest.TestCase):
         smb = FakeSMB()
         job = importer.new_job("alice", "takeout", "Photo", "Photos")
         results = importer.process_takeout(archive, smb, "alice", "Photo", "Photos", job)
-        self.assertEqual(results, {"imported": 1, "skipped": 1, "failed": 0})
+        self.assertEqual((results["imported"],results["skipped"],results["failed"]), (1,1,0))
+        self.assertEqual(results["dated"],2)
         self.assertEqual(smb.files, {"/Photos/IMG_0001.jpg": picture})
         photo = g.page(g.key("alice"), ["Photo"], 0, 10)[0]
         self.assertEqual(photo["taken"], "2023-07-15T16:23:47")
@@ -88,6 +90,108 @@ class GoogleImportTests(unittest.TestCase):
         repeated = importer.process_takeout(archive, smb, "alice", "Photo", "Photos", job2)
         self.assertEqual(repeated["imported"], 0)
         self.assertEqual(repeated["skipped"], 2)
+
+    def test_takeout_truncated_sidecar_restores_existing_file_date(self):
+        folder="Takeout/Google Photos/Screenshots/"
+        filename="Screenshot_20231027_123303_Facebook.jpg"
+        picture=b"original archived bytes"
+        # Real newer Takeout: truncate the combined supplemental prefix,
+        # not the media filename before appending the full JSON suffix.
+        json_name=(filename+".supplemental-metadata")[:46]+".json"
+        taken=json.dumps({"photoTakenTime":{"timestamp":"1689438227"}})
+        archive=Path(self.tmp.name)/"old.zip"
+        smb=FakeSMB()
+        with zipfile.ZipFile(archive,"w") as z:
+            z.writestr(folder+filename,picture)
+        first=importer.new_job("alice","takeout","Photo","Photos")
+        prior=importer.process_takeout(archive,smb,"alice","Photo","Photos",first)
+        self.assertEqual(prior["imported"],1)
+        self.assertEqual(prior["dated"],0)
+        self.assertIsNone(g.page(g.key("alice"),["Photo"],0,10)[0]["taken"])
+        self.assertIn(folder+json_name,
+            importer.sidecar_candidates(zipfile.ZipInfo(folder+filename)))
+
+        # The user re-uploads the same ZIP but metadata is now recognized.
+        # SHA-256 dedupe should avoid even a temporary SMB store/write.
+        with zipfile.ZipFile(archive,"w") as z:
+            z.writestr(folder+filename,picture)
+            z.writestr(folder+json_name,taken)
+        def unexpected_store(*args,**kwargs):
+            self.fail("Unchanged photo unexpectedly copied to SMB again")
+        smb.storeFile=unexpected_store
+        second=importer.new_job("alice","takeout","Photo","Photos")
+        result=importer.process_takeout(archive,smb,"alice","Photo","Photos",second)
+        self.assertEqual(result["skipped"],1)
+        self.assertEqual(result["restored_dates"],1)
+        self.assertEqual(result["dated"],1)
+        self.assertEqual(result["failed"],0)
+        self.assertEqual(g.page(g.key("alice"),["Photo"],0,10)[0]["taken"],
+                         "2023-07-15T16:23:47")
+        self.assertEqual(smb.files,{"/Photos/"+filename:picture})
+
+    def test_error_report_lists_failed_files_but_never_other_users(self):
+        archive=Path(self.tmp.name)/"errors.zip"
+        with zipfile.ZipFile(archive,"w") as z:
+            z.writestr("Takeout/Google Photos/one.jpg",b"broken")
+            z.writestr("Takeout/Google Photos/two.jpg",b"good")
+        smb=FakeSMB()
+        store=smb.storeFile
+        attempts=[0]
+        def flaky(share,destination,stream,**kwargs):
+            attempts[0]+=1
+            if attempts[0]==1:
+                raise RuntimeError("STATUS_ACCESS_DENIED")
+            return store(share,destination,stream,**kwargs)
+        smb.storeFile=flaky
+        job=importer.new_job("alice","takeout","Photo","Photos")
+        result=importer.process_takeout(archive,smb,"alice","Photo","Photos",job)
+        self.assertEqual(result["failed"],1)
+        self.assertEqual(result["imported"],1)
+        errors=importer.failures_for("alice",job)
+        self.assertEqual(errors["failed"],1)
+        self.assertEqual(errors["categories"],{"SMB_ACCESS":1})
+        self.assertEqual(errors["items"][0]["path"],"Takeout/Google Photos/one.jpg")
+        self.assertNotIn("STATUS_ACCESS_DENIED",errors["items"][0]["message"])
+        with self.assertRaises(ValueError):
+            importer.failures_for("bob",job)
+
+    def test_takeout_reconnects_after_smb_drop_and_preserves_json_dates(self):
+        archive=Path(self.tmp.name)/"retry.zip"
+        with zipfile.ZipFile(archive,"w") as z:
+            z.writestr("Google Photos/photo.jpg",b"photo-original")
+            z.writestr("Google Photos/photo.jpg.json",
+                       json.dumps({"photoTakenTime":{"timestamp":"1689438227"}}))
+        smb=FakeSMB()
+        original_store=smb.storeFile
+        calls=[0]
+        def broken_once(share,path,stream,**kwargs):
+            calls[0]+=1
+            if calls[0]==1:
+                raise RuntimeError("NetBIOSError: Error while reading from remote")
+            return original_store(share,path,stream,**kwargs)
+        smb.storeFile=broken_once
+        reconnects=[0]
+        @contextmanager
+        def reconnect():
+            reconnects[0]+=1
+            yield smb
+        job=importer.new_job("alice","takeout","Photo","Photos")
+        result=importer.process_takeout(archive,smb,"alice","Photo","Photos",job,
+                                         reconnect=reconnect)
+        self.assertEqual(result["failed"],0)
+        self.assertEqual(result["imported"],1)
+        self.assertEqual(reconnects[0],1)
+        self.assertEqual(g.page(g.key("alice"),["Photo"],0,10)[0]["taken"],
+                         "2023-07-15T16:23:47")
+        self.assertFalse(importer.failures_for("alice",job)["items"])
+
+    def test_duplicate_takeout_sidecar_numbered_suffix(self):
+        name="IMG_1305(1).jpg"
+        candidates=importer.sidecar_candidates(zipfile.ZipInfo(
+            "Takeout/Google Photos/2024/"+name))
+        self.assertIn("Takeout/Google Photos/2024/IMG_1305.jpg.supplemental-metadata(1).json",
+                      candidates)
+        self.assertIn("Takeout/Google Photos/2024/IMG_1305.jpg(1).json",candidates)
 
     def test_oauth_state_is_one_use_encrypted_and_user_scoped(self):
         opts = {

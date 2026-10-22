@@ -21,7 +21,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -79,6 +79,16 @@ def connect():
         updated REAL NOT NULL
       );
       CREATE INDEX IF NOT EXISTS import_jobs_owner ON import_jobs(owner,updated DESC);
+      CREATE TABLE IF NOT EXISTS import_failures (
+        job_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created REAL NOT NULL,
+        PRIMARY KEY(job_id,path)
+      );
+      CREATE INDEX IF NOT EXISTS import_failures_job ON import_failures(job_id);
+
       CREATE TABLE IF NOT EXISTS imported_media (
         owner TEXT NOT NULL, share TEXT NOT NULL, folder TEXT NOT NULL,
         sha256 TEXT NOT NULL, filename TEXT NOT NULL,
@@ -330,7 +340,7 @@ def taken_from_json(raw):
     try:
         data = json.loads(raw)
         seconds = int(data["photoTakenTime"]["timestamp"])
-        if not 315532800 <= seconds <= 4102444800:
+        if not -2208988800 <= seconds <= 4102444800:
             return None
         return datetime.fromtimestamp(seconds, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     except (KeyError, ValueError, OverflowError, TypeError):
@@ -346,15 +356,56 @@ def taken_from_picker(value):
 
 
 def sidecar_candidates(entry):
-    """Google Takeout uses multiple sidecar suffixes and truncation schemes."""
-    name = entry.filename
-    suffixes = (".supplemental-metadata.json", ".supplemental-m.json", ".json")
-    candidates = [name + suffix for suffix in suffixes]
-    # Newer Takeout truncates long filenames to 46-51 characters before suffix.
-    for limit in (46, 47, 48, 49, 50, 51):
-        for suffix in suffixes[:2]:
-            candidates.append(name[:limit] + suffix)
-    return candidates
+    """Common Takeout JSON names, including Google's 51-character *total* cap.
+
+    Google truncates the complete "<media>.supplemental-metadata" prefix,
+    not the media filename alone. Earlier NAS Web versions got this backwards,
+    so almost every long-suffix sidecar was missed.
+    """
+    path = entry.filename
+    folder, sep, name = path.rpartition("/")
+    prefix = folder + "/" if sep else ""
+    stem, ext = os.path.splitext(name)
+    suffixes = (".supplemental-metadata", ".supplemental-m", "")
+    candidates = []
+    for suffix in suffixes:
+        full_base = name + suffix
+        candidates.append(prefix + full_base + ".json")
+        # Takeout limits the final sidecar name to ~51 characters.
+        for limit in (46, 47, 48, 49, 50, 51):
+            if len(full_base) > limit:
+                candidates.append(prefix + full_base[:limit] + ".json")
+    # Duplicates can put (N) before the media extension, but after the JSON
+    # supplemental suffix. We test these only when the number is unambiguous.
+    duplicate = re.fullmatch(r"(.*)\((\d+)\)", stem)
+    if duplicate and ext:
+        original = duplicate.group(1) + ext
+        number = "(" + duplicate.group(2) + ")"
+        for suffix in suffixes:
+            base = original + suffix + number
+            candidates.append(prefix + base + ".json")
+            for limit in (46, 47, 48, 49, 50, 51):
+                if len(base) > limit:
+                    candidates.append(prefix + base[:limit] + ".json")
+    return list(dict.fromkeys(candidates))
+
+
+def takeout_sidecar_for(archive, entry, sidecars):
+    """Return (date, matched) without guessing when a sidecar is ambiguous."""
+    found = []
+    for candidate in sidecar_candidates(entry):
+        metadata = sidecars.get(candidate)
+        if not metadata:
+            continue
+        with archive.open(metadata) as handle:
+            taken = taken_from_json(handle.read(MAX_JSON + 1))
+        if taken:
+            found.append((candidate, taken))
+    if found:
+        # Multiple different timestamps are ambiguous; never assign one at random.
+        unique = {taken for _, taken in found}
+        return (found[0][1], True) if len(unique) == 1 else (None, False)
+    return None, False
 
 
 class HashReader:
@@ -379,12 +430,41 @@ class HashReader:
         return self.sha.hexdigest()
 
 
-def _known(owner, share, folder, digest, existing):
+def _known_filename(owner, share, folder, digest, existing):
     with connect() as db:
         row = db.execute(
             "SELECT filename FROM imported_media WHERE owner=? AND share=? AND folder=? AND sha256=?",
             (owner, share, folder, digest)).fetchone()
-    return row is not None and row["filename"] in existing
+    return row["filename"] if row is not None and row["filename"] in existing else None
+
+
+def _known(owner, share, folder, digest, existing):
+    return _known_filename(owner, share, folder, digest, existing) is not None
+
+
+def _filename_registered(owner, share, folder, name):
+    """Gate local ZIP hashing before attempting a duplicate SMB write."""
+    with connect() as db:
+        return db.execute(
+            "SELECT 1 FROM imported_media WHERE owner=? AND share=? AND folder=? AND filename=?",
+            (owner, share, folder, name)).fetchone() is not None
+
+
+def _fast_known_archive_file(archive, entry, username, share, folder, existing):
+    """On re-upload, recognize previously imported bytes without writing SMB.
+
+    Exact SHA-256 check avoids misidentifying same-named but distinct files.
+    Only hash files with an existing imported filename to keep first imports fast.
+    """
+    name = safe_filename(entry.filename.rpartition("/")[2])
+    owner = owner_of(username)
+    if name not in existing or not _filename_registered(owner, share, folder, name):
+        return None
+    with archive.open(entry) as stream:
+        reader = HashReader(stream, min(MAX_MEDIA, entry.file_size + 1))
+        while reader.read(1024 * 1024):
+            pass
+    return _known_filename(owner, share, folder, reader.digest, existing)
 
 
 def _source_known(owner, share, folder, source_id, existing):
@@ -450,8 +530,11 @@ def upload_media(conn, username, share, folder, original_name, stream, existing,
     try:
         conn.storeFile(share, destination, reader, timeout=900)
         digest = reader.digest
-        if _known(owner, share, folder, digest, existing):
+        duplicate_name = _known_filename(owner, share, folder, digest, existing)
+        if duplicate_name is not None:
             conn.deleteFiles(share, destination)
+            if pending is not None and taken:
+                pending[duplicate_name] = taken
             return "skipped"
         final_name = _unique_name(name, existing)
         conn.rename(share, destination, "/" + "/".join((folder, final_name)))
@@ -736,6 +819,79 @@ def mark_interrupted():
         )
 
 
+def classify_import_error(exc):
+    """Produce short, actionable categories without exposing secrets or tracebacks."""
+    name = type(exc).__name__
+    details = str(exc)[:240]
+    value = (name + " " + details).upper()
+    if isinstance(exc, (zipfile.BadZipFile, EOFError, RuntimeError)) and (
+            "ZIP" in value or "CRC" in value or isinstance(exc, zipfile.BadZipFile)):
+        category = "ZIP"
+        hint = "Ошибка чтения или повреждение файла внутри ZIP"
+    elif "ACCESS_DENIED" in value or "LOGON_FAILURE" in value or "PERMISSION" in value:
+        category = "SMB_ACCESS"
+        hint = "SMB запретил запись или изменение файла"
+    elif any(word in value for word in ("NETBIOS", "CONNECTION", "TIMED OUT",
+                                       "TIMEOUT", "BROKEN PIPE", "NETWORK",
+                                       "REMOTE DISCONNECT", "CONNECTION_RESET",
+                                       "SOCKET", "STATUS_IO_TIMEOUT")):
+        category = "SMB_CONNECTION"
+        hint = "Соединение с SMB-хранилищем было прервано"
+    elif "NO_SPACE" in value or "DISK_FULL" in value or "ENOSPC" in value:
+        category = "SMB_SPACE"
+        hint = "Недостаточно места на SMB-диске"
+    elif "НЕДОПУСТИМОЕ" in value or "INVALID" in value or (
+            isinstance(exc, ValueError) and "импортируемого файла" in str(exc)):
+        category = "FILENAME"
+        hint = "Имя файла недопустимо для импорта"
+    elif "ПРЕВЫШАЕТ ЛИМИТ" in value or "LARGE" in value:
+        category = "SIZE"
+        hint = "Файл превышает допустимый размер"
+    else:
+        category = "OTHER"
+        hint = "Не удалось обработать файл"
+    # Avoid leaking raw SMB errors or user secrets in a browser/API response.
+    return category, hint + " (" + name[:55] + ")"
+
+
+def record_import_failure(job_id, path, exc):
+    """Keep per-file diagnostics after ZIP deletion, isolated by job owner."""
+    reason, message = classify_import_error(exc)
+    try:
+        with connect() as db, db:
+            db.execute(
+                "INSERT OR REPLACE INTO import_failures VALUES (?,?,?,?,?)",
+                (job_id, str(path)[:750], reason, message, time.time()))
+        LOG.warning("Google import file failed: job=%s class=%s error=%s",
+                    job_id[:10], reason, type(exc).__name__)
+    except Exception:
+        LOG.exception("Could not save import failure report")
+
+
+def failures_for(username, job_id, limit=1000):
+    with connect() as db:
+        job = db.execute("SELECT id,failed FROM import_jobs WHERE id=? AND owner=?",
+                         (job_id, owner_of(username))).fetchone()
+        if job is None:
+            raise ValueError("Задание импорта не найдено")
+        rows = db.execute(
+            "SELECT path,reason,message FROM import_failures "
+            "WHERE job_id=? ORDER BY created,path LIMIT ?",
+            (job_id, min(max(int(limit), 1), 5000))).fetchall()
+        categories = db.execute(
+            "SELECT reason,COUNT(*) AS total FROM import_failures "
+            "WHERE job_id=? GROUP BY reason ORDER BY total DESC", (job_id,)).fetchall()
+        return {"job_id": job_id, "failed": job["failed"],
+                "recorded": sum(row["total"] for row in categories),
+                "categories": {row["reason"]: row["total"] for row in categories},
+                "items": [dict(row) for row in rows]}
+
+
+def transient_import_error(exc):
+    category, _ = classify_import_error(exc)
+    return category == "SMB_CONNECTION"
+
+
 def jobs(username):
     # Expired running status is not assumed successful after an addon restart.
     owner = owner_of(username)
@@ -760,12 +916,34 @@ def release(owner):
         ACTIVE.discard(owner)
 
 
-def process_takeout(zip_path, conn, username, share, folder, job):
-    """Import a single Takeout ZIP; repeat for each archive part."""
-    processed = imported = skipped = failed = 0
+def process_takeout(zip_path, conn, username, share, folder, job, reconnect=None):
+    """Import archive entries, record each failure and reconnect after SMB loss.
+
+    A disconnected SMB connection must not cause all remaining files to fail:
+    reopen a user-authenticated session and retry a transient failure twice.
+    """
+    processed = imported = skipped = failed = dated = missing_dates = restored_dates = 0
     existing = {e.filename for e in conn.listPath(share, "/" + folder, timeout=30)}
     pending = {}
-    with zipfile.ZipFile(zip_path) as archive:
+    active_conn = conn
+    with ExitStack() as active_sessions, zipfile.ZipFile(zip_path) as archive:
+        def flush_dates():
+            nonlocal active_conn
+            if not pending:
+                return
+            for attempt in range(3):
+                try:
+                    index_imported_batch(active_conn, username, share, folder, pending)
+                    pending.clear()
+                    return
+                except Exception as exc:
+                    if not transient_import_error(exc) or reconnect is None or attempt == 2:
+                        LOG.exception("Unable to index imported Takeout dates; %d remain pending",
+                                      len(pending))
+                        return
+                    active_conn._nasweb_failed = True
+                    active_conn = active_sessions.enter_context(reconnect())
+
         members = archive.infolist()
         if len(members) > MAX_ENTRIES:
             raise ValueError("В архиве слишком много файлов")
@@ -783,29 +961,49 @@ def process_takeout(zip_path, conn, username, share, folder, job):
                     raise ValueError("Файл превышает лимит 4 ГБ")
                 base = entry.filename.rpartition("/")[2]
                 taken = None
-                for candidate in sidecar_candidates(entry):
-                    entry_json = sidecars.get(candidate)
-                    if entry_json:
-                        with archive.open(entry_json) as handle:
-                            taken = taken_from_json(handle.read(MAX_JSON + 1))
-                        if taken:
+                taken, _ = takeout_sidecar_for(archive, entry, sidecars)
+                already_imported = _fast_known_archive_file(
+                    archive, entry, username, share, folder, existing)
+                if already_imported is not None:
+                    if taken:
+                        pending[already_imported] = taken
+                    result = "skipped"
+                else:
+                    for attempt in range(3):
+                        try:
+                            with archive.open(entry) as stream:
+                                result = upload_media(active_conn, username, share, folder, base,
+                                                      stream, existing, taken=taken,
+                                                      limit=entry.file_size + 1, pending=pending)
                             break
-                with archive.open(entry) as stream:
-                    result = upload_media(conn, username, share, folder, base, stream,
-                                          existing, taken=taken, limit=entry.file_size + 1,
-                                          pending=pending)
+                        except Exception as exc:
+                            if not transient_import_error(exc) or reconnect is None or attempt == 2:
+                                raise
+                            # The pool should discard the original broken session.
+                            active_conn._nasweb_failed = True
+                            LOG.warning("Reconnecting SMB during Takeout import job=%s attempt=%d",
+                                        job[:10], attempt + 1)
+                            # Newly acquired connections are scoped to this archive.
+                            active_conn = active_sessions.enter_context(reconnect())
                 imported += (result == "imported")
                 skipped += (result == "skipped")
-            except Exception:
+                dated += bool(taken)
+                missing_dates += not bool(taken)
+                if result == "skipped" and taken:
+                    restored_dates += 1
+            except Exception as exc:
                 failed += 1
+                record_import_failure(job, entry.filename, exc)
             processed += 1
             job_update(job, processed=processed, imported=imported, skipped=skipped, failed=failed)
-    try:
-        index_imported_batch(conn, username, share, folder, pending)
-    except Exception:
-        LOG.exception("Unable to index imported Takeout photos; SMB files are intact")
-    return {"imported": imported, "skipped": skipped, "failed": failed}
-
+            # Do not defer all date writes until the very end: a network
+            # disconnect late in a large Takeout previously lost every date.
+            if len(pending) >= 400:
+                flush_dates()
+        flush_dates()
+    return {"imported": imported, "skipped": skipped, "failed": failed,
+            "dated": dated, "missing_dates": missing_dates, "restored_dates": restored_dates,
+            "pending_dates": len(pending)}
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
@@ -852,8 +1050,10 @@ def process_picked(items, conn, username, opts, share, folder, job):
                                           pending=pending)
                     imported += (result == "imported")
                     skipped += (result == "skipped")
-        except Exception:
+        except Exception as exc:
             failed += 1
+            record_import_failure(job, item.get("mediaFile", {}).get("filename") or
+                                  item.get("id", "unknown"), exc)
         processed += 1
         job_update(job, processed=processed, imported=imported, skipped=skipped, failed=failed)
     try:
