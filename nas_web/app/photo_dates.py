@@ -1,4 +1,4 @@
-"""Small persistent EXIF date index. JPEG metadata is read from file headers only."""
+"""Small persistent EXIF date index. HEIC is read with a strict file-size limit."""
 import hashlib
 import io
 import re
@@ -7,6 +7,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from PIL import Image
+from . import heif_support  # Enable HEIC/HEIF EXIF with the same Pillow decoder.
 
 DB = Path("/data/nasweb-auth/photo-dates.sqlite3")
 LOCK = threading.RLock()
@@ -96,3 +97,29 @@ def from_jpeg_header(conn, share, path, file_size):
     for block in conn.iter_range(share, "/" + path, 0, min(int(file_size), HEADER_LIMIT)):
         chunks.append(block)
     return parse_exif(io.BytesIO(b"".join(chunks)))
+
+
+# HEIC metadata often lives outside the first megabyte in ISO-BMFF containers.
+# Do not download unbounded image data during the incremental EXIF scan.
+MAX_HEIF_EXIF_BYTES = 25 * 1024 * 1024
+
+def from_photo_file(conn, share, path, file_size):
+    """Read header-only for common photos; bounded complete HEIC for EXIF.
+    
+    Missing dates fall back to SMB modification time in gallery_index. The
+    original bytes and metadata on the NAS are never modified.
+    """
+    if not path.lower().endswith((".heic", ".heif")):
+        return from_jpeg_header(conn, share, path, file_size)
+    length = int(file_size)
+    if length <= 0 or length > MAX_HEIF_EXIF_BYTES:
+        return None
+    source = io.BytesIO()
+    for block in conn.iter_range(share, "/" + path, 0, length):
+        if source.tell() + len(block) > MAX_HEIF_EXIF_BYTES:
+            return None
+        source.write(block)
+    if source.tell() != length:
+        return None
+    source.seek(0)
+    return parse_exif(source)
