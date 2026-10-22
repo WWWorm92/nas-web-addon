@@ -444,6 +444,7 @@ jobs:
       - name: JavaScript syntax
         run: |
           node --check nas_web/app/app.js
+          node --check nas_web/app/nas-icons.js
           node --check nas_web/app/admin.js
           sh -n nas_web/entrypoint.sh
       - name: Thumbnail priority and cancellation tests
@@ -472,6 +473,8 @@ jobs:
         run: node nas_web/tests/file_manager_ui.test.cjs
       - name: Large-folder virtual scrolling and cache regressions
         run: node nas_web/tests/file_virtual_scroll.test.cjs
+      - name: Unified icon assets and controls regression
+        run: node nas_web/tests/nas_icons_ui.test.cjs
       - name: Mobile file header and breadcrumb sticky group
         run: node nas_web/tests/mobile_file_header.test.cjs
       - name: Folder photo fullscreen order matches file manager
