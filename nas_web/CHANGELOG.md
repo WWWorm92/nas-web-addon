@@ -1,3 +1,11 @@
+## 0.22.39
+
+- Remove the native **"Перейти к месяцу"** dropdown from the gallery. Replace it with a compact, horizontally scrollable **month timeline**: drag/swipe on mobile, mouse wheel, arrow buttons or keyboard on desktop. Each date chip shows the month and number of photos.
+- Retain the year shortcuts and the **Все фото** reset, with the month strip scoped to the selected year (or the newest year when none is selected) so large galleries spanning decades stay navigable.
+- Expose year and month date scrolling directly on the mobile gallery rather than burying navigation inside Settings. Keep zoom and indexing preferences in the existing Settings menu.
+- Highlight the active month and year, automatically center the selected month, and preserve the strip's horizontal position across photo-grid redraws.
+- Preserve existing month offsets, safe token-based pagination, SMB access controls, EXIF scanning and index state. Add interactive JS regressions for date navigation, active state, scrolling continuity and returning to all photos.
+
 ## 0.22.38
 
 - Fix gallery year navigation trapping users in paginated year/month mode. Add an always-visible **Все фото** chip before the year shortcuts and a contextual **← Все фото** button next to the month picker after jumping.
