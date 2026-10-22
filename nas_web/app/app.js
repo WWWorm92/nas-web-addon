@@ -402,7 +402,8 @@ function setupVideoPlayback(video,f){
   const quick=document.createElement('div');quick.className='videoQuickActions';
   function button(caption,title,run){
     const btn=document.createElement('button');btn.type='button';
-    btn.textContent=caption;btn.title=title;btn.setAttribute('aria-label',title);
+    NASIcons.set(btn,caption==='↶ 10'?'rotate-ccw':caption==='10 ↷'?'rotate-cw':'maximize',caption==='⛶'?null:'10');
+    btn.title=title;btn.setAttribute('aria-label',title);
     btn.onclick=run;quick.append(btn);return btn;
   }
   const seek=seconds=>{
@@ -493,7 +494,7 @@ if(ext(f.name)==='mov'){
 box.append(visual);
 node.src='/api/video?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/')});
 }if(node.tagName==='IFRAME'||node.tagName==='IMG')box.append(node);renderFilmstrip()}
-function renderFilmstrip(){const strip=el('filmstrip');if(gallery.length<2){strip.classList.add('hidden');return}strip.classList.remove('hidden');const from=Math.max(0,previewIndex-5),to=Math.min(gallery.length,previewIndex+6),fragment=document.createDocumentFragment();for(let i=from;i<to;i++){const f=gallery[i];let b=filmNodes.get(i);if(!b){b=document.createElement('button');b.type='button';b.setAttribute('aria-label','Фотография '+(i+1)+' из '+gallery.length);if(isPhoto(f)){const img=document.createElement('img');img.loading='lazy';img.alt='';img.src=imageURL(f,false,f.folder!==undefined?f.folder:shownDir,f.share||shownShare);b.append(img)}else{const mark=document.createElement('span');mark.textContent='▣';b.append(mark)}b.onclick=()=>{if(previewIndex!==i){const movement=i>previewIndex?1:-1;previewIndex=i;showPreview(movement)}};filmNodes.set(i,b)}b.classList.toggle('active',i===previewIndex);fragment.append(b)}strip.replaceChildren(fragment);const active=strip.querySelector('button.active');if(active)requestAnimationFrame(()=>active.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'}))}
+function renderFilmstrip(){const strip=el('filmstrip');if(gallery.length<2){strip.classList.add('hidden');return}strip.classList.remove('hidden');const from=Math.max(0,previewIndex-5),to=Math.min(gallery.length,previewIndex+6),fragment=document.createDocumentFragment();for(let i=from;i<to;i++){const f=gallery[i];let b=filmNodes.get(i);if(!b){b=document.createElement('button');b.type='button';b.setAttribute('aria-label','Фотография '+(i+1)+' из '+gallery.length);if(isPhoto(f)){const img=document.createElement('img');img.loading='lazy';img.alt='';img.src=imageURL(f,false,f.folder!==undefined?f.folder:shownDir,f.share||shownShare);b.append(img)}else{const mark=document.createElement('span');mark.append(NASIcons.create('image'));b.append(mark)}b.onclick=()=>{if(previewIndex!==i){const movement=i>previewIndex?1:-1;previewIndex=i;showPreview(movement)}};filmNodes.set(i,b)}b.classList.toggle('active',i===previewIndex);fragment.append(b)}strip.replaceChildren(fragment);const active=strip.querySelector('button.active');if(active)requestAnimationFrame(()=>active.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'}))}
 function stepPreview(offset){if(zoom>1||!gallery.length)return;const next=previewIndex+offset;if(next<0||next>=gallery.length)return;previewIndex=next;showPreview(offset)}
 function isMobileLayout(){return window.matchMedia('(max-width:760px)').matches}
 function closeMobileSheet(){
@@ -2634,7 +2635,8 @@ async function profileBrowseFolder(share,path){
     for(const folder of folders){
       const next=[path,folder.name].filter(Boolean).join('/');
       const button=document.createElement('button');button.type='button';
-      button.textContent='▱  '+folder.name;
+      if(typeof NASIcons!=='undefined')NASIcons.set(button,'folder',folder.name);
+      else button.textContent='▱  '+folder.name;
       button.onclick=()=>profileBrowseFolder(share,next);
       container.append(button);
     }
@@ -3069,12 +3071,13 @@ setInterval(()=>{
 },6500);
 
 
-const theme=localStorage.getItem('nas_theme')||'dark';document.documentElement.dataset.theme=theme;el('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('nas_theme',t)};
+const theme=localStorage.getItem('nas_theme')||'dark';document.documentElement.dataset.theme=theme;el('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('nas_theme',t);NASIcons.set(el('theme'),t==='dark'?'moon':'sun',null)};
 // Return to the profile after Google's top-level OAuth redirect.
 const oauthResult=new URLSearchParams(window.location.search).get('nas_google');
 if(oauthResult){
   window.history.replaceState({},'',window.location.pathname);
 }
 NASIcons.applyStatic();
+NASIcons.set(el('theme'),document.documentElement.dataset.theme==='dark'?'moon':'sun',null);
 const startupLoginGeneration=loginGeneration;
 api('/api/me').then(user=>{if(loginGeneration===startupLoginGeneration){showApp(user);if(oauthResult){openProfile().then(()=>importNotice(oauthResult==='connected'?'Google Фото подключён':'Google OAuth не завершён'))}}}).catch(()=>{if(loginGeneration===startupLoginGeneration)showLogin()});
