@@ -87,7 +87,9 @@ assert.deepEqual(calls.pop(),['month','2025-11']);
 assert.ok(!el('galleryYearReset').classList.contains('hidden'));
 const previousChips=el('galleryDateStrip').children;
 el('galleryDateStrip').scrollLeft=40;
+el('galleryYears').scrollLeft=155;
 ui.renderGalleryYears([]);
+assert.equal(el('galleryYears').scrollLeft,155,'years remain scrolled to selected history');
 assert.equal(el('galleryDateStrip').children[0],previousChips[0],
   'virtual photo updates must not recreate month pills');
 assert.equal(el('galleryDateStrip').scrollLeft,40,
