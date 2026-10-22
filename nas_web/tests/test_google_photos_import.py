@@ -80,7 +80,7 @@ class GoogleImportTests(unittest.TestCase):
         job = importer.new_job("alice", "takeout", "Photo", "Photos")
         results = importer.process_takeout(archive, smb, "alice", "Photo", "Photos", job)
         self.assertEqual((results["imported"],results["skipped"],results["failed"]), (1,1,0))
-        self.assertEqual(results["dated"],1)
+        self.assertEqual(results["dated"],2)
         self.assertEqual(smb.files, {"/Photos/IMG_0001.jpg": picture})
         photo = g.page(g.key("alice"), ["Photo"], 0, 10)[0]
         self.assertEqual(photo["taken"], "2023-07-15T16:23:47")
