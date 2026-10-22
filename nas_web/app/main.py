@@ -1105,12 +1105,17 @@ def _gallery_background(u, owner, shares):
             if len(skipped)>=100:
                 logger.info("Gallery EXIF batch paused after 100 access-denied files")
                 break
-            if state["complete"] and not state["dates_available"]:
-                # Outstanding items under ACL cooldown are NOT actionable;
-                # polling should stop until access or cooldown changes.
-                logger.info("Gallery EXIF scan finished: %d inaccessible files on cooldown",
-                            state["dates_blocked"])
-                break
+            if state["complete"]:
+                # The public counters intentionally exclude hidden folders,
+                # but the EXIF worker must index ALL accessible SMB photos.
+                # Never use state["dates_available"] as a stop signal here:
+                # it can reach zero while hidden folders still need EXIF.
+                with gallery_index.LOCK, gallery_index.connect() as db:
+                    remaining = gallery_index.next_unchecked(db, owner, shares, skipped)
+                if remaining is None:
+                    logger.info("Gallery EXIF scan finished: no actionable files "
+                                "(hidden folders included, ACL cooldown respected)")
+                    break
             time.sleep(0.3)
     except Exception:
         logger.exception("Background gallery indexing failed")
