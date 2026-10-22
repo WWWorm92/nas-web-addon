@@ -261,6 +261,11 @@ def home():
 def js():
     return Response((ROOT / "app.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
+@app.get("/static/nas-icons.js")
+def icon_script():
+    """Locally bundled outline icon library; no client CDN requests."""
+    return Response((ROOT / "nas-icons.js").read_text(encoding="utf-8"), media_type="application/javascript")
+
 @app.get("/static/icon.svg")
 def favicon_svg():
     return FileResponse(ROOT / "icon.svg", media_type="image/svg+xml")
@@ -1562,8 +1567,10 @@ async def upload(request: Request, share: str = Form(...), path: str = Form(""),
                                 item.file_size, item.last_write_time)
                     except Exception:
                         logger.exception("Unable to update gallery after upload")
-        except Exception:
-            fail(403, "Нет доступа на запись")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            smb_action_error("upload", exc)
     return {"ok": True, "size": size}
 
 @app.post("/api/mkdir")
