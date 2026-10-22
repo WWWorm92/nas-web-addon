@@ -1,3 +1,11 @@
+## 0.22.47
+
+- Fix oversized mobile bottom navigation labels introduced by the unified SVG icon update. Use semantic `small` labels inside the five mobile navigation buttons, instead of styling them as generic `span` elements inherited from the 22px icon-sized buttons.
+- Ensure captions are 10px, centered, single-line and clipped within their own grid columns; preserve accessible button names and touch targets.
+- Restore the blue accent background exclusively to the Add (+) icon rather than accidentally giving that background to its text label.
+- Correct the sort icon to a conventional up/down arrow pictogram.
+- Add regression checks for compact mobile nav labels and isolation of the Add label from legacy `.mobileAdd span` rules.
+
 ## 0.22.46
 
 - Protect existing NAS files during photo/file uploads: upload into a random, create-only temporary `.nasweb-upload-<128-bit-token>.part` file inside the destination SMB folder, check the remote stored byte count against the locally received file, then publish with a single same-directory SMB2/3 rename (ReplaceIfExists).

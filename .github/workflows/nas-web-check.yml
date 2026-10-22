@@ -473,6 +473,8 @@ jobs:
         run: node nas_web/tests/file_manager_ui.test.cjs
       - name: Large-folder virtual scrolling and cache regressions
         run: node nas_web/tests/file_virtual_scroll.test.cjs
+      - name: Mobile bottom navigation SVG captions stay compact
+        run: node nas_web/tests/mobile_nav_icons.test.cjs
       - name: Unified icon assets and controls regression
         run: node nas_web/tests/nas_icons_ui.test.cjs
       - name: Mobile file header and breadcrumb sticky group
