@@ -232,6 +232,23 @@ not the already imported SMB files. Google Picker image downloads use `=d`
 video downloads use Google's `=dv` high-quality transcoded version. Takeout
 is preferred when original file fidelity and full metadata are priorities.
 
+### Repair dates and diagnose incomplete Takeout imports
+
+If the Takeout ZIP was processed by NAS Web 0.22.34 or earlier and photos
+were placed under the ZIP import date, upgrade to **0.22.35**, then select
+the **same original Takeout ZIP** and the **same SMB destination folder**
+in **Profile → Import from Google Photos**. You do not need to clear or
+rebuild the gallery. SHA-256 checks identify previously imported media so
+they are not copied again; corrected JSON-sidecar lookup can supply their
+original capture dates to the existing gallery index. Gallery EXIF scanning
+is separate and will continue automatically for media that needs it.
+
+For imports completed after the upgrade, **Show errors** on the import job
+lists failed filenames and error categories; the full report can be saved
+as JSON. Prior job logs only contain a count and the temporary ZIPs were
+already deleted, so an old report cannot reconstruct its individual failures.
+Retrying the original archive will reattempt files that did not transfer.
+
 ### Import limitations
 
 - Only users with existing Simple NAS SMB write permission can import; no
