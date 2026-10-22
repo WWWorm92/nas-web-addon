@@ -862,7 +862,7 @@ def record_import_failure(job_id, path, exc):
             db.execute(
                 "INSERT OR REPLACE INTO import_failures VALUES (?,?,?,?,?)",
                 (job_id, str(path)[:750], reason, message, time.time()))
-        LOG.warning("Takeout import file failed: job=%s class=%s error=%s",
+        LOG.warning("Google import file failed: job=%s class=%s error=%s",
                     job_id[:10], reason, type(exc).__name__)
     except Exception:
         LOG.exception("Could not save import failure report")
@@ -1050,8 +1050,10 @@ def process_picked(items, conn, username, opts, share, folder, job):
                                           pending=pending)
                     imported += (result == "imported")
                     skipped += (result == "skipped")
-        except Exception:
+        except Exception as exc:
             failed += 1
+            record_import_failure(job, item.get("mediaFile", {}).get("filename") or
+                                  item.get("id", "unknown"), exc)
         processed += 1
         job_update(job, processed=processed, imported=imported, skipped=skipped, failed=failed)
     try:
