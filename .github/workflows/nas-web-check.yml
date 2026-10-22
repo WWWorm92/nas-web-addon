@@ -479,6 +479,9 @@ jobs:
         run: node nas_web/tests/mobile_file_header.test.cjs
       - name: Folder photo fullscreen order matches file manager
         run: node nas_web/tests/folder_preview_order.test.cjs
+      - name: Atomic SMB uploads, failure recovery and overwrite safety
+        run: |
+          PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_atomic_upload*.py' -v
       - name: Upload destination selection on mobile and desktop
         run: node nas_web/tests/upload_destination_flow.test.cjs
       - name: Upload transfer progress and cancellation tests

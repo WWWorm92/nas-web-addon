@@ -15,7 +15,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
-from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth, pdf_frame_policy, video_posters, profiles, google_photos_import
+from . import thumb_cache, media_convert, smb_pool, remember_auth, photo_dates, gallery_index, collections, admin_auth, pdf_frame_policy, video_posters, profiles, google_photos_import, atomic_upload
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse, RedirectResponse
 from .smb_compat import SMBConnection
 from starlette.background import BackgroundTask
@@ -1544,6 +1544,10 @@ async def upload(request: Request, share: str = Form(...), path: str = Form(""),
     check_origin(request)
     u = protected(request, x_csrf_token)
     filename = name_ok(file.filename or "")
+    # Internal .part names cannot be reached through the normal upload API.
+    if atomic_upload.is_stage_name(filename):
+        fail(400, "Служебное имя файла недоступно для загрузки")
+    folder = path_ok(path)
     size = 0
     with tempfile.TemporaryFile() as tmp:
         while chunk := await file.read(1024 * 1024):
@@ -1551,11 +1555,13 @@ async def upload(request: Request, share: str = Form(...), path: str = Form(""),
             if size > LIMIT:
                 fail(413, "Превышен лимит загрузки")
             tmp.write(chunk)
-        tmp.seek(0)
         try:
             with smb(u) as conn:
                 check_share(conn, share)
-                conn.storeFile(share, full(path, filename), tmp, timeout=600)
+                # Stage in the destination directory; verify the remote byte
+                # count before a single server-side atomic replacement.
+                # Never stream into or delete a pre-existing original file.
+                atomic_upload.publish(conn, share, folder, filename, tmp, size)
                 if filename.lower().endswith(gallery_index.IMAGE_EXTS):
                     try:
                         parent = path_ok(path)
@@ -1569,6 +1575,8 @@ async def upload(request: Request, share: str = Form(...), path: str = Form(""),
                         logger.exception("Unable to update gallery after upload")
         except HTTPException:
             raise
+        except atomic_upload.UploadSizeMismatch:
+            fail(502, "SMB сохранил неполный файл. Оригинал не перезаписан")
         except Exception as exc:
             smb_action_error("upload", exc)
     return {"ok": True, "size": size}
