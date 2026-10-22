@@ -1,3 +1,9 @@
+## 0.22.42
+
+- Fix full-screen photo viewer displaying folder photos in seemingly random order compared to the file manager. The viewer previously used the raw SMB listing while the folder UI applied name/date/size sorting.
+- Share the same visible folder item order between the regular grid/list and its full-screen photo filmstrip, including active folder search filters; preserve the separate date sort used by folder gallery mode.
+- Keep the All Photos gallery and single-video playback behavior unchanged, and add a regression for folder list sorting and fullscreen navigation.
+
 ## 0.22.41
 
 - Fix intermittent missing destination dialog when selecting photos, especially large iPhone/iCloud batches: choose the SMB share/folder **before** opening the native file picker. The iOS picker is opened synchronously from the confirm button gesture.
