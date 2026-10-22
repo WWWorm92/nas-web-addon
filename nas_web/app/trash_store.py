@@ -95,6 +95,28 @@ def record_move(user, share, trash_name, original_path, directory, now=None):
                    "(SELECT DISTINCT owner FROM trash_items)")
 
 
+def record_moves(user, share, moves):
+    """Record one bulk operation in one SQLite transaction and one encryption."""
+    if not moves:
+        return
+    now = time.time()
+    with LOCK, connect() as db:
+        owner = remember_user(db, user)
+        db.executemany("""
+            INSERT INTO trash_items
+                (share,trash_name,original_path,deleted_at,directory,owner)
+            VALUES(?,?,?,?,?,?)
+            ON CONFLICT(share,trash_name) DO UPDATE SET
+                original_path=excluded.original_path,
+                deleted_at=excluded.deleted_at,
+                directory=excluded.directory,
+                owner=excluded.owner
+        """, [(share, m["trash_name"], m["path"], now,
+                int(m["directory"]), owner) for m in moves])
+        db.execute("DELETE FROM cleanup_credentials WHERE owner NOT IN "
+                   "(SELECT DISTINCT owner FROM trash_items)")
+
+
 def register_legacy(user, share, entries, now=None):
     """Track old bin items at first view, without guessing old deletion times."""
     now = time.time() if now is None else float(now)
