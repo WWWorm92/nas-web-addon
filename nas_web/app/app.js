@@ -402,7 +402,8 @@ function setupVideoPlayback(video,f){
   const quick=document.createElement('div');quick.className='videoQuickActions';
   function button(caption,title,run){
     const btn=document.createElement('button');btn.type='button';
-    NASIcons.set(btn,caption==='↶ 10'?'rotate-ccw':caption==='10 ↷'?'rotate-cw':'maximize',caption==='⛶'?null:'10');
+    if(typeof NASIcons!=='undefined')NASIcons.set(btn,caption==='↶ 10'?'rotate-ccw':caption==='10 ↷'?'rotate-cw':'maximize',caption==='⛶'?null:'10');
+    else btn.textContent=caption;
     btn.title=title;btn.setAttribute('aria-label',title);
     btn.onclick=run;quick.append(btn);return btn;
   }
