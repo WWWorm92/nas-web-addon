@@ -38,7 +38,8 @@ for(const id of ids){
 }
 assert.equal(nodes.get('folder').children[1].tagName,'span',
   'Desktop text buttons must keep normal inline label elements');
-const style=page.slice(0,page.indexOf('</style>'));
+// index.html uses more than one style block; inspect the final appended icon CSS.
+const style=page.slice(0,page.lastIndexOf('</style>'));
 const bottomRule=style.match(/#app #mobileNav\.mobileNav button\.hasNasIcon \.nasIconLabel\s*\{([^}]+)\}/);
 assert.ok(bottomRule,'Scoped nav label rule exists');
 const decl=bottomRule[1];
