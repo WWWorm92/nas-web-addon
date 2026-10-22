@@ -152,7 +152,17 @@ window.NASIcons=(()=>{
    const dialogs=document.getElementById('dialogIcon');
    if(dialogs)set(dialogs,'folder',null);
    const takeout=document.querySelector('.profileImportUpload');
-   if(takeout)set(takeout,'upload','Загрузить ZIP-архивы');
+   if(takeout){
+     const input=takeout.querySelector('input');
+     if(input){
+       const text=document.createElement('span');
+       text.textContent='Загрузить ZIP-архивы';
+       takeout.classList.add('hasNasIcon');
+       takeout.replaceChildren(create('upload'),text,input);
+     }
+   }
+   const googlePicker=document.getElementById('profileGooglePickerLink');
+   if(googlePicker)set(googlePicker,'external-link','Открыть окно выбора Google Фото');
  }
  return {create,set,decorateLabel,applyStatic,paths};
 })();
