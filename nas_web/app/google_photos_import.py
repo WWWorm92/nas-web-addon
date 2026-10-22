@@ -356,15 +356,56 @@ def taken_from_picker(value):
 
 
 def sidecar_candidates(entry):
-    """Google Takeout uses multiple sidecar suffixes and truncation schemes."""
-    name = entry.filename
-    suffixes = (".supplemental-metadata.json", ".supplemental-m.json", ".json")
-    candidates = [name + suffix for suffix in suffixes]
-    # Newer Takeout truncates long filenames to 46-51 characters before suffix.
-    for limit in (46, 47, 48, 49, 50, 51):
-        for suffix in suffixes[:2]:
-            candidates.append(name[:limit] + suffix)
-    return candidates
+    """Common Takeout JSON names, including Google's 51-character *total* cap.
+
+    Google truncates the complete "<media>.supplemental-metadata" prefix,
+    not the media filename alone. Earlier NAS Web versions got this backwards,
+    so almost every long-suffix sidecar was missed.
+    """
+    path = entry.filename
+    folder, sep, name = path.rpartition("/")
+    prefix = folder + "/" if sep else ""
+    stem, ext = os.path.splitext(name)
+    suffixes = (".supplemental-metadata", ".supplemental-m", "")
+    candidates = []
+    for suffix in suffixes:
+        full_base = name + suffix
+        candidates.append(prefix + full_base + ".json")
+        # Takeout limits the final sidecar name to ~51 characters.
+        for limit in (46, 47, 48, 49, 50, 51):
+            if len(full_base) > limit:
+                candidates.append(prefix + full_base[:limit] + ".json")
+    # Duplicates can put (N) before the media extension, but after the JSON
+    # supplemental suffix. We test these only when the number is unambiguous.
+    duplicate = re.fullmatch(r"(.*)\((\d+)\)", stem)
+    if duplicate and ext:
+        original = duplicate.group(1) + ext
+        number = "(" + duplicate.group(2) + ")"
+        for suffix in suffixes:
+            base = original + suffix + number
+            candidates.append(prefix + base + ".json")
+            for limit in (46, 47, 48, 49, 50, 51):
+                if len(base) > limit:
+                    candidates.append(prefix + base[:limit] + ".json")
+    return list(dict.fromkeys(candidates))
+
+
+def takeout_sidecar_for(archive, entry, sidecars):
+    """Return (date, matched) without guessing when a sidecar is ambiguous."""
+    found = []
+    for candidate in sidecar_candidates(entry):
+        metadata = sidecars.get(candidate)
+        if not metadata:
+            continue
+        with archive.open(metadata) as handle:
+            taken = taken_from_json(handle.read(MAX_JSON + 1))
+        if taken:
+            found.append((candidate, taken))
+    if found:
+        # Multiple different timestamps are ambiguous; never assign one at random.
+        unique = {taken for _, taken in found}
+        return (found[0][1], True) if len(unique) == 1 else (None, False)
+    return None, False
 
 
 class HashReader:
@@ -871,13 +912,7 @@ def process_takeout(zip_path, conn, username, share, folder, job, reconnect=None
                     raise ValueError("Файл превышает лимит 4 ГБ")
                 base = entry.filename.rpartition("/")[2]
                 taken = None
-                for candidate in sidecar_candidates(entry):
-                    entry_json = sidecars.get(candidate)
-                    if entry_json:
-                        with archive.open(entry_json) as handle:
-                            taken = taken_from_json(handle.read(MAX_JSON + 1))
-                        if taken:
-                            break
+                taken, _ = takeout_sidecar_for(archive, entry, sidecars)
                 for attempt in range(3):
                     try:
                         with archive.open(entry) as stream:
