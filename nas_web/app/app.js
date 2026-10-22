@@ -588,7 +588,9 @@ function openMoreMenu(){
   const user=document.createElement('strong');user.textContent=username;
   identity.append(caption,user);
   const arrow=document.createElement('span');arrow.className='moreMenuArrow';
-  arrow.append(NASIcons.create('chevron-right'));arrow.setAttribute('aria-hidden','true');
+  if(typeof NASIcons!=='undefined')arrow.append(NASIcons.create('chevron-right'));
+  else arrow.textContent='›';
+  arrow.setAttribute('aria-hidden','true');
   profile.append(avatar,identity,arrow);
   container.append(profile);
 
@@ -610,7 +612,9 @@ function openMoreMenu(){
       }
       if(!item.danger){
         const chevron=document.createElement('span');
-        chevron.className='moreMenuChevron';chevron.append(NASIcons.create('chevron-right'));
+        chevron.className='moreMenuChevron';
+        if(typeof NASIcons!=='undefined')chevron.append(NASIcons.create('chevron-right'));
+        else chevron.textContent='›';
         chevron.setAttribute('aria-hidden','true');row.append(chevron);
       }
       list.append(row);
@@ -1745,7 +1749,8 @@ function chooseUploadDestination(files,onConfirmed=null){
     };
     overlay.onclick=e=>{if(e.target===overlay)close(null)};
     const addFolder=(name,path)=>{
-      const btn=document.createElement('button');btn.type='button';NASIcons.set(btn,'folder',name);
+      const btn=document.createElement('button');btn.type='button';if(typeof NASIcons!=='undefined')NASIcons.set(btn,'folder',name);
+      else btn.textContent='📁 '+name;
       btn.style.cssText='text-align:left;padding:10px;border-radius:9px;overflow-wrap:anywhere';
       btn.onclick=()=>{folder=path;load()};listing.append(btn);
     };
@@ -1812,7 +1817,8 @@ function notifyUploadJobs(force=false){
   uploadPaintAt=now;
   el('app').classList.toggle('nasUploadsActive',uploadBatchBusy);
   const active=uploadQueue.filter(uploadCanCancel).length;
-  NASIcons.set(el('uploadCenterButton'),'upload',active?'Загрузки: '+active:'Центр загрузок');
+  if(typeof NASIcons!=='undefined')NASIcons.set(el('uploadCenterButton'),'upload',active?'Загрузки: '+active:'Центр загрузок');
+  else el('uploadCenterButton').textContent=active?'⇧ Загрузки: '+active:'⇧ Центр загрузок';
   document.dispatchEvent(new Event('nas-upload-progress'));
 }
 function setUploadStage(job,stage,progress=job.progress){
@@ -1984,7 +1990,8 @@ async function showDestinationFolders(){
     upper.onclick=()=>{destinationDir=destinationDir.split('/').slice(0,-1).join('/');showDestinationFolders()};
     box.append(upper);
     for(const folder of data.items.filter(x=>x.directory).sort((a,b)=>a.name.localeCompare(b.name,'ru'))){
-      const btn=document.createElement('button');NASIcons.set(btn,'folder',folder.name);
+      const btn=document.createElement('button');if(typeof NASIcons!=='undefined')NASIcons.set(btn,'folder',folder.name);
+      else btn.textContent='▱  '+folder.name;
       btn.onclick=()=>{destinationDir=[destinationDir,folder.name].filter(Boolean).join('/');showDestinationFolders()};
       box.append(btn);
     }
