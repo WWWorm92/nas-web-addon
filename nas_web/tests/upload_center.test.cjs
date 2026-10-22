@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const source=fs.readFileSync('nas_web/app/app.js','utf8');
 const start=source.indexOf('const uploadQueue=[];');
-const end=source.indexOf('async function uploadFiles(files){',start);
+const end=source.indexOf('async function uploadFiles(files,initialTarget=null){',start);
 assert.ok(start>0&&end>start,'Upload helpers exist');
 const sent=[];
 class XHR{
