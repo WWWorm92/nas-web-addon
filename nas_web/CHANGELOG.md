@@ -1,3 +1,12 @@
+## 0.22.45
+
+- Completed a source-level code review covering FastAPI, SMB operations, credentials and administrator, indexing/EXIF/HEIC, imports, recycle bin, browser app and CI. Findings and open data-integrity risks are in CODE_REVIEW_2026-10-23.md.
+- Replaced system-dependent Unicode/emoji controls and inconsistent inline artwork with a cohesive self-hosted SVG outline set, unified in the file manager, image/video viewer, all-photo gallery, mobile navigation, uploads, album actions, profile, Google Photo import and administrator.
+- Centralized icon definitions in app/nas-icons.js with a proper static route, consistent strokes, colors, touch sizes and accessible labels. No external icon font or CDN. Keep native file-input elements and event handlers intact.
+- Updated NAS Web SVG favicon and Home Assistant/PWA PNG icon generator to the same outlined NAS drive language; see ICONS.md for the icon license.
+- Preserve genuine upload failure causes: route SMB errors through smb_action_error rather than responding HTTP 403 for all backend exceptions.
+- Add automated tests for common icon rendering, asset routing, accessibility and file-input preservation, while retaining the previous video, mobile and gallery regressions.
+
 ## 0.22.44
 
 - Add native HEIC/HEIF support for iPhone photos in NAS Web on aarch64 Raspberry Pi and amd64. Install pinned pillow-heif for Pillow 11.3.0; keep originals untouched on SMB.
