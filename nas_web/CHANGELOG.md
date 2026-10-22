@@ -1,3 +1,11 @@
+## 0.22.44
+
+- Add native HEIC/HEIF support for iPhone photos in NAS Web on aarch64 Raspberry Pi and amd64. Install pinned pillow-heif for Pillow 11.3.0; keep originals untouched on SMB.
+- Show HEIC photos in the file manager, fullscreen viewer, filmstrip and all-photo gallery. Decode once on the server to browser-compatible cached WebP thumbnails/previews; large iPhone images up to 55 megapixels are accepted.
+- Include HEIC/HEIF in incremental gallery indexing, background EXIF-date checks, gallery date progress, photo statistics and immediately indexed uploads/Google Photos imports. Existing folders are discovered on the normal incremental refresh without clearing the photo database.
+- Read HEIC/HEIF capture dates via bounded SMB reads (max 25 MiB), falling back to existing file modification date for oversized or undated files. Limit HEIC decode concurrency to one task for Raspberry Pi resource safety.
+- Add regression tests encoding real HEIF photos for decoder, EXIF, bounded SMB read, gallery SQL and WebP previews as well as frontend/backend integration checks.
+
 ## 0.22.43
 
 - Keep the mobile file-manager Back button and SMB breadcrumb path permanently attached to the Files header while scrolling. Previously the header was sticky but the separate path row scrolled underneath it and disappeared.
