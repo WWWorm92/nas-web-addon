@@ -21,7 +21,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -79,6 +79,16 @@ def connect():
         updated REAL NOT NULL
       );
       CREATE INDEX IF NOT EXISTS import_jobs_owner ON import_jobs(owner,updated DESC);
+      CREATE TABLE IF NOT EXISTS import_failures (
+        job_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created REAL NOT NULL,
+        PRIMARY KEY(job_id,path)
+      );
+      CREATE INDEX IF NOT EXISTS import_failures_job ON import_failures(job_id);
+
       CREATE TABLE IF NOT EXISTS imported_media (
         owner TEXT NOT NULL, share TEXT NOT NULL, folder TEXT NOT NULL,
         sha256 TEXT NOT NULL, filename TEXT NOT NULL,
@@ -736,6 +746,79 @@ def mark_interrupted():
         )
 
 
+def classify_import_error(exc):
+    """Produce short, actionable categories without exposing secrets or tracebacks."""
+    name = type(exc).__name__
+    details = str(exc)[:240]
+    value = (name + " " + details).upper()
+    if isinstance(exc, (zipfile.BadZipFile, EOFError, RuntimeError)) and (
+            "ZIP" in value or "CRC" in value or isinstance(exc, zipfile.BadZipFile)):
+        category = "ZIP"
+        hint = "Ошибка чтения или повреждение файла внутри ZIP"
+    elif "ACCESS_DENIED" in value or "LOGON_FAILURE" in value or "PERMISSION" in value:
+        category = "SMB_ACCESS"
+        hint = "SMB запретил запись или изменение файла"
+    elif any(word in value for word in ("NETBIOS", "CONNECTION", "TIMED OUT",
+                                       "TIMEOUT", "BROKEN PIPE", "NETWORK",
+                                       "REMOTE DISCONNECT", "CONNECTION_RESET",
+                                       "SOCKET", "STATUS_IO_TIMEOUT")):
+        category = "SMB_CONNECTION"
+        hint = "Соединение с SMB-хранилищем было прервано"
+    elif "NO_SPACE" in value or "DISK_FULL" in value or "ENOSPC" in value:
+        category = "SMB_SPACE"
+        hint = "Недостаточно места на SMB-диске"
+    elif "НЕдОПУСТИМОЕ" in value or "INVALID" in value or (
+            isinstance(exc, ValueError) and "импортируемого файла" in str(exc)):
+        category = "FILENAME"
+        hint = "Имя файла недопустимо для импорта"
+    elif "ПРЕВЫШАЕТ ЛИМИТ" in value or "LARGE" in value:
+        category = "SIZE"
+        hint = "Файл превышает допустимый размер"
+    else:
+        category = "OTHER"
+        hint = "Не удалось обработать файл"
+    # Avoid leaking raw SMB errors or user secrets in a browser/API response.
+    return category, hint + " (" + name[:55] + ")"
+
+
+def record_import_failure(job_id, path, exc):
+    """Keep per-file diagnostics after ZIP deletion, isolated by job owner."""
+    reason, message = classify_import_error(exc)
+    try:
+        with connect() as db, db:
+            db.execute(
+                "INSERT OR REPLACE INTO import_failures VALUES (?,?,?,?,?)",
+                (job_id, str(path)[:750], reason, message, time.time()))
+        LOG.warning("Takeout import file failed: job=%s class=%s error=%s",
+                    job_id[:10], reason, type(exc).__name__)
+    except Exception:
+        LOG.exception("Could not save import failure report")
+
+
+def failures_for(username, job_id, limit=1000):
+    with connect() as db:
+        job = db.execute("SELECT id,failed FROM import_jobs WHERE id=? AND owner=?",
+                         (job_id, owner_of(username))).fetchone()
+        if job is None:
+            raise ValueError("Задание импорта не найдено")
+        rows = db.execute(
+            "SELECT path,reason,message FROM import_failures "
+            "WHERE job_id=? ORDER BY created,path LIMIT ?",
+            (job_id, min(max(int(limit), 1), 5000))).fetchall()
+        categories = db.execute(
+            "SELECT reason,COUNT(*) AS total FROM import_failures "
+            "WHERE job_id=? GROUP BY reason ORDER BY total DESC", (job_id,)).fetchall()
+        return {"job_id": job_id, "failed": job["failed"],
+                "recorded": sum(row["total"] for row in categories),
+                "categories": {row["reason"]: row["total"] for row in categories},
+                "items": [dict(row) for row in rows]}
+
+
+def transient_import_error(exc):
+    category, _ = classify_import_error(exc)
+    return category == "SMB_CONNECTION"
+
+
 def jobs(username):
     # Expired running status is not assumed successful after an addon restart.
     owner = owner_of(username)
@@ -760,12 +843,17 @@ def release(owner):
         ACTIVE.discard(owner)
 
 
-def process_takeout(zip_path, conn, username, share, folder, job):
-    """Import a single Takeout ZIP; repeat for each archive part."""
+def process_takeout(zip_path, conn, username, share, folder, job, reconnect=None):
+    """Import archive entries, record each failure and reconnect after SMB loss.
+
+    A disconnected SMB connection must not cause all remaining files to fail:
+    reopen a user-authenticated session and retry a transient failure twice.
+    """
     processed = imported = skipped = failed = 0
     existing = {e.filename for e in conn.listPath(share, "/" + folder, timeout=30)}
     pending = {}
-    with zipfile.ZipFile(zip_path) as archive:
+    active_conn = conn
+    with ExitStack() as active_sessions, zipfile.ZipFile(zip_path) as archive:
         members = archive.infolist()
         if len(members) > MAX_ENTRIES:
             raise ValueError("В архиве слишком много файлов")
@@ -790,22 +878,34 @@ def process_takeout(zip_path, conn, username, share, folder, job):
                             taken = taken_from_json(handle.read(MAX_JSON + 1))
                         if taken:
                             break
-                with archive.open(entry) as stream:
-                    result = upload_media(conn, username, share, folder, base, stream,
-                                          existing, taken=taken, limit=entry.file_size + 1,
-                                          pending=pending)
+                for attempt in range(3):
+                    try:
+                        with archive.open(entry) as stream:
+                            result = upload_media(active_conn, username, share, folder, base,
+                                                  stream, existing, taken=taken,
+                                                  limit=entry.file_size + 1, pending=pending)
+                        break
+                    except Exception as exc:
+                        if not transient_import_error(exc) or reconnect is None or attempt == 2:
+                            raise
+                        # The pool should discard the original broken session.
+                        active_conn._nasweb_failed = True
+                        LOG.warning("Reconnecting SMB during Takeout import job=%s attempt=%d",
+                                    job[:10], attempt + 1)
+                        # Newly acquired connections are scoped to this archive.
+                        active_conn = active_sessions.enter_context(reconnect())
                 imported += (result == "imported")
                 skipped += (result == "skipped")
-            except Exception:
+            except Exception as exc:
                 failed += 1
+                record_import_failure(job, entry.filename, exc)
             processed += 1
             job_update(job, processed=processed, imported=imported, skipped=skipped, failed=failed)
-    try:
-        index_imported_batch(conn, username, share, folder, pending)
-    except Exception:
-        LOG.exception("Unable to index imported Takeout photos; SMB files are intact")
+        try:
+            index_imported_batch(active_conn, username, share, folder, pending)
+        except Exception:
+            LOG.exception("Unable to index imported Takeout photos; SMB files are intact")
     return {"imported": imported, "skipped": skipped, "failed": failed}
-
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
