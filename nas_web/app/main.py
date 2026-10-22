@@ -922,9 +922,9 @@ def photo_capture_dates(request: Request, payload: dict, x_csrf_token: str = Hea
                         continue
                     p = "/".join(x for x in (folder, name) if x)
                     taken = None
-                    if name.lower().endswith((".jpg", ".jpeg")) and entry.file_size:
+                    if name.lower().endswith((".jpg", ".jpeg", ".heic", ".heif")) and entry.file_size:
                         try:
-                            taken = photo_dates.from_jpeg_header(conn, share, p, entry.file_size)
+                            taken = photo_dates.from_photo_file(conn, share, p, entry.file_size)
                         except Exception as exc:
                             logger.info("EXIF scan unavailable: %s", type(exc).__name__)
                     photo_dates.save(u["name"], share, p, file["modified"], file["size"], taken)
@@ -1064,7 +1064,7 @@ def _gallery_scan_step(u, owner, shares, skipped=None):
                     # Reopening it repeatedly defeats the disk cache and doubles
                     # SMB work after an old-style retry.
                     if not cached and row["size"]:
-                        taken = photo_dates.from_jpeg_header(
+                        taken = photo_dates.from_photo_file(
                             conn, row["share"], row["path"], row["size"])
                         photo_dates.save(u["name"], row["share"], row["path"],
                                          row["modified"], row["size"], taken)
@@ -1216,7 +1216,7 @@ def _thumbnail_response(request: Request, share: str, path: str, v: str, large: 
     name_ok(share)
     if share not in u.get("shares", []) or not p:
         fail(403, "Нет доступа")
-    if p.rsplit(".", 1)[-1].lower() not in {"jpg", "jpeg", "png", "webp", "gif"}:
+    if p.rsplit(".", 1)[-1].lower() not in {"jpg", "jpeg", "png", "webp", "gif", "heic", "heif"}:
         fail(404, "Unsupported image")
     key = thumb_cache.key_for(u["name"], share, p, v[:80] + (":large" if large else ":small"))
     start = time.perf_counter()
@@ -1272,7 +1272,8 @@ def _thumbnail_response(request: Request, share: str, path: str, v: str, large: 
                 timings["read"] = ms(read_started)
             timings["smb"] += ms(tick)
             tick = time.perf_counter()
-            result = thumb_cache.render_image(buffer, large=large)
+            with (thumb_cache.HEIF_WORKERS if p.lower().endswith((".heic", ".heif")) else nullcontext()):
+                result = thumb_cache.render_image(buffer, large=large)
             timings["decode"] = ms(tick)
             tick = time.perf_counter()
             thumb_cache.put(key, result)
