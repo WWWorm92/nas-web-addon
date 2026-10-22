@@ -240,7 +240,8 @@ function renderGalleryDates(months,fullIndex){
   updateGalleryDateArrows();
 }
 function renderGalleryYears(photos){
-  const bar=el('galleryYears');bar.replaceChildren();
+  const bar=el('galleryYears'),previousYearScroll=bar.scrollLeft;
+  bar.replaceChildren();
   if(view!=='gallery'){
     bar.classList.add('hidden');
     el('galleryDateNav').classList.add('hidden');
@@ -279,6 +280,9 @@ function renderGalleryYears(photos){
     };
     bar.append(button);
   }
+  // Rebuilding date headers for updated EXIF must not kick the year strip
+  // back to the beginning while a user is browsing older years.
+  bar.scrollLeft=previousYearScroll;
 }
 let gallery=[],zoom=1,panX=0,panY=0,preloadTimer=null,viewerSerial=0,shownShare='',shownDir='',filmNodes=new Map();
 let originalController=null, originalObjectUrl=null;
@@ -1347,6 +1351,7 @@ function renderGlobalProgress(){
 async function enterGlobalGallery(){
   if(allPhotosMode)return;
   galleryDateGeneration++;clearSelection();
+  el('galleryYears').scrollLeft=0;
   previousFileView=view==='gallery'?'grid':view;
   gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
   el('app').classList.remove('filesSearching');
