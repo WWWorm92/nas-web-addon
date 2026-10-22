@@ -430,12 +430,41 @@ class HashReader:
         return self.sha.hexdigest()
 
 
-def _known(owner, share, folder, digest, existing):
+def _known_filename(owner, share, folder, digest, existing):
     with connect() as db:
         row = db.execute(
             "SELECT filename FROM imported_media WHERE owner=? AND share=? AND folder=? AND sha256=?",
             (owner, share, folder, digest)).fetchone()
-    return row is not None and row["filename"] in existing
+    return row["filename"] if row is not None and row["filename"] in existing else None
+
+
+def _known(owner, share, folder, digest, existing):
+    return _known_filename(owner, share, folder, digest, existing) is not None
+
+
+def _filename_registered(owner, share, folder, name):
+    """Gate local ZIP hashing before attempting a duplicate SMB write."""
+    with connect() as db:
+        return db.execute(
+            "SELECT 1 FROM imported_media WHERE owner=? AND share=? AND folder=? AND filename=?",
+            (owner, share, folder, name)).fetchone() is not None
+
+
+def _fast_known_archive_file(archive, entry, username, share, folder, existing):
+    """On re-upload, recognize previously imported bytes without writing SMB.
+
+    Exact SHA-256 check avoids misidentifying same-named but distinct files.
+    Only hash files with an existing imported filename to keep first imports fast.
+    """
+    name = safe_filename(entry.filename.rpartition("/")[2])
+    owner = owner_of(username)
+    if name not in existing or not _filename_registered(owner, share, folder, name):
+        return None
+    with archive.open(entry) as stream:
+        reader = HashReader(stream, min(MAX_MEDIA, entry.file_size + 1))
+        while reader.read(1024 * 1024):
+            pass
+    return _known_filename(owner, share, folder, reader.digest, existing)
 
 
 def _source_known(owner, share, folder, source_id, existing):
@@ -501,8 +530,11 @@ def upload_media(conn, username, share, folder, original_name, stream, existing,
     try:
         conn.storeFile(share, destination, reader, timeout=900)
         digest = reader.digest
-        if _known(owner, share, folder, digest, existing):
+        duplicate_name = _known_filename(owner, share, folder, digest, existing)
+        if duplicate_name is not None:
             conn.deleteFiles(share, destination)
+            if pending is not None and taken:
+                pending[duplicate_name] = taken
             return "skipped"
         final_name = _unique_name(name, existing)
         conn.rename(share, destination, "/" + "/".join((folder, final_name)))
@@ -913,13 +945,20 @@ def process_takeout(zip_path, conn, username, share, folder, job, reconnect=None
                 base = entry.filename.rpartition("/")[2]
                 taken = None
                 taken, _ = takeout_sidecar_for(archive, entry, sidecars)
-                for attempt in range(3):
-                    try:
-                        with archive.open(entry) as stream:
-                            result = upload_media(active_conn, username, share, folder, base,
-                                                  stream, existing, taken=taken,
-                                                  limit=entry.file_size + 1, pending=pending)
-                        break
+                already_imported = _fast_known_archive_file(
+                    archive, entry, username, share, folder, existing)
+                if already_imported is not None:
+                    if taken:
+                        pending[already_imported] = taken
+                    result = "skipped"
+                else:
+                    for attempt in range(3):
+                        try:
+                            with archive.open(entry) as stream:
+                                result = upload_media(active_conn, username, share, folder, base,
+                                                      stream, existing, taken=taken,
+                                                      limit=entry.file_size + 1, pending=pending)
+                            break
                     except Exception as exc:
                         if not transient_import_error(exc) or reconnect is None or attempt == 2:
                             raise
