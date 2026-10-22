@@ -10,6 +10,7 @@ import threading
 import time
 from pathlib import Path
 from PIL import Image, ImageOps
+from . import heif_support  # Register HEIC/HEIF decoder for Image.open().
 
 # Home Assistant add-on /data persists across updates. Never silently use /tmp.
 CACHE_ROOT = Path("/data/nasweb-thumbs")
@@ -38,6 +39,7 @@ MAX_BYTES = 512 * 1024 * 1024
 TTL = 14 * 24 * 3600
 WORKERS = threading.BoundedSemaphore(2)  # Small thumbnail workers
 LARGE_WORKERS = threading.BoundedSemaphore(1)  # Reserved viewer slot
+HEIF_WORKERS = threading.BoundedSemaphore(1)  # Limit expensive iPhone HEIC decoding
 FILES_LOCK = threading.RLock()
 OPS = 0
 
@@ -100,7 +102,7 @@ def render_image(source, large=False):
     # The bounding upload buffer is enforced by the caller.
     source.seek(0)
     with Image.open(source) as img:
-        if img.width * img.height > 30_000_000:
+        if img.width * img.height > 55_000_000:
             raise ValueError("Image dimensions too large")
         if img.format == "JPEG":
             img.draft("RGB", (1600, 1200) if large else (256, 192))
@@ -114,7 +116,7 @@ def render_pair(source):
     """Decode once to generate both thumbnail and full-screen preview."""
     source.seek(0)
     with Image.open(source) as original:
-        if original.width * original.height > 30_000_000:
+        if original.width * original.height > 55_000_000:
             raise ValueError("Image dimensions too large")
         if original.format == "JPEG":
             original.draft("RGB", (1600, 1200))

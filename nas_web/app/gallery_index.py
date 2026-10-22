@@ -9,7 +9,7 @@ from pathlib import Path
 
 DB = Path("/data/nasweb-auth/gallery.sqlite3")
 LOCK = threading.RLock()
-IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif")
 MAX_PHOTOS = 100000
 MAX_FOLDERS = 20000
 
@@ -157,13 +157,13 @@ def state(owner, shares):
         scanned = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=1", (owner,)).fetchone()[0]
         pending = db.execute("SELECT COUNT(*) FROM folders WHERE owner=? AND done=0", (owner,)).fetchone()[0]
         total = db.execute("SELECT COUNT(*) FROM visible_photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ")", (owner, *shares)).fetchone()[0] if shares else 0
-        dates_pending = db.execute("SELECT COUNT(*) FROM visible_photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')", (owner, *shares)).fetchone()[0] if shares else 0
+        dates_pending = db.execute("SELECT COUNT(*) FROM visible_photos WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp' OR lower(name) LIKE '%.heic' OR lower(name) LIKE '%.heif')", (owner, *shares)).fetchone()[0] if shares else 0
         # Shared EXIF progress is deduplicated by file identity. Only include
         # files already discovered in shares this user can access.
         shared_remaining = db.execute(
             "SELECT COUNT(*) FROM (SELECT share,path,size,modified FROM visible_photos "
             "WHERE owner=? AND share IN (" + ",".join("?" for _ in shares) + ") "
-            "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp') "
+            "AND exif_checked=0 AND (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp' OR lower(name) LIKE '%.heic' OR lower(name) LIKE '%.heif') "
             "GROUP BY share,path,size,modified)", (owner, *shares)).fetchone()[0] if shares else 0
         dated = db.execute("SELECT COUNT(*) FROM visible_photos WHERE owner=? AND share IN (" +
                            ",".join("?" for _ in shares) + ") AND taken IS NOT NULL",
@@ -365,7 +365,7 @@ def retry_missing_dates(db, owner, shares):
     if not shares:
         return 0
     where = "share IN (" + ",".join("?" for _ in shares) + ")"
-    allowed = "(lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')"
+    allowed = "(lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg' OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp' OR lower(name) LIKE '%.heic' OR lower(name) LIKE '%.heif')"
     return db.execute(
         "SELECT COUNT(*) FROM photos WHERE owner=? AND " + where +
         " AND exif_checked=0 AND " + allowed, (owner, *shares)
@@ -397,7 +397,7 @@ def denied_count(db, owner, shares):
         "AND p.exif_checked=0 AND p.size=d.size AND p.modified=d.modified "
         "AND d.retry_after>? "
         "AND (lower(p.name) LIKE '%.jpg' OR lower(p.name) LIKE '%.jpeg' "
-        "OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp')",
+        "OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp' OR lower(p.name) LIKE '%.heic' OR lower(p.name) LIKE '%.heif')",
         (owner, *shares, time.time())
     ).fetchone()[0]
 
@@ -413,11 +413,11 @@ def summaries_by_owner(db):
             SUM(CASE WHEN taken IS NOT NULL THEN 1 ELSE 0 END) AS dated,
             SUM(CASE WHEN exif_checked=0 AND
                 (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg'
-                 OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')
+                 OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp' OR lower(name) LIKE '%.heic' OR lower(name) LIKE '%.heif')
                 THEN 1 ELSE 0 END) AS pending,
             SUM(CASE WHEN exif_checked=1 AND taken IS NULL AND
                 (lower(name) LIKE '%.jpg' OR lower(name) LIKE '%.jpeg'
-                 OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp')
+                 OR lower(name) LIKE '%.png' OR lower(name) LIKE '%.webp' OR lower(name) LIKE '%.heic' OR lower(name) LIKE '%.heif')
                 THEN 1 ELSE 0 END) AS checked_without_date
         FROM photos GROUP BY owner ORDER BY owner
     """).fetchall()
@@ -427,7 +427,7 @@ def summaries_by_owner(db):
             AND p.size=d.size AND p.modified=d.modified
         WHERE p.exif_checked=0 AND d.retry_after>?
             AND (lower(p.name) LIKE '%.jpg' OR lower(p.name) LIKE '%.jpeg'
-             OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp')
+             OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp' OR lower(p.name) LIKE '%.heic' OR lower(p.name) LIKE '%.heif')
         GROUP BY p.owner
     """,(time.time(),)).fetchall()
     blocked={row["owner"]:row["total"] for row in blocked_rows}
@@ -446,7 +446,7 @@ def next_unchecked(db, owner, shares, excluded=()):
     sql=("SELECT p.share,p.path,p.name,p.size,p.modified FROM photos p WHERE p.owner=? "
          "AND p.share IN (" + ",".join("?" for _ in shares) + ") "
          "AND p.exif_checked=0 AND (lower(p.name) LIKE '%.jpg' OR lower(p.name) LIKE '%.jpeg' "
-         "OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp') "
+         "OR lower(p.name) LIKE '%.png' OR lower(p.name) LIKE '%.webp' OR lower(p.name) LIKE '%.heic' OR lower(p.name) LIKE '%.heif') "
          "AND NOT EXISTS (SELECT 1 FROM exif_denied d WHERE d.owner=p.owner "
          "AND d.share=p.share AND d.path=p.path AND d.size=p.size "
          "AND d.modified=p.modified AND d.retry_after>?)")
