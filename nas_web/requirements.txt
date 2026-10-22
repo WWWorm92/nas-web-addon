@@ -3,5 +3,6 @@ uvicorn==0.34.2
 impacket==0.13.0
 python-multipart==0.0.20
 Pillow==11.3.0
+pillow-heif==1.8.1
 
 cryptography==46.0.3
