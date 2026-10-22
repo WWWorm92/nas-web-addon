@@ -1,3 +1,10 @@
+## 0.22.41
+
+- Fix intermittent missing destination dialog when selecting photos, especially large iPhone/iCloud batches: choose the SMB share/folder **before** opening the native file picker. The iOS picker is opened synchronously from the confirm button gesture.
+- Show clear messages when upload cannot start because no SMB shares are available or another batch is still active, instead of silently discarding files.
+- Keep the existing drag-and-drop flow (files first, destination second) and reset the file input only before a new selection; preserve the selected File objects while iOS materializes them.
+- Add a regression test for mobile/desktop destination-first flow and native picker activation.
+
 ## 0.22.40
 
 - Fix **All photos** infinite scrolling stalling after a few pages: the old gallery relied on a single IntersectionObserver threshold crossing at the Show More sentinel. A persistent intersection no longer stops new pages.
