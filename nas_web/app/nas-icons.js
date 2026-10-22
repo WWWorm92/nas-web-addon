@@ -164,5 +164,18 @@ window.NASIcons=(()=>{
    const googlePicker=document.getElementById('profileGooglePickerLink');
    if(googlePicker)set(googlePicker,'external-link','Открыть окно выбора Google Фото');
  }
- return {create,set,decorateLabel,applyStatic,paths};
+ function applyAdmin(){
+   for(const [id,name,label] of [
+      ['create','shield-check','Создать администратора'],
+      ['enter','log-out','Войти'],
+      ['cacheClean','trash-2','Очистить устаревший кэш'],
+      ['retryDates','refresh','Продолжить обработку ожидающих EXIF'],
+      ['changePassword','shield-check','Сменить пароль'],
+      ['refresh','refresh','Обновить'],
+      ['logout','log-out','Выйти']
+   ])set(document.getElementById(id),name,label);
+   const back=document.getElementById('adminBackToFiles');
+   if(back)set(back,'arrow-left','Вернуться к файлам');
+ }
+ return {create,set,decorateLabel,applyStatic,applyAdmin,paths};
 })();
