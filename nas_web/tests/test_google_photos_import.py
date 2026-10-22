@@ -7,6 +7,7 @@ import unittest
 import urllib.parse
 import zipfile
 from pathlib import Path
+from contextlib import contextmanager
 from unittest.mock import patch
 
 from app import gallery_index as g, google_photos_import as importer
@@ -153,6 +154,36 @@ class GoogleImportTests(unittest.TestCase):
         self.assertNotIn("STATUS_ACCESS_DENIED",errors["items"][0]["message"])
         with self.assertRaises(ValueError):
             importer.failures_for("bob",job)
+
+    def test_takeout_reconnects_after_smb_drop_and_preserves_json_dates(self):
+        archive=Path(self.tmp.name)/"retry.zip"
+        with zipfile.ZipFile(archive,"w") as z:
+            z.writestr("Google Photos/photo.jpg",b"photo-original")
+            z.writestr("Google Photos/photo.jpg.json",
+                       json.dumps({"photoTakenTime":{"timestamp":"1689438227"}}))
+        smb=FakeSMB()
+        original_store=smb.storeFile
+        calls=[0]
+        def broken_once(share,path,stream,**kwargs):
+            calls[0]+=1
+            if calls[0]==1:
+                raise RuntimeError("NetBIOSError: Error while reading from remote")
+            return original_store(share,path,stream,**kwargs)
+        smb.storeFile=broken_once
+        reconnects=[0]
+        @contextmanager
+        def reconnect():
+            reconnects[0]+=1
+            yield smb
+        job=importer.new_job("alice","takeout","Photo","Photos")
+        result=importer.process_takeout(archive,smb,"alice","Photo","Photos",job,
+                                         reconnect=reconnect)
+        self.assertEqual(result["failed"],0)
+        self.assertEqual(result["imported"],1)
+        self.assertEqual(reconnects[0],1)
+        self.assertEqual(g.page(g.key("alice"),["Photo"],0,10)[0]["taken"],
+                         "2023-07-15T16:23:47")
+        self.assertFalse(importer.failures_for("alice",job)["items"])
 
     def test_duplicate_takeout_sidecar_numbered_suffix(self):
         name="IMG_1305(1).jpg"
