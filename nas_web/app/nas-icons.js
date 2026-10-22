@@ -52,6 +52,8 @@ window.NASIcons=(()=>{
   undo:'<path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-2"/>',
   home:'<path d="m3 10 9-7 9 7v11h-7v-7h-4v7H3z"/>',
   user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  'eye-off':'<path d="m3 3 18 18M10 5.2A12 12 0 0 1 12 5c6.4 0 10 7 10 7a16 16 0 0 1-3.1 3.8M6 6.1C3.5 8.2 2 12 2 12s3.6 7 10 7c1.2 0 2.3-.2 3.4-.6M10 10a3 3 0 0 0 4 4"/>',
   moon:'<path d="M20.5 13A9 9 0 0 1 11 3.5 9 9 0 1 0 20.5 13z"/>',
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2m10-10h-2M4 12H2m17-7-1.5 1.5M6.5 17.5 5 19m14 0-1.5-1.5M6.5 6.5 5 5"/>',
   link:'<path d="M10 13a5 5 0 0 0 7 .2l2-2a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7-.2l-2 2a5 5 0 1 0 7 7l1-1"/>',
@@ -110,7 +112,7 @@ window.NASIcons=(()=>{
    return set(node,key||fallback,clean);
  }
  const staticButtons={
-  submitLogin:['log-out','Войти в NAS Web'],
+  togglePassword:['eye','Показать'],submitLogin:['log-out','Войти в NAS Web'],
   desktopFilesNav:['folder','Файлы'],desktopPhotosNav:['images','Фото'],
   theme:['moon',null],logout:['log-out','Выйти'],
   desktopGalleryBack:['arrow-left','Вернуться к файлам'],
