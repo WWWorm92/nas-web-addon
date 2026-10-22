@@ -356,7 +356,7 @@ function previewable(){return items.filter(canPreview)}
 function resetZoom(){zoom=1;panX=0;panY=0}
 function setZoom(scale,cx=0,cy=0){const img=el('previewBody').querySelector('img');if(!img)return;const prev=zoom;zoom=Math.max(1,Math.min(5,scale));if(zoom===1){panX=panY=0}else if(prev!==zoom){panX+=(cx-panX)*(1-prev/zoom);panY+=(cy-panY)*(1-prev/zoom)}drawZoom()}
 function drawZoom(){const img=el('previewBody').querySelector('img');if(!img)return;const bound=el('photoStage').getBoundingClientRect(),w=(img.naturalWidth||bound.width),h=(img.naturalHeight||bound.height),fit=Math.min(bound.width/w,bound.height/h),cw=w*fit,ch=h*fit;panX=Math.max(-Math.max(0,(cw*zoom-bound.width)/2),Math.min(Math.max(0,(cw*zoom-bound.width)/2),panX));panY=Math.max(-Math.max(0,(ch*zoom-bound.height)/2),Math.min(Math.max(0,(ch*zoom-bound.height)/2),panY));img.style.transform='translate('+panX+'px,'+panY+'px) scale('+zoom+')'}
-function openPreview(f){el('preview').classList.remove('controlsHidden');if(f.directory)return enterFolder(f.name);filmNodes.clear();if(!canPreview(f))return download(f);shownShare=f.share||selected;shownDir=f.folder!==undefined?f.folder:dir;const photos=isPhoto(f);gallery=photos?(allPhotosMode?allPhotos:view==='gallery'?photoGalleryItems():items.filter(isPhoto)):[f];previewIndex=Math.max(0,gallery.findIndex(x=>x===f||(x.name===f.name&&x.share===f.share&&x.folder===f.folder)));el('preview').style.display='flex';document.body.style.overflow='hidden';showPreview(0)}
+function openPreview(f){el('preview').classList.remove('controlsHidden');if(f.directory)return enterFolder(f.name);filmNodes.clear();if(!canPreview(f))return download(f);shownShare=f.share||selected;shownDir=f.folder!==undefined?f.folder:dir;const photos=isPhoto(f);gallery=photos?(allPhotosMode?allPhotos:visibleFolderItems().filter(isPhoto)):[f];previewIndex=Math.max(0,gallery.findIndex(x=>x===f||(x.name===f.name&&x.share===f.share&&x.folder===f.folder)));el('preview').style.display='flex';document.body.style.overflow='hidden';showPreview(0)}
 function closePreview(){hideMenu();el('previewBody').querySelector('video')?._nasSavePosition?.();el('previewBody').querySelector('video')?.pause();clearTimeout(tapTimer);el('preview').classList.remove('controlsHidden');viewerSerial++;clearOriginal();for(const job of photoFetches.values())job.controller.abort();photoFetches.clear();clearTimeout(preloadTimer);el('previewBody').replaceChildren();el('preview').style.display='none';el('filmstrip').replaceChildren();previewIndex=-1;gallery=[];filmNodes.clear();resetZoom();document.body.style.overflow='';pumpThumbs()}
 
 /* Device-local video playback positions: per SMB user, path and file version.
@@ -960,6 +960,9 @@ function openGalleryPhotoMenu(f,anchor,fromViewer=false){
   menu.style.top=(rect.bottom+height>innerHeight?Math.max(8,rect.top-height):rect.bottom+4)+'px';
 }
 function sortedFiltered(){let a=items.filter(f=>f.name.toLocaleLowerCase().includes(el('search').value.trim().toLocaleLowerCase()));const sort=el('sort').value;a.sort((x,y)=>Number(y.directory)-Number(x.directory)||(sort==='new'?Number(y.modified||0)-Number(x.modified||0):sort==='size'?Number(y.size)-Number(x.size):x.name.localeCompare(y.name,'ru')));return a}
+// The folder grid/list and its full-screen photo viewer must use identical order.
+// Do not use the raw SMB items array for the preview filmstrip.
+function visibleFolderItems(){return view==='gallery'?photoGalleryItems():sortedFiltered()}
 // Limit simultaneous thumbnail requests so phones don't saturate the NAS.
 const thumbQueue=[];let activeThumbs=0;const THUMB_CONCURRENCY=3;
 const THUMB_NEARBY_PX=350;
@@ -1596,7 +1599,7 @@ function render(){
   el('gridView').classList.toggle('active',view==='grid');
   el('listView').classList.toggle('active',view==='list');
   el('galleryView').classList.toggle('active',view==='gallery');
-  const shown=view==='gallery'?photoGalleryItems():sortedFiltered();
+  const shown=visibleFolderItems();
   renderGalleryYears(shown);
   if(view!=='gallery'&&shown.length>160){
     activateFileVirtual(shown);
