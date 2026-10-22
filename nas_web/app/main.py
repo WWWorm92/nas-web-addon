@@ -612,9 +612,16 @@ def _import_worker(user, job_id, share, folder, archive=None, picked=None):
             else:
                 result = google_photos_import.process_picked(
                     picked, conn, user["name"], opts, share, folder, job_id)
-        google_photos_import.job_update(job_id, status="completed",
-                                       detail="Импорт завершён" +
-                                              (" с ошибками" if result["failed"] else ""))
+        detail = "Импорт завершён" + (" с ошибками" if result["failed"] else "")
+        if picked is None:
+            detail += (f"; даты Google: {result['dated']}, "
+                       f"без JSON даты: {result['missing_dates']}")
+            if result["restored_dates"]:
+                detail += f"; восстановлены даты у {result['restored_dates']} файлов"
+            if result["pending_dates"]:
+                detail += (f"; даты {result['pending_dates']} файлов ещё не "
+                           "записаны в индекс (проверьте SMB и повторите импорт)")
+        google_photos_import.job_update(job_id, status="completed", detail=detail)
         if picked is not None:
             try:
                 google_photos_import.delete_picker(user["name"], opts)
