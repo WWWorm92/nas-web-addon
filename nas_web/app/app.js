@@ -93,7 +93,7 @@ const isPhoto=f=>!f.directory&&imageExt.includes(ext(f.name));
 let allPhotosMode=false,allPhotos=[],allPhotoTotal=0,allPhotoStatus=null,allPhotoPageBusy=false,allPhotoScanToken=0,previousFileView='grid';
 let allPhotoStartOffset=0,allPhotoNextOffset=0,allPhotoTimeline=[],allPhotoTimelineCheckedAt=0,allPhotoSubsetMode=false;
 // A year chip changes the pagination starting point, never the full library.
-let gallerySelectedYear='';
+let gallerySelectedYear='',gallerySelectedMonth='',galleryDateRenderSignature='';
 const photoLocation=f=>({share:f.share||shownShare,folder:f.folder!==undefined?f.folder:shownDir});
 const photoDate=f=>f.taken?new Date(f.taken):new Date(Number(f.modified||0)*1000);
 const photoGalleryItems=()=>sortedFiltered().filter(isPhoto).sort((a,b)=>photoDate(b)-photoDate(a)||a.name.localeCompare(b.name,'ru'));
@@ -177,6 +177,68 @@ function galleryJumpTo(year,month){
   const heading=[...el('entries').querySelectorAll('.galleryMonth')].find(h=>h.dataset.year===year&&(!month||h.dataset.month===month));
   if(heading)heading.scrollIntoView({behavior:'smooth',block:'start'});
 }
+// Month navigation is a swipeable timeline, never a native dropdown.
+// Only show months for the active year (or newest year when viewing all)
+// to keep the horizontal strip manageable even for decades of photos.
+function galleryDateMonths(timeline,selectedYear=''){
+  if(!timeline?.length)return [];
+  const year=selectedYear||timeline[0].month.slice(0,4);
+  return timeline.filter(item=>item.month.slice(0,4)===year&&/^\d{4}-\d{2}$/.test(item.month));
+}
+function updateGalleryDateArrows(){
+  const strip=el('galleryDateStrip');
+  el('galleryDatePrev').disabled=strip.scrollLeft<3;
+  el('galleryDateNext').disabled=
+    strip.scrollWidth-strip.scrollLeft-strip.clientWidth<3;
+}
+function renderGalleryDates(months,fullIndex){
+  const navigation=el('galleryDateNav'),strip=el('galleryDateStrip');
+  const current=fullIndex?galleryDateMonths(months,gallerySelectedYear):[];
+  navigation.classList.toggle('hidden',!current.length);
+  el('galleryYearReset').classList.toggle('hidden',!fullIndex||!gallerySelectedYear);
+  if(!current.length){
+    if(galleryDateRenderSignature){strip.replaceChildren();galleryDateRenderSignature=''}
+    return;
+  }
+  const year=current[0].month.slice(0,4);
+  el('galleryDateYear').textContent=year;
+  const signature=year+'|'+gallerySelectedMonth+'|'+
+    current.map(item=>item.month+':'+item.count).join(',');
+  if(signature===galleryDateRenderSignature)return;
+  const sameYear=galleryDateRenderSignature.startsWith(year+'|');
+  const previousScroll=sameYear?strip.scrollLeft:0;
+  const fragment=document.createDocumentFragment();
+  let highlighted=null;
+  for(const item of current){
+    const [y,m]=item.month.split('-').map(Number);
+    const button=document.createElement('button');
+    button.type='button';button.dataset.month=item.month;
+    button.textContent=new Intl.DateTimeFormat('ru',{month:'short'}).format(new Date(y,m-1,1));
+    const count=document.createElement('small');count.textContent=item.count;
+    button.append(count);
+    const selected=item.month===gallerySelectedMonth;
+    button.setAttribute('aria-pressed',String(selected));
+    button.setAttribute('aria-label',new Intl.DateTimeFormat('ru',{
+      month:'long',year:'numeric'
+    }).format(new Date(y,m-1,1))+' · '+item.count+' фотографий');
+    if(selected)highlighted=button;
+    button.onclick=()=>jumpToGlobalMonth(item.month);
+    fragment.append(button);
+  }
+  strip.replaceChildren(fragment);
+  galleryDateRenderSignature=signature;
+  strip.scrollLeft=previousScroll;
+  if(highlighted){
+    requestAnimationFrame(()=>{
+      if(galleryDateRenderSignature!==signature)return;
+      const center=highlighted.offsetLeft-strip.offsetLeft-
+        (strip.clientWidth-highlighted.clientWidth)/2;
+      strip.scrollLeft=Math.max(0,center);
+      updateGalleryDateArrows();
+    });
+  }
+  updateGalleryDateArrows();
+}
 function renderGalleryYears(photos){
   const bar=el('galleryYears');bar.replaceChildren();
   if(view!=='gallery'){bar.classList.add('hidden');return}
@@ -186,34 +248,7 @@ function renderGalleryYears(photos){
     ? [...new Set(months.map(m=>m.month.slice(0,4)))]
     : [...new Set(photos.map(photoYear))];
   bar.classList.toggle('hidden',!years.length);
-  const picker=el('galleryMonthJump');
-  if(picker){
-    const previous=picker.value;
-    picker.replaceChildren();
-    const first=document.createElement('option');first.value='';
-    first.textContent=fullIndex&&!months.length?'Загружаем все месяцы…':'Перейти к месяцу';
-    picker.append(first);picker.disabled=fullIndex&&!months.length;
-    if(months){
-      for(const item of months){
-        const option=document.createElement('option');option.value=item.month;
-        const [year,month]=item.month.split('-').map(Number);
-        const label=new Intl.DateTimeFormat('ru',{month:'long',year:'numeric'}).format(new Date(year,month-1,1));
-        option.textContent=label+' · '+item.count+' фото';
-        picker.append(option);
-      }
-    }else{
-      const seen=new Set();
-      for(const f of photos){
-        const d=photoDate(f);if(!Number.isFinite(d.getTime()))continue;
-        const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-        if(seen.has(key))continue;
-        seen.add(key);const option=document.createElement('option');option.value=key;
-        option.textContent=new Intl.DateTimeFormat('ru',{month:'long',year:'numeric'}).format(d);
-        picker.append(option);
-      }
-    }
-    if([...picker.options].some(option=>option.value===previous))picker.value=previous;
-  }
+  renderGalleryDates(months,fullIndex);
   if(fullIndex){
     const allButton=document.createElement('button');
     allButton.type='button';allButton.textContent='Все фото';
@@ -239,8 +274,6 @@ function renderGalleryYears(photos){
     };
     bar.append(button);
   }
-  const reset=el('galleryYearReset');
-  reset.classList.toggle('hidden',!fullIndex||!gallerySelectedYear);
 }
 let gallery=[],zoom=1,panX=0,panY=0,preloadTimer=null,viewerSerial=0,shownShare='',shownDir='',filmNodes=new Map();
 let originalController=null, originalObjectUrl=null;
@@ -724,7 +757,7 @@ function gallerySettingsOpen(open){
   if(!panel)return;
   const holder=el('gallerySettingsContent');
   if(open){
-    for(const id of ['globalGallerySummary','galleryControls','galleryYears','status']){
+    for(const id of ['globalGallerySummary','galleryControls','status']){
       const node=el(id);
       if(!node)continue;
       if(!gallerySettingsHomes.has(id)){
@@ -1183,7 +1216,7 @@ function leaveGlobalGallery(){
   if(!allPhotosMode)return;
   if(previewIndex>=0)closePreview();
   gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
-  allPhotosMode=false;allPhotoScanToken++;allPhotoSubsetMode=false;allPhotoTimeline=[];gallerySelectedYear='';view=previousFileView;
+  allPhotosMode=false;allPhotoScanToken++;allPhotoSubsetMode=false;allPhotoTimeline=[];gallerySelectedYear='';gallerySelectedMonth='';galleryDateRenderSignature='';view=previousFileView;
   el('app').classList.remove('globalGalleryOpen');
   el('globalGallerySummary').classList.add('hidden');
   el('galleryPageFooter').classList.add('hidden');
@@ -1209,10 +1242,10 @@ async function jumpToGlobalOffset(offset,monthKey=''){
   // response from the previous year cannot overwrite the full gallery.
   const token=++allPhotoScanToken;
   gallerySelectedYear=monthKey?monthKey.slice(0,4):'';
+  gallerySelectedMonth=monthKey;
   allPhotoStartOffset=offset;allPhotoNextOffset=offset;
   allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryRenderSignature='';
   resetGalleryVirtual();window.scrollTo({top:0,behavior:'instant'});
-  el('galleryMonthJump').value=monthKey;
   render();
   while(allPhotoPageBusy&&allPhotosMode&&token===allPhotoScanToken){
     await new Promise(resolve=>setTimeout(resolve,80));
@@ -1229,7 +1262,6 @@ async function jumpToGlobalOffset(offset,monthKey=''){
     }else{
       window.scrollTo({top:0,behavior:'instant'});
     }
-    el('galleryMonthJump').value=monthKey;
   });
   scanAllPhotos(token);
 }
@@ -1313,7 +1345,7 @@ async function enterGlobalGallery(){
   previousFileView=view==='gallery'?'grid':view;
   gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
   el('app').classList.remove('filesSearching');
-  allPhotosMode=true;view='gallery';allPhotoSubsetMode=false;gallerySelectedYear='';
+  allPhotosMode=true;view='gallery';allPhotoSubsetMode=false;gallerySelectedYear='';gallerySelectedMonth='';galleryDateRenderSignature='';
   allPhotoStartOffset=0;allPhotoNextOffset=0;allPhotoTimeline=[];allPhotoTimelineCheckedAt=0;
   allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;
   const token=++allPhotoScanToken;
@@ -2135,12 +2167,26 @@ el('selectionDelete').onclick=async()=>{
 };
 el('galleryZoomOut').onclick=()=>{setGalleryColumns(galleryColumns-1);if(allPhotosMode){galleryRenderSignature='';resetGalleryVirtual();renderAllGallery()}};
 el('galleryZoomIn').onclick=()=>{setGalleryColumns(galleryColumns+1);if(allPhotosMode){galleryRenderSignature='';resetGalleryVirtual();renderAllGallery()}};
-el('galleryMonthJump').onchange=e=>{
-  const key=e.target.value;
-  if(allPhotosMode&&!allPhotoSubsetMode)jumpToGlobalMonth(key);
-  else if(key){const [year,month]=key.split('-');if(year)galleryJumpTo(year,month)}
-};
 el('galleryYearReset').onclick=returnToAllPhotos;
+for(const [id,direction] of [['galleryDatePrev',-1],['galleryDateNext',1]]){
+  el(id).onclick=()=>el('galleryDateStrip').scrollBy({
+    left:direction*Math.max(200,el('galleryDateStrip').clientWidth*.7),
+    behavior:'smooth'
+  });
+}
+el('galleryDateStrip').addEventListener('scroll',updateGalleryDateArrows,{passive:true});
+el('galleryDateStrip').addEventListener('wheel',e=>{
+  const strip=el('galleryDateStrip');
+  if(Math.abs(e.deltaY)>Math.abs(e.deltaX)&&strip.scrollWidth>strip.clientWidth){
+    e.preventDefault();
+    strip.scrollLeft+=e.deltaY;
+  }
+},{passive:false});
+el('galleryDateStrip').addEventListener('keydown',e=>{
+  if(e.target!==el('galleryDateStrip')||!['ArrowLeft','ArrowRight'].includes(e.key))return;
+  e.preventDefault();
+  el('galleryDateStrip').scrollBy({left:e.key==='ArrowRight'?180:-180,behavior:'smooth'});
+});
 el('galleryPickDone').onclick=clearGalleryPick;
 el('galleryPickDownload').onclick=async()=>{
   const chosen=[...galleryPicked.values()];
