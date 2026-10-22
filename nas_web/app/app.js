@@ -91,6 +91,7 @@ function enterFolder(name){leaveGlobalGallery();navigateFiles(fpath(name))}
 function download(f){const a=document.createElement('a');a.href=fileUrl(f.name);a.download=f.name;a.click()}
 const isPhoto=f=>!f.directory&&imageExt.includes(ext(f.name));
 let allPhotosMode=false,allPhotos=[],allPhotoTotal=0,allPhotoStatus=null,allPhotoPageBusy=false,allPhotoScanToken=0,previousFileView='grid';
+let galleryPageCheckFrame=0,galleryPagingError='';
 let allPhotoStartOffset=0,allPhotoNextOffset=0,allPhotoTimeline=[],allPhotoTimelineCheckedAt=0,allPhotoSubsetMode=false;
 // A year chip changes the pagination starting point, never the full library.
 let gallerySelectedYear='',gallerySelectedMonth='',galleryDateRenderSignature='';
@@ -1225,7 +1226,7 @@ function leaveGlobalGallery(){
   if(!allPhotosMode)return;
   if(previewIndex>=0)closePreview();
   gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
-  allPhotosMode=false;allPhotoScanToken++;allPhotoSubsetMode=false;allPhotoTimeline=[];gallerySelectedYear='';gallerySelectedMonth='';galleryDateRenderSignature='';view=previousFileView;
+  allPhotosMode=false;allPhotoScanToken++;allPhotoSubsetMode=false;allPhotoTimeline=[];gallerySelectedYear='';gallerySelectedMonth='';galleryDateRenderSignature='';galleryPagingError='';view=previousFileView;
   el('app').classList.remove('globalGalleryOpen');
   el('globalGallerySummary').classList.add('hidden');
   el('galleryPageFooter').classList.add('hidden');
@@ -1253,7 +1254,7 @@ async function jumpToGlobalOffset(offset,monthKey=''){
   gallerySelectedYear=monthKey?monthKey.slice(0,4):'';
   gallerySelectedMonth=monthKey;
   allPhotoStartOffset=offset;allPhotoNextOffset=offset;
-  allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryRenderSignature='';
+  allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryPagingError='';galleryRenderSignature='';
   resetGalleryVirtual();window.scrollTo({top:0,behavior:'instant'});
   render();
   while(allPhotoPageBusy&&allPhotosMode&&token===allPhotoScanToken){
@@ -1290,6 +1291,31 @@ async function jumpToGlobalMonth(monthKey){
   // Month positions refer to the entire database, not the loaded page.
   await jumpToGlobalOffset(month.offset,monthKey);
 }
+// A single IntersectionObserver callback is not enough for pagination: when
+// the bottom sentinel stays visible after a short page, no new threshold
+// crossing occurs. Recheck on scroll, resize and every completed fetch.
+function galleryHasNextPage(){
+  return allPhotosMode&&!allPhotoSubsetMode&&allPhotoNextOffset<allPhotoTotal;
+}
+function galleryUpdatePageFooter(){
+  const hasNext=galleryHasNextPage();
+  el('galleryPageFooter').classList.toggle('hidden',!hasNext);
+  el('galleryLoadMore').textContent=galleryPagingError?'Повторить загрузку':'Показать ещё';
+}
+function galleryMaybeLoadMore(){
+  if(!galleryHasNextPage()||allPhotoPageBusy||galleryPagingError||document.hidden)return;
+  const footer=el('galleryPageFooter');
+  if(footer.classList.contains('hidden'))return;
+  const box=footer.getBoundingClientRect();
+  if(box.top<=innerHeight+650&&box.bottom>=-100)loadGlobalPage(false);
+}
+function gallerySchedulePageCheck(){
+  if(galleryPageCheckFrame||!allPhotosMode)return;
+  galleryPageCheckFrame=requestAnimationFrame(()=>{
+    galleryPageCheckFrame=0;
+    galleryMaybeLoadMore();
+  });
+}
 async function loadGlobalPage(reset=false){
   if(allPhotoPageBusy||!allPhotosMode||allPhotoSubsetMode)return;
   const token=allPhotoScanToken;
@@ -1301,14 +1327,29 @@ async function loadGlobalPage(reset=false){
     allPhotoStatus=data;allPhotoTotal=data.total;
     if(reset&&Number.isFinite(Number(data.revision)))
       gallerySeenRevision=Number(data.revision);
-    allPhotoNextOffset=start+data.items.length;
-    if(reset)allPhotos=data.items;else{
-      const known=new Set(allPhotos.map(f=>f.share+'|'+f.path));
-      for(const f of data.items)if(!known.has(f.share+'|'+f.path))allPhotos.push(f);
+    // Do not spin forever if a server responds with an empty page but a
+    // stale total; leave the visible Retry button for the user.
+    if(!data.items.length&&start<data.total){
+      galleryPagingError='Получена пустая страница при незавершённой загрузке';
+    }else{
+      galleryPagingError='';
+      allPhotoNextOffset=start+data.items.length;
+      if(reset)allPhotos=data.items;else{
+        const known=new Set(allPhotos.map(f=>f.share+'|'+f.path));
+        for(const f of data.items)if(!known.has(f.share+'|'+f.path))allPhotos.push(f);
+      }
     }
     render();
-  }catch(e){if(token===allPhotoScanToken)message('Ошибка фотогалереи: '+e.message)}
-  finally{allPhotoPageBusy=false}
+  }catch(e){
+    if(token===allPhotoScanToken){
+      galleryPagingError=e.message;
+      message('Ошибка загрузки фотографий: '+e.message);
+      galleryUpdatePageFooter();
+    }
+  }finally{
+    allPhotoPageBusy=false;
+    if(allPhotosMode&&token===allPhotoScanToken)gallerySchedulePageCheck();
+  }
 }
 async function scanAllPhotos(token){
   let steps=0;
@@ -1331,8 +1372,15 @@ async function scanAllPhotos(token){
         await loadGlobalPage(true);
       }else renderGlobalProgress();
       if(data.complete&&((data.dates_available??data.dates_pending)===0||data.limited)){
-        // The finished index has a stable chronology for pagination.
-        await loadGlobalPage(true);
+        // Never discard pages already loaded while somebody is scrolling
+        // through All Photos. The ordinary revision watcher will reconcile
+        // chronology after the user returns near the top of the gallery.
+        if(allPhotoNextOffset<=allPhotoStartOffset+90&&window.scrollY<200)
+          await loadGlobalPage(true);
+        else{
+          renderGlobalProgress();
+          gallerySchedulePageCheck();
+        }
         return;
       }
     }catch(e){if(token===allPhotoScanToken)message('Индексация: '+e.message);return}
@@ -1346,7 +1394,7 @@ function renderGlobalProgress(){
   el('globalGalleryProgress').textContent=(data.complete?'Найдено '+data.total+' фото':'Поиск: '+data.scanned+' папок · '+data.total+' фото')
     +(data.dates_pending&&data.complete?' · EXIF: к проверке '+(data.dates_available??data.dates_pending)+(data.dates_blocked?' · нет доступа: '+data.dates_blocked:''):'')
     +(data.limited?' · лимит индекса':'');
-  el('galleryPageFooter').classList.toggle('hidden',!data.complete||allPhotoSubsetMode||allPhotoNextOffset>=data.total);
+  galleryUpdatePageFooter();
 }
 async function enterGlobalGallery(){
   if(allPhotosMode)return;
@@ -1357,7 +1405,7 @@ async function enterGlobalGallery(){
   el('app').classList.remove('filesSearching');
   allPhotosMode=true;view='gallery';allPhotoSubsetMode=false;gallerySelectedYear='';gallerySelectedMonth='';galleryDateRenderSignature='';
   allPhotoStartOffset=0;allPhotoNextOffset=0;allPhotoTimeline=[];allPhotoTimelineCheckedAt=0;
-  allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;
+  allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryPagingError='';
   const token=++allPhotoScanToken;
   el('app').classList.add('globalGalleryOpen');
   el('search').value='';el('search').placeholder='Поиск среди загруженных фото…';
@@ -1407,7 +1455,7 @@ function renderAllGallery(){
       +(status.limited?' · достигнут предел индекса':'')
       +(status.complete&&status.dates_pending?' · EXIF: осталось '+(status.shared_dates_pending??status.dates_pending):'')
     : 'Подготавливаем фототеку…';
-  el('galleryPageFooter').classList.toggle('hidden',!status?.complete||allPhotoSubsetMode||allPhotoNextOffset>=allPhotoTotal||!allPhotos.length);
+  galleryUpdatePageFooter();
   message(allPhotos.length?'Показано '+shown.length+' из '+allPhotoTotal+' фотографий':'Ищем фотографии во всех доступных папках…');
   pumpThumbs();
 }
@@ -2217,20 +2265,25 @@ el('galleryPickDownload').onclick=async()=>{
 };
 setGalleryColumns(galleryColumns);
 el('galleryStatusToggle').onclick=toggleGalleryStatus;
-el('galleryLoadMore').onclick=()=>loadGlobalPage(false);
+el('galleryLoadMore').onclick=()=>{
+  galleryPagingError='';
+  galleryUpdatePageFooter();
+  loadGlobalPage(false);
+};
 el('globalGalleryBack').onclick=leaveGlobalGallery;
 const galleryNextObserver=new IntersectionObserver(entries=>{
-  if(entries.some(e=>e.isIntersecting)&&allPhotosMode&&allPhotoStatus?.complete&&
-     !allPhotoPageBusy&&!allPhotoSubsetMode&&allPhotoNextOffset<allPhotoTotal)loadGlobalPage(false);
-},{rootMargin:'450px 0px'});
+  if(entries.some(e=>e.isIntersecting))gallerySchedulePageCheck();
+},{rootMargin:'650px 0px'});
 galleryNextObserver.observe(el('galleryLoadMore'));
+window.addEventListener('scroll',gallerySchedulePageCheck,{passive:true});
+window.addEventListener('resize',gallerySchedulePageCheck,{passive:true});
 
 // User-facing refresh never resets the SQLite photo index or EXIF progress.
 el('galleryRetryDates').onclick=()=>message('Проверка дат доступна в администрировании');
 el('globalGalleryRescan').onclick=async()=>{
   if(!allPhotosMode)return;
   const token=++allPhotoScanToken;
-  allPhotoSubsetMode=false;allPhotoStartOffset=0;allPhotoNextOffset=0;
+  allPhotoSubsetMode=false;allPhotoStartOffset=0;allPhotoNextOffset=0;galleryPagingError='';
   allPhotoTimeline=[];allPhotoTimelineCheckedAt=0;
   allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryRenderSignature='';
   render();

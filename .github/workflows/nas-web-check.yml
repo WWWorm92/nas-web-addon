@@ -456,6 +456,8 @@ jobs:
         run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_bulk_recycle.py'
       - name: Gallery photo actions and bulk delete UI regression
         run: node nas_web/tests/gallery_photo_actions.test.cjs
+      - name: Infinite gallery pagination and retry regression
+        run: node nas_web/tests/gallery_infinite_pagination.test.cjs
       - name: Gallery year navigation and return to all photos
         run: node nas_web/tests/gallery_year_navigation.test.cjs
       - name: Gallery memories stories regressions
