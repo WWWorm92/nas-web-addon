@@ -878,6 +878,33 @@ button:active{transform:scale(.975)}
     top:120px;
   }
 }
+
+/* Consistent local 24px-outline icon system: file views, dialogs and controls. */
+.nasIcon{width:20px;height:20px;flex-shrink:0;display:inline-block;vertical-align:middle;pointer-events:none}
+.hasNasIcon{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.hasNasIcon .nasIconLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.vectorIcon .nasIcon{width:24px;height:24px;stroke-width:1.85}
+.thumb .nasIcon{width:29px;height:29px}
+.moreMenuIcon .nasIcon{width:21px;height:21px}
+.moreMenuChevron .nasIcon,.moreMenuArrow .nasIcon{width:18px;height:18px}
+.mobilePathBack .nasIcon{width:20px;height:20px}
+#app .fileTile .more .nasIcon,#app .photoTileMore .nasIcon{width:20px;height:20px}
+#app .videoPosterPlay .nasIcon{width:17px;height:17px;fill:currentColor}
+#app .mobileFilesHeader .nasIcon,#app .mobileGalleryHeader .nasIcon{width:22px;height:22px}
+#app .mobileFilesHeader button.hasNasIcon,#app .mobileGalleryHeader button.hasNasIcon{padding:8px}
+#app .mobileNav button.hasNasIcon{flex-direction:column;gap:5px}
+#app .mobileNav button.hasNasIcon .nasIcon{width:26px;height:26px}
+#app .mobileNav button.hasNasIcon .nasIconLabel{font-size:inherit}
+#app #refresh.hasNasIcon,#app #gridView.hasNasIcon,#app #listView.hasNasIcon,
+#app #galleryView.hasNasIcon,#app #galleryZoomIn.hasNasIcon,#app #galleryZoomOut.hasNasIcon{gap:0}
+.logo.hasNasIcon .nasIcon{width:28px;height:28px}
+#preview .hasNasIcon .nasIcon{width:22px;height:22px}
+.profileImportUpload.hasNasIcon{gap:9px;flex-wrap:wrap}
+.profileImportUpload.hasNasIcon input{display:none}
+@media(max-width:700px){
+  #app .mobileFilesTop .hasNasIcon{justify-content:center}
+  #app #galleryDatePrev.hasNasIcon,#app #galleryDateNext.hasNasIcon{min-width:38px}
+}
 </style></head><body>
 <div id="login"><div class="authShell"><div class="authLogo"><span class="logo">◈</span><span>NAS<span class="authAccent">Web</span></span></div><div class="loginCard"><div class="authHeading"><div class="authEyebrow">ЛИЧНОЕ ОБЛАКО</div><h1>С возвращением</h1><p class="sub">Войдите, чтобы получить доступ к своим файлам и фотографиям.</p></div><form id="loginForm"><label for="username">Имя пользователя</label><input id="username" autocomplete="username" placeholder="Ваш логин Simple NAS" required aria-label="Логин" spellcheck="false"><label for="password">Пароль</label><div class="passwordBox"><input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required aria-label="Пароль"><button type="button" id="togglePassword" aria-label="Показать пароль">Показать</button></div><label class="rememberRow" for="remember"><input id="remember" type="checkbox"><span>Запомнить меня <small>на 90 дней</small></span></label><button id="submitLogin" class="primary">Войти в NAS Web <span aria-hidden="true">→</span></button></form><p id="loginError" role="alert" aria-live="polite"></p></div><div class="authFooter">Защищённый доступ · Учётная запись Simple NAS</div></div></div>
 <div id="app" class="hidden"><header class="top"><div class="brand"><span class="logo">◈</span> NAS Web</div><nav class="desktopTopNav" aria-label="Разделы NAS Web"><button id="desktopFilesNav" class="desktopNavBtn navSelected" type="button"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 11h16M4 17h16"/><path d="M7 4v14M17 4v14" opacity=".32"/></svg></span> Файлы</button><button id="desktopPhotosNav" class="desktopNavBtn" type="button"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 3.5 3.5 3-3L21 18"/></svg></span> Фото</button></nav><div class="topRight"><button id="profileTrigger" class="profileTrigger" type="button" aria-label="Мой профиль"><span id="profileAvatar" class="profileAvatar">?</span><span id="who"></span></button><button id="theme" aria-label="Сменить тему">◐</button><button id="logout" title="Выйти из NAS Web">Выйти</button></div></header><div class="shell"><aside class="sidebar" aria-label="Доступные папки"><div class="sidebarTitle">МОИ ПАПКИ</div><div id="shares"></div></aside><section class="workspace" id="workspace"><div class="head"><div><p class="eyebrow">МОЁ ХРАНИЛИЩЕ <span class="eyebrowDot">·</span> ОБЗОР ФАЙЛОВ</p><nav class="path crumbNav" id="crumb" aria-label="Путь к папке">Выберите хранилище</nav></div><button id="desktopGalleryBack" class="desktopGalleryBack" type="button">← Вернуться к файлам</button></div>
@@ -967,4 +994,4 @@ button:active{transform:scale(.975)}
 <div id="destinationOverlay" class="hidden" role="presentation"><section class="destinationBox" role="dialog" aria-modal="true" aria-labelledby="destinationTitle"><h2 id="destinationTitle">Выберите папку назначения</h2><select id="destinationShare" aria-label="SMB-шара"></select><div id="destinationPath" class="destinationPath"></div><div id="destinationFolders" class="destinationFolders"></div><p id="destinationError" role="alert"></p><div class="destinationActions"><button id="destinationCancel" type="button">Отмена</button><button id="destinationApply" type="button" class="primary">Копировать сюда</button></div></section></div>
 <div id="dialogOverlay" class="hidden" role="presentation"><form id="actionDialog" class="dialogBox" role="dialog" aria-modal="true" aria-labelledby="dialogTitle"><div id="dialogIcon" class="dialogIcon">▱</div><h2 id="dialogTitle">Действие</h2><p id="dialogText"></p><input id="dialogInput" class="hidden" autocomplete="off" maxlength="240" aria-label="Имя папки"><div class="dialogActions"><button id="dialogCancel" type="button">Отмена</button><button id="dialogAccept" type="submit" class="primary">Продолжить</button></div></form></div><div id="fileMenu" class="hidden" role="menu"></div>
 <div id="preview" role="dialog" aria-label="Просмотр файлов" aria-modal="true"><div class="photoHeader"><div class="photoInfo"><div id="previewCounter" class="photoCount">1 / 1</div><div id="previewTitle" class="photoName"></div></div><div class="photoActions"><button id="previewPhotoMenu" title="Действия с фотографией" aria-label="Действия с фотографией">⋯</button><button id="previewDownload" title="Скачать оригинал" aria-label="Скачать оригинал">↓</button><button id="closePreview" title="Закрыть" aria-label="Закрыть">✕</button></div></div><div class="photoStage" id="photoStage"><div class="previewContent" id="previewBody"></div><div id="viewerSpinner" class="viewerSpinner hidden">Загрузка…</div></div><div id="filmstrip" class="filmstrip" role="listbox" aria-label="Фотографии"></div></div>
-<script src="/static/app.js" defer></script></body></html>
+<script src="/static/nas-icons.js" defer></script><script src="/static/app.js" defer></script></body></html>

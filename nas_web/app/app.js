@@ -6,17 +6,13 @@ const ext=n=>(n.split('.').pop()||'').toLowerCase();
 const imageExt=['jpg','jpeg','png','gif','webp','heic','heif'];
 const videoExt=['mp4','webm','m4v','mov','mp3','ogg'];
 
-const ICON_PATHS={
- folder:'<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3z"/>',
- trash:'<path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13M10 11v6m4-6v6"/>',
- image:'<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="9" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 6"/>',
- video:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="m10 8 6 4-6 4z"/>',
- file:'<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5"/>',
- pdf:'<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 14h6m-6 3h4"/>',
- disk:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M6 15h12M8 18h.01"/>',
- music:'<path d="M9 18V6l11-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>'
-};
-function icon(kind,cls=''){const span=document.createElement('span');span.className='vectorIcon '+cls;const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.6');svg.setAttribute('stroke-linejoin','round');svg.setAttribute('stroke-linecap','round');svg.innerHTML=ICON_PATHS[kind]||ICON_PATHS.file;span.append(svg);return span}
+// All file-type icons use the same self-hosted stroke design as the controls.
+function icon(kind,cls=''){
+  const span=document.createElement('span');
+  span.className='vectorIcon '+cls;
+  span.append(NASIcons.create(kind==='pdf'?'file':kind));
+  return span;
+}
 const fileKind=f=>f.directory?'folder':imageExt.includes(ext(f.name))?'image':videoExt.includes(ext(f.name))?(['mp3','ogg'].includes(ext(f.name))?'music':'video'):ext(f.name)==='pdf'?'pdf':'file';
 
 const canPreview=f=>!f.directory&&(imageExt.includes(ext(f.name))||videoExt.includes(ext(f.name))||ext(f.name)==='pdf');
@@ -46,7 +42,8 @@ function updateSelection(){
     const selected=selectedFiles.has(tile.dataset.filename);
     tile.classList.toggle('selectedItem',selected);
     const check=tile.querySelector('.selectionCheck');
-    if(check){check.textContent=selected?'✓':'○';check.setAttribute('aria-pressed',String(selected))}
+    if(check){if(typeof NASIcons!=='undefined')NASIcons.set(check,selected?'check-square':'square',null);
+      else check.textContent=selected?'✓':'○';check.setAttribute('aria-pressed',String(selected))}
   }
 }
 function clearSelection(){selectedFiles.clear();selectionMode=false;updateSelection()}
@@ -405,7 +402,9 @@ function setupVideoPlayback(video,f){
   const quick=document.createElement('div');quick.className='videoQuickActions';
   function button(caption,title,run){
     const btn=document.createElement('button');btn.type='button';
-    btn.textContent=caption;btn.title=title;btn.setAttribute('aria-label',title);
+    if(typeof NASIcons!=='undefined')NASIcons.set(btn,caption==='↶ 10'?'rotate-ccw':caption==='10 ↷'?'rotate-cw':'maximize',caption==='⛶'?null:'10');
+    else btn.textContent=caption;
+    btn.title=title;btn.setAttribute('aria-label',title);
     btn.onclick=run;quick.append(btn);return btn;
   }
   const seek=seconds=>{
@@ -496,7 +495,7 @@ if(ext(f.name)==='mov'){
 box.append(visual);
 node.src='/api/video?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/')});
 }if(node.tagName==='IFRAME'||node.tagName==='IMG')box.append(node);renderFilmstrip()}
-function renderFilmstrip(){const strip=el('filmstrip');if(gallery.length<2){strip.classList.add('hidden');return}strip.classList.remove('hidden');const from=Math.max(0,previewIndex-5),to=Math.min(gallery.length,previewIndex+6),fragment=document.createDocumentFragment();for(let i=from;i<to;i++){const f=gallery[i];let b=filmNodes.get(i);if(!b){b=document.createElement('button');b.type='button';b.setAttribute('aria-label','Фотография '+(i+1)+' из '+gallery.length);if(isPhoto(f)){const img=document.createElement('img');img.loading='lazy';img.alt='';img.src=imageURL(f,false,f.folder!==undefined?f.folder:shownDir,f.share||shownShare);b.append(img)}else{const mark=document.createElement('span');mark.textContent='▣';b.append(mark)}b.onclick=()=>{if(previewIndex!==i){const movement=i>previewIndex?1:-1;previewIndex=i;showPreview(movement)}};filmNodes.set(i,b)}b.classList.toggle('active',i===previewIndex);fragment.append(b)}strip.replaceChildren(fragment);const active=strip.querySelector('button.active');if(active)requestAnimationFrame(()=>active.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'}))}
+function renderFilmstrip(){const strip=el('filmstrip');if(gallery.length<2){strip.classList.add('hidden');return}strip.classList.remove('hidden');const from=Math.max(0,previewIndex-5),to=Math.min(gallery.length,previewIndex+6),fragment=document.createDocumentFragment();for(let i=from;i<to;i++){const f=gallery[i];let b=filmNodes.get(i);if(!b){b=document.createElement('button');b.type='button';b.setAttribute('aria-label','Фотография '+(i+1)+' из '+gallery.length);if(isPhoto(f)){const img=document.createElement('img');img.loading='lazy';img.alt='';img.src=imageURL(f,false,f.folder!==undefined?f.folder:shownDir,f.share||shownShare);b.append(img)}else{const mark=document.createElement('span');mark.append(NASIcons.create('image'));b.append(mark)}b.onclick=()=>{if(previewIndex!==i){const movement=i>previewIndex?1:-1;previewIndex=i;showPreview(movement)}};filmNodes.set(i,b)}b.classList.toggle('active',i===previewIndex);fragment.append(b)}strip.replaceChildren(fragment);const active=strip.querySelector('button.active');if(active)requestAnimationFrame(()=>active.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'}))}
 function stepPreview(offset){if(zoom>1||!gallery.length)return;const next=previewIndex+offset;if(next<0||next>=gallery.length)return;previewIndex=next;showPreview(offset)}
 function isMobileLayout(){return window.matchMedia('(max-width:760px)').matches}
 function closeMobileSheet(){
@@ -512,7 +511,7 @@ function openMobileSheet(title,actions){
   const container=el('mobileSheetActions');container.replaceChildren();
   for(const action of actions){
     const btn=document.createElement('button');btn.type='button';
-    btn.textContent=action.label;
+    NASIcons.decorateLabel(btn,action.label);
     if(action.danger)btn.classList.add('sheetDanger');
     btn.onclick=()=>{closeMobileSheet();action.run()};
     container.append(btn);
@@ -557,6 +556,10 @@ const moreMenuIconPaths={
 };
 function moreMenuIcon(kind){
   const wrap=document.createElement('span');wrap.className='moreMenuIcon';
+  if(typeof NASIcons!=='undefined'){
+    wrap.append(NASIcons.create({albums:'images',stats:'panel-top',theme:'moon',logout:'log-out'}[kind]||'more-horizontal'));
+    return wrap;
+  }
   wrap.setAttribute('aria-hidden','true');
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');
@@ -588,7 +591,9 @@ function openMoreMenu(){
   const user=document.createElement('strong');user.textContent=username;
   identity.append(caption,user);
   const arrow=document.createElement('span');arrow.className='moreMenuArrow';
-  arrow.textContent='›';arrow.setAttribute('aria-hidden','true');
+  if(typeof NASIcons!=='undefined')arrow.append(NASIcons.create('chevron-right'));
+  else arrow.textContent='›';
+  arrow.setAttribute('aria-hidden','true');
   profile.append(avatar,identity,arrow);
   container.append(profile);
 
@@ -610,7 +615,9 @@ function openMoreMenu(){
       }
       if(!item.danger){
         const chevron=document.createElement('span');
-        chevron.className='moreMenuChevron';chevron.textContent='›';
+        chevron.className='moreMenuChevron';
+        if(typeof NASIcons!=='undefined')chevron.append(NASIcons.create('chevron-right'));
+        else chevron.textContent='›';
         chevron.setAttribute('aria-hidden','true');row.append(chevron);
       }
       list.append(row);
@@ -807,7 +814,7 @@ function updateMobileFilesBreadcrumb(){
  if(!node)return;
  node.replaceChildren();
  const back=document.createElement('button');back.type='button';back.className='mobilePathBack';
- back.textContent='←';back.setAttribute('aria-label','На уровень выше');
+ NASIcons.set(back,'arrow-left',null);back.setAttribute('aria-label','На уровень выше');
  back.onclick=()=>{if(dir)mobileNavigateTo(dir.split('/').slice(0,-1).join('/'));else mobileSharesMenu()};
  node.append(back);
  const trail=document.createElement('div');trail.className='mobilePathTrail';
@@ -857,7 +864,7 @@ function updateMobileNav(){
   updateDesktopWorkspace();
 }
 function hideMenu(){el('fileMenu').classList.add('hidden');el('fileMenu').classList.remove('photoPreviewMenu');el('fileMenu').replaceChildren()}
-function menuButton(text,fn,danger=false){const btn=document.createElement('button');btn.textContent=text;if(danger)btn.classList.add('danger');btn.onclick=()=>{hideMenu();fn()};return btn}
+function menuButton(text,fn,danger=false){const btn=document.createElement('button');NASIcons.decorateLabel(btn,text,(/скачать/i.test(text)?'download':/переименовать/i.test(text)?'pencil':/удалить|корзин/i.test(text)?'trash-2':/открыть/i.test(text)?'folder-open':'check'));if(danger)btn.classList.add('danger');btn.onclick=()=>{hideMenu();fn()};return btn}
 function openMenu(f,button){
 const inTrash=dir==='.recycle'||dir.startsWith('.recycle/');
 if(isMobileLayout()){
@@ -1126,7 +1133,7 @@ function renderGalleryVirtualWindow(force=false){
         tile.dataset.thumbSrc=requestedSrc;thumb.append(img);tile.append(thumb);
         const actions=document.createElement('button');
         actions.type='button';actions.className='photoTileMore';
-        actions.textContent='⋯';actions.title='Действия с фотографией';
+        NASIcons.set(actions,'more-horizontal',null);actions.title='Действия с фотографией';
         actions.setAttribute('aria-label','Действия с фотографией: '+f.name);
         actions.onclick=e=>{e.preventDefault();e.stopPropagation();openGalleryPhotoMenu(f,actions)};
         actions.onkeydown=e=>e.stopPropagation();
@@ -1583,8 +1590,8 @@ const check=document.createElement('button');check.type='button';check.className
   img.onerror=()=>{photoObserver.unobserve(img);img.remove();thumb.replaceChildren(icon('video'))};
   photoObserver.observe(img);thumb.append(img);
   const play=document.createElement('span');play.className='videoPosterPlay';
-  play.textContent='▶';play.setAttribute('aria-hidden','true');thumb.append(play);
-}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name==='.recycle'?'Корзина':f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'':size(f.size);if(!f.directory)details.append(meta);if(view!=='gallery')tile.append(details);const more=document.createElement('button');more.className='more';more.textContent='⋯';more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);attachFileDrag(tile,f);
+  NASIcons.set(play,'play',null);play.setAttribute('aria-hidden','true');thumb.append(play);
+}else thumb.append(icon(fileKind(f)));tile.append(thumb);const details=document.createElement('div');details.className='details';const title=document.createElement('div');title.className='filename';title.textContent=f.name==='.recycle'?'Корзина':f.name;title.title=f.name;details.append(title);const meta=document.createElement('div');meta.className='filemeta';meta.textContent=f.directory?'':size(f.size);if(!f.directory)details.append(meta);if(view!=='gallery')tile.append(details);const more=document.createElement('button');more.className='more';NASIcons.set(more,'more-horizontal',null);more.title='Действия с файлом';more.setAttribute('aria-label','Действия: '+f.name);more.onclick=event=>{event.stopPropagation();openMenu(f,more)};more.onkeydown=event=>event.stopPropagation();tile.append(more);attachFileDrag(tile,f);
 return tile;
 }
 function render(){
@@ -1745,7 +1752,8 @@ function chooseUploadDestination(files,onConfirmed=null){
     };
     overlay.onclick=e=>{if(e.target===overlay)close(null)};
     const addFolder=(name,path)=>{
-      const btn=document.createElement('button');btn.type='button';btn.textContent='📁 '+name;
+      const btn=document.createElement('button');btn.type='button';if(typeof NASIcons!=='undefined')NASIcons.set(btn,'folder',name);
+      else btn.textContent='📁 '+name;
       btn.style.cssText='text-align:left;padding:10px;border-radius:9px;overflow-wrap:anywhere';
       btn.onclick=()=>{folder=path;load()};listing.append(btn);
     };
@@ -1812,7 +1820,8 @@ function notifyUploadJobs(force=false){
   uploadPaintAt=now;
   el('app').classList.toggle('nasUploadsActive',uploadBatchBusy);
   const active=uploadQueue.filter(uploadCanCancel).length;
-  el('uploadCenterButton').textContent=active?'⇧ Загрузки: '+active:'⇧ Центр загрузок';
+  if(typeof NASIcons!=='undefined')NASIcons.set(el('uploadCenterButton'),'upload',active?'Загрузки: '+active:'Центр загрузок');
+  else el('uploadCenterButton').textContent=active?'⇧ Загрузки: '+active:'⇧ Центр загрузок';
   document.dispatchEvent(new Event('nas-upload-progress'));
 }
 function setUploadStage(job,stage,progress=job.progress){
@@ -1967,8 +1976,8 @@ async function uploadFiles(files,initialTarget=null){
     }
   }
 }
-el('togglePassword').onclick=()=>{const password=el('password'),visible=password.type==='password';password.type=visible?'text':'password';el('togglePassword').textContent=visible?'Скрыть':'Показать';password.focus()};
-el('loginForm').onsubmit=async e=>{e.preventDefault();++loginGeneration;el('loginError').textContent='';const submit=el('submitLogin');submit.disabled=true;submit.textContent='Проверяем доступ…';try{const form=new FormData();form.set('username',el('username').value);form.set('password',el('password').value);form.set('remember',el('remember').checked?'true':'false');const user=await api('/api/login',{method:'POST',body:form});el('password').value='';showApp(user)}catch(e){el('loginError').textContent=e.message}finally{submit.disabled=false;submit.innerHTML='Войти в NAS Web <span aria-hidden="true">→</span>'}};
+el('togglePassword').onclick=()=>{const password=el('password'),visible=password.type==='password';password.type=visible?'text':'password';NASIcons.set(el('togglePassword'),visible?'eye-off':'eye',visible?'Скрыть':'Показать');password.focus()};
+el('loginForm').onsubmit=async e=>{e.preventDefault();++loginGeneration;el('loginError').textContent='';const submit=el('submitLogin');submit.disabled=true;submit.textContent='Проверяем доступ…';try{const form=new FormData();form.set('username',el('username').value);form.set('password',el('password').value);form.set('remember',el('remember').checked?'true':'false');const user=await api('/api/login',{method:'POST',body:form});el('password').value='';showApp(user)}catch(e){el('loginError').textContent=e.message}finally{submit.disabled=false;NASIcons.set(submit,'log-out','Войти в NAS Web')}};
 el('logout').onclick=async()=>{try{await api('/api/logout',{method:'POST'})}catch{}showLogin()};
 el('up').onclick=()=>{if(dir)navigateFiles(dir.split('/').slice(0,-1).join('/'),{restore:true})};
 el('folder').onclick=async()=>{const name=await askDialog({title:'Новая папка',text:'Папка будет создана в текущем расположении.',input:true,confirm:'Создать'});if(name)await mutate('mkdir',{path:dir,name})};
@@ -1980,11 +1989,12 @@ async function showDestinationFolders(){
   try{
     const data=await api('/api/list?'+qs({share,path:destinationDir}));
     if(el('destinationOverlay').classList.contains('hidden')||share!==el('destinationShare').value)return;
-    const upper=document.createElement('button');upper.textContent='↑ На уровень выше';upper.disabled=!destinationDir;
+    const upper=document.createElement('button');NASIcons.set(upper,'arrow-up','На уровень выше');upper.disabled=!destinationDir;
     upper.onclick=()=>{destinationDir=destinationDir.split('/').slice(0,-1).join('/');showDestinationFolders()};
     box.append(upper);
     for(const folder of data.items.filter(x=>x.directory).sort((a,b)=>a.name.localeCompare(b.name,'ru'))){
-      const btn=document.createElement('button');btn.textContent='▱  '+folder.name;
+      const btn=document.createElement('button');if(typeof NASIcons!=='undefined')NASIcons.set(btn,'folder',folder.name);
+      else btn.textContent='▱  '+folder.name;
       btn.onclick=()=>{destinationDir=[destinationDir,folder.name].filter(Boolean).join('/');showDestinationFolders()};
       box.append(btn);
     }
@@ -2626,7 +2636,8 @@ async function profileBrowseFolder(share,path){
     for(const folder of folders){
       const next=[path,folder.name].filter(Boolean).join('/');
       const button=document.createElement('button');button.type='button';
-      button.textContent='▱  '+folder.name;
+      if(typeof NASIcons!=='undefined')NASIcons.set(button,'folder',folder.name);
+      else button.textContent='▱  '+folder.name;
       button.onclick=()=>profileBrowseFolder(share,next);
       container.append(button);
     }
@@ -2767,7 +2778,7 @@ function importErrorsView(job,host){
   }
   const download=document.createElement('button');download.type='button';
   download.className='profileImportErrorDownload';
-  download.textContent='↓ Скачать полный отчёт JSON';
+  NASIcons.set(download,'download','Скачать полный отчёт JSON');
   download.onclick=()=>{
     const blob=new Blob([JSON.stringify(report,null,2)],{type:'application/json;charset=utf-8'});
     const uri=URL.createObjectURL(blob);
@@ -3061,11 +3072,13 @@ setInterval(()=>{
 },6500);
 
 
-const theme=localStorage.getItem('nas_theme')||'dark';document.documentElement.dataset.theme=theme;el('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('nas_theme',t)};
+const theme=localStorage.getItem('nas_theme')||'dark';document.documentElement.dataset.theme=theme;el('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('nas_theme',t);NASIcons.set(el('theme'),t==='dark'?'moon':'sun',null)};
 // Return to the profile after Google's top-level OAuth redirect.
 const oauthResult=new URLSearchParams(window.location.search).get('nas_google');
 if(oauthResult){
   window.history.replaceState({},'',window.location.pathname);
 }
+NASIcons.applyStatic();
+NASIcons.set(el('theme'),document.documentElement.dataset.theme==='dark'?'moon':'sun',null);
 const startupLoginGeneration=loginGeneration;
 api('/api/me').then(user=>{if(loginGeneration===startupLoginGeneration){showApp(user);if(oauthResult){openProfile().then(()=>importNotice(oauthResult==='connected'?'Google Фото подключён':'Google OAuth не завершён'))}}}).catch(()=>{if(loginGeneration===startupLoginGeneration)showLogin()});
