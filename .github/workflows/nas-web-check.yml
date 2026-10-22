@@ -468,6 +468,8 @@ jobs:
         run: node nas_web/tests/file_manager_ui.test.cjs
       - name: Large-folder virtual scrolling and cache regressions
         run: node nas_web/tests/file_virtual_scroll.test.cjs
+      - name: Upload destination selection on mobile and desktop
+        run: node nas_web/tests/upload_destination_flow.test.cjs
       - name: Upload transfer progress and cancellation tests
         run: node nas_web/tests/upload_center.test.cjs
       - name: Browser video playback resume and controls
