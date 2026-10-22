@@ -1,3 +1,12 @@
+## 0.22.46
+
+- Protect existing NAS files during photo/file uploads: upload into a random, create-only temporary `.nasweb-upload-<128-bit-token>.part` file inside the destination SMB folder, check the remote stored byte count against the locally received file, then publish with a single same-directory SMB2/3 rename (ReplaceIfExists).
+- Never stream directly into an existing target, pre-delete the original, or attempt an unsafe backup-and-restore fallback. If upload/verification/rename fails before commit, the original stays untouched and a best-effort cleanup removes the temporary file.
+- When a remote file is shorter than the received upload, return HTTP 502 rather than exposing a partial photo under its final name. Preserve the existing gallery indexing only after a successful commit.
+- Use Impacket create disposition FILE_CREATE for staging to prevent temporary-name collisions from overwriting other writers.
+- Add outage, size mismatch, name collision, rename-denied, empty-file and original preservation tests, plus backend/adapter safety integration contracts.
+- Note: process termination or SMB disconnection may leave an orphan `.part` file, and disconnection precisely after the atomic rename can leave an ambiguous client-visible result. Original bytes are never proactively deleted by the upload handler.
+
 ## 0.22.45
 
 - Completed a source-level code review covering FastAPI, SMB operations, credentials and administrator, indexing/EXIF/HEIC, imports, recycle bin, browser app and CI. Findings and open data-integrity risks are in CODE_REVIEW_2026-10-23.md.
