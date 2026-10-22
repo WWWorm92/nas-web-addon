@@ -2438,6 +2438,48 @@ function renderImportDestination(){
     :'Выберите папку на NAS';
 }
 el('profileImportChoose').onclick=()=>openProfilePicker('import');
+// Failure reports stay in the profile; the ZIP may already be deleted.
+const googleImportErrorsCache=new Map(),googleImportErrorsExpanded=new Set();
+function importErrorsView(job,host){
+  host.replaceChildren();
+  const report=googleImportErrorsCache.get(job.id);
+  if(!report){
+    host.textContent='Загружаем список ошибок…';
+    return;
+  }
+  if(!report.recorded){
+    host.textContent='Старая версия NAS Web не записывала причины ошибок по файлам. Повтори импорт того же ZIP после обновления — уже перенесённые фото будут пропущены.';
+    return;
+  }
+  const summary=document.createElement('p');
+  summary.className='profileImportErrorSummary';
+  const labels={ZIP:'Повреждение ZIP',SMB_ACCESS:'Доступ SMB',SMB_CONNECTION:'Соединение SMB',SMB_SPACE:'Место на SMB',FILENAME:'Имя файла',SIZE:'Размер файла',OTHER:'Другая ошибка'};
+  summary.textContent=Object.entries(report.categories||{}).map(([key,count])=>
+    (labels[key]||key)+': '+count).join(' · ');
+  host.append(summary);
+  const list=document.createElement('ol');list.className='profileImportErrorList';
+  for(const item of (report.items||[]).slice(0,20)){
+    const row=document.createElement('li');row.textContent=item.path+' — '+item.message;
+    list.append(row);
+  }
+  host.append(list);
+  if(report.recorded>20){
+    const note=document.createElement('small');
+    note.textContent='Показаны первые 20. Полный список можно сохранить.';
+    host.append(note);
+  }
+  const download=document.createElement('button');download.type='button';
+  download.className='profileImportErrorDownload';
+  download.textContent='↓ Скачать полный отчёт JSON';
+  download.onclick=()=>{
+    const blob=new Blob([JSON.stringify(report,null,2)],{type:'application/json;charset=utf-8'});
+    const uri=URL.createObjectURL(blob);
+    const link=document.createElement('a');link.href=uri;
+    link.download='nasweb-takeout-errors-'+job.id+'.json';
+    link.click();setTimeout(()=>URL.revokeObjectURL(uri),1000);
+  };
+  host.append(download);
+}
 function formatImportJob(job){
   const card=document.createElement('div');card.className='profileImportJob';
   const source=job.source==='picker'?'Выбор Google Фото':'Google Takeout';
@@ -2450,6 +2492,31 @@ function formatImportJob(job){
     ' · перенесено: '+job.imported+', пропущено: '+job.skipped+
     (job.failed?' · ошибок: '+job.failed:'')+
     (job.detail?' · '+job.detail:'');
+  if(job.failed){
+    const toggle=document.createElement('button');toggle.type='button';
+    toggle.className='profileImportErrorsToggle';
+    toggle.textContent=googleImportErrorsExpanded.has(job.id)?'Скрыть ошибки':'Показать ошибки ('+job.failed+')';
+    const detail=document.createElement('div');detail.className='profileImportErrorDetails';
+    detail.hidden=!googleImportErrorsExpanded.has(job.id);
+    if(!detail.hidden)importErrorsView(job,detail);
+    toggle.onclick=async()=>{
+      const expanded=!googleImportErrorsExpanded.has(job.id);
+      if(expanded)googleImportErrorsExpanded.add(job.id);
+      else googleImportErrorsExpanded.delete(job.id);
+      detail.hidden=!expanded;
+      toggle.textContent=expanded?'Скрыть ошибки':'Показать ошибки ('+job.failed+')';
+      if(!expanded)return;
+      if(!googleImportErrorsCache.has(job.id)){
+        detail.textContent='Загружаем список ошибок…';
+        try{
+          const report=await api('/api/import/google/errors?'+qs({job_id:job.id}));
+          googleImportErrorsCache.set(job.id,report);
+        }catch(err){detail.textContent='Не удалось получить отчёт: '+err.message;return}
+      }
+      if(googleImportErrorsExpanded.has(job.id))importErrorsView(job,detail);
+    };
+    card.append(toggle,detail);
+  }
   return card;
 }
 async function refreshGoogleImport(){
