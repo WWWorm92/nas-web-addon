@@ -452,6 +452,10 @@ jobs:
         run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_gallery_auto_sync.py'
       - name: Mobile More menu UX regression
         run: node nas_web/tests/mobile_more_menu.test.cjs
+      - name: Fast recycle and trash gallery exclusion tests
+        run: PYTHONPATH=nas_web python -m unittest discover -s nas_web/tests -p 'test_bulk_recycle.py'
+      - name: Gallery photo actions and bulk delete UI regression
+        run: node nas_web/tests/gallery_photo_actions.test.cjs
       - name: Gallery memories stories regressions
         run: node nas_web/tests/gallery_memories_stories.test.cjs
       - name: Profile folder picker regression
