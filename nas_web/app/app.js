@@ -241,7 +241,12 @@ function renderGalleryDates(months,fullIndex){
 }
 function renderGalleryYears(photos){
   const bar=el('galleryYears');bar.replaceChildren();
-  if(view!=='gallery'){bar.classList.add('hidden');return}
+  if(view!=='gallery'){
+    bar.classList.add('hidden');
+    el('galleryDateNav').classList.add('hidden');
+    galleryDateRenderSignature='';
+    return;
+  }
   const fullIndex=allPhotosMode&&!allPhotoSubsetMode;
   const months=fullIndex?allPhotoTimeline:null;
   const years=months
