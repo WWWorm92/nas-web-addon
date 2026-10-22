@@ -818,6 +818,87 @@ if(inTrash)menu.append(menuButton('↶ Восстановить',()=>restoreItem
 menu.append(menuButton('Переименовать',()=>renameItem(f)));
 menu.append(menuButton(isTrashItemPath(fpath(f.name))?'Удалить навсегда':'В корзину',()=>deleteItem(f),true));
 menu.classList.remove('hidden');const rect=button.getBoundingClientRect(),mw=210,mh=220;menu.style.left=Math.max(8,Math.min(rect.left,innerWidth-mw-8))+'px';menu.style.top=(rect.bottom+mh>innerHeight?Math.max(8,rect.top-mh):rect.bottom+5)+'px'}
+function galleryPhotoPath(f){
+  const loc=photoLocation(f);
+  return {share:loc.share,path:f.path||[loc.folder,f.name].filter(Boolean).join('/')};
+}
+async function shareGalleryPhoto(f){
+  const {share,path}=galleryPhotoPath(f);
+  // Native Web Share with the actual file (not an unauthenticated/public URL).
+  // HTTPS and Web Share Level 2 are required for sharing to other apps.
+  if(!navigator.share||!navigator.canShare||!window.File){
+    message('Передача в другие приложения не поддерживается этим браузером. Скачайте оригинал.');
+    const link=document.createElement('a');link.href='/api/file?'+qs({share,path});link.download=f.name;link.click();
+    return;
+  }
+  if(Number(f.size||0)>64*1024*1024){
+    message('Файл больше 64 МБ. Для передачи в другие приложения скачайте оригинал.');
+    return;
+  }
+  try{
+    const response=await fetch('/api/file?'+qs({share,path}),{credentials:'same-origin'});
+    if(!response.ok)throw Error('Не удалось загрузить оригинал (HTTP '+response.status+')');
+    const data=await response.blob();
+    if(data.size>64*1024*1024)throw Error('Файл слишком большой для передачи из браузера');
+    const file=new File([data],f.name,{type:data.type||'application/octet-stream'});
+    if(!navigator.canShare({files:[file]})){
+      message('Передача файла не поддерживается этим браузером. Скачайте оригинал.');
+      return;
+    }
+    await navigator.share({files:[file],title:f.name});
+  }catch(err){
+    if(err.name!=='AbortError')message('Не удалось поделиться: '+err.message);
+  }
+}
+function downloadGalleryPhoto(f){
+  const {share,path}=galleryPhotoPath(f);
+  const link=document.createElement('a');
+  link.href='/api/file?'+qs({share,path});
+  link.download=f.name;link.click();
+}
+async function deleteGalleryPhoto(f){
+  const approved=await askDialog({
+    title:'Переместить фото в корзину?',
+    text:'«'+f.name+'» будет перемещено в корзину Simple NAS. Восстановить можно в течение 14 дней.',
+    confirm:'В корзину',danger:true
+  });
+  if(!approved)return;
+  const {share,path}=galleryPhotoPath(f);
+  try{
+    await api('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({share,path,directory:false})});
+    if(el('preview').style.display==='flex')closePreview();
+    galleryPicked.delete(galleryId({share,path}));
+    if(allPhotosMode){
+      allPhotos=allPhotos.filter(p=>galleryId(p)!==galleryId({share,path}));
+      allPhotoTotal=Math.max(0,allPhotoTotal-1);
+      allPhotoNextOffset=Math.max(0,allPhotoNextOffset-1);
+      if(allPhotoStatus)allPhotoStatus.total=Math.max(0,allPhotoStatus.total-1);
+      galleryRenderSignature='';resetGalleryVirtual();renderAllGallery();
+      loadGalleryMemories().catch(()=>{});
+    }else await refresh();
+    message('Фотография перемещена в корзину');
+  }catch(err){message('Не удалось удалить фотографию: '+err.message)}
+}
+function openGalleryPhotoMenu(f,anchor,fromViewer=false){
+  const actions=[
+    {label:'Поделиться',run:()=>shareGalleryPhoto(f)},
+    {label:'Сведения',run:()=>fromViewer?showPreviewInfo():showPhotoDetails(f)},
+    {label:'★ Избранное и альбомы',run:()=>addPhotoToCollection(f)},
+    {label:'Скачать оригинал',run:()=>downloadGalleryPhoto(f)},
+    {label:'Переместить в корзину',danger:true,run:()=>deleteGalleryPhoto(f)}
+  ];
+  if(isMobileLayout()){
+    openMobileSheet(f.name,actions);
+    return;
+  }
+  const menu=el('fileMenu');menu.replaceChildren();
+  for(const action of actions)menu.append(menuButton(action.label,action.run,!!action.danger));
+  menu.classList.remove('hidden');
+  const rect=anchor.getBoundingClientRect(),width=226,height=235;
+  menu.style.left=Math.max(8,Math.min(rect.left,innerWidth-width-8))+'px';
+  menu.style.top=(rect.bottom+height>innerHeight?Math.max(8,rect.top-height):rect.bottom+4)+'px';
+}
 function sortedFiltered(){let a=items.filter(f=>f.name.toLocaleLowerCase().includes(el('search').value.trim().toLocaleLowerCase()));const sort=el('sort').value;a.sort((x,y)=>Number(y.directory)-Number(x.directory)||(sort==='new'?Number(y.modified||0)-Number(x.modified||0):sort==='size'?Number(y.size)-Number(x.size):x.name.localeCompare(y.name,'ru')));return a}
 // Limit simultaneous thumbnail requests so phones don't saturate the NAS.
 const thumbQueue=[];let activeThumbs=0;const THUMB_CONCURRENCY=3;
@@ -967,7 +1048,7 @@ function renderGalleryVirtualWindow(force=false){
         tile.setAttribute('aria-label','Открыть '+f.name+' — '+f.share+'/'+f.folder);
         tile.onclick=()=>{if(tile.dataset.longPress){delete tile.dataset.longPress;return}if(galleryPickMode)toggleGalleryPick(f);else openPreview(f)};
         let hold=null,sx=0,sy=0;
-        tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;hold=setTimeout(()=>{tile.dataset.longPress='1';navigator.vibrate?.(15);openMobileSheet(f.name,[{label:'Выбрать',run:()=>toggleGalleryPick(f)},{label:'Открыть фото',run:()=>openPreview(f)},{label:'★ В избранное / альбом',run:()=>addPhotoToCollection(f)},{label:'Открыть папку',run:()=>{leaveGlobalGallery();selected=f.share;dir=f.folder;renderShares();refresh()}},{label:'Сведения',run:()=>showPhotoDetails(f)},{label:'Скачать',run:()=>{const a=document.createElement('a');a.href='/api/file?'+qs({share:f.share,path:f.path});a.download=f.name;a.click()}}])},550)},{passive:true});
+        tile.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;hold=setTimeout(()=>{tile.dataset.longPress='1';navigator.vibrate?.(15);openGalleryPhotoMenu(f,tile)},550)},{passive:true});
         tile.addEventListener('touchmove',e=>{if(e.touches.length&&Math.hypot(e.touches[0].clientX-sx,e.touches[0].clientY-sy)>12)clearTimeout(hold)},{passive:true});
         tile.addEventListener('touchend',()=>clearTimeout(hold));tile.addEventListener('touchcancel',()=>clearTimeout(hold));
         tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openPreview(f)}};
@@ -979,7 +1060,14 @@ function renderGalleryVirtualWindow(force=false){
         if(previousImg)reused.add(img);
         else{img.loading='lazy';img.decoding='async';img.alt='';img.onload=()=>img.classList.add('photoLoaded');img.dataset.src=requestedSrc}
         img.onerror=()=>{img.remove();thumb.replaceChildren(icon('image'))};
-        tile.dataset.thumbSrc=requestedSrc;thumb.append(img);tile.append(thumb);line.append(tile);
+        tile.dataset.thumbSrc=requestedSrc;thumb.append(img);tile.append(thumb);
+        const actions=document.createElement('button');
+        actions.type='button';actions.className='photoTileMore';
+        actions.textContent='⋯';actions.title='Действия с фотографией';
+        actions.setAttribute('aria-label','Действия с фотографией: '+f.name);
+        actions.onclick=e=>{e.preventDefault();e.stopPropagation();openGalleryPhotoMenu(f,actions)};
+        actions.onkeydown=e=>e.stopPropagation();
+        tile.append(actions);line.append(tile);
       }
       fragment.append(line);
     }
@@ -2063,7 +2151,7 @@ el('galleryView').onclick=()=>enterGlobalGallery();
 el('uploadCenterButton').onclick=showUploadCenter;
 el('upload').onchange=e=>{uploadFiles([...e.target.files]);e.target.value=''};
 el('closePreview').onclick=closePreview;
-el('previewInfo').onclick=()=>{
+function showPreviewInfo(){
   if(previewIndex<0)return;
   const f=gallery[previewIndex];
   const img=el('previewBody').querySelector('img');
@@ -2079,6 +2167,10 @@ el('previewInfo').onclick=()=>{
     const p=document.createElement('p');p.className='photoFileInfo';p.textContent=lines.join('\n');
     el('mobileSheetActions').append(p);
   }else askDialog({title:'Информация о файле',text:lines.join('\n'),confirm:'Закрыть'});
+}
+el('previewPhotoMenu').onclick=()=>{
+  if(previewIndex<0||!gallery[previewIndex])return;
+  openGalleryPhotoMenu(gallery[previewIndex],el('previewPhotoMenu'),true);
 };
 el('previewDownload').onclick=()=>{if(previewIndex>=0){const f=gallery[previewIndex];const a=document.createElement('a');a.href='/api/file?'+qs({share:shownShare,path:[shownDir,f.name].filter(Boolean).join('/')});a.download=f.name;a.click()}};
 let gesture=null,lastTap=0,tapTimer=null,lastTouchAt=0;
