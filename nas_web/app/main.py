@@ -208,7 +208,7 @@ def smb(u):
     try:
         conn.authorized_shares = u.get("shares", ())
         yield conn
-        healthy = True
+        healthy = not getattr(conn, '_nasweb_failed', False)
     finally:
         smb_pool.release(session_key, conn, healthy)
 
@@ -595,15 +595,20 @@ def _import_folder(u, share, path):
 
 def _import_worker(user, job_id, share, folder, archive=None, picked=None):
     owner = google_photos_import.owner_of(user["name"])
-    try:
+
+    @contextmanager
+    def import_connection():
         with smb(user) as conn:
             check_share(conn, share)
-            # Always validate the SMB target before writing. A read-only folder
-            # will fail at storeFile; no fallback administrative account exists.
             conn.listPath(share, full(folder), timeout=30)
+            yield conn
+
+    try:
+        with import_connection() as conn:
             if picked is None:
                 result = google_photos_import.process_takeout(
-                    archive, conn, user["name"], share, folder, job_id)
+                    archive, conn, user["name"], share, folder, job_id,
+                    reconnect=import_connection)
             else:
                 result = google_photos_import.process_picked(
                     picked, conn, user["name"], opts, share, folder, job_id)
@@ -638,6 +643,15 @@ def google_import_status(request: Request):
             "picker_active": bool(google_photos_import.picker_session(u["name"])),
             "max_takeout_bytes": _takeout_max_size(),
             "takeout_storage": google_photos_import.takeout_storage_info()}
+
+
+@app.get("/api/import/google/errors")
+def google_import_errors(request: Request, job_id: str):
+    u = user_for(request)
+    try:
+        return google_photos_import.failures_for(u["name"], job_id)
+    except ValueError as exc:
+        fail(404, str(exc))
 
 
 @app.post("/api/import/google/oauth/start")
