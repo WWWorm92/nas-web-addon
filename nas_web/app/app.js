@@ -92,6 +92,8 @@ function download(f){const a=document.createElement('a');a.href=fileUrl(f.name);
 const isPhoto=f=>!f.directory&&imageExt.includes(ext(f.name));
 let allPhotosMode=false,allPhotos=[],allPhotoTotal=0,allPhotoStatus=null,allPhotoPageBusy=false,allPhotoScanToken=0,previousFileView='grid';
 let allPhotoStartOffset=0,allPhotoNextOffset=0,allPhotoTimeline=[],allPhotoTimelineCheckedAt=0,allPhotoSubsetMode=false;
+// A year chip changes the pagination starting point, never the full library.
+let gallerySelectedYear='';
 const photoLocation=f=>({share:f.share||shownShare,folder:f.folder!==undefined?f.folder:shownDir});
 const photoDate=f=>f.taken?new Date(f.taken):new Date(Number(f.modified||0)*1000);
 const photoGalleryItems=()=>sortedFiltered().filter(isPhoto).sort((a,b)=>photoDate(b)-photoDate(a)||a.name.localeCompare(b.name,'ru'));
@@ -212,19 +214,33 @@ function renderGalleryYears(photos){
     }
     if([...picker.options].some(option=>option.value===previous))picker.value=previous;
   }
+  if(fullIndex){
+    const allButton=document.createElement('button');
+    allButton.type='button';allButton.textContent='Все фото';
+    allButton.classList.toggle('galleryYearCurrent',!gallerySelectedYear);
+    allButton.setAttribute('aria-pressed',String(!gallerySelectedYear));
+    allButton.onclick=returnToAllPhotos;
+    bar.append(allButton);
+  }
   for(const year of years){
     const button=document.createElement('button');button.type='button';button.textContent=year;
+    const active=fullIndex&&gallerySelectedYear===year;
+    button.classList.toggle('galleryYearCurrent',active);
+    if(fullIndex)button.setAttribute('aria-pressed',String(active));
     button.onclick=()=>{
       if(months){
+        // Tapping the same year a second time returns to the full library.
+        if(gallerySelectedYear===year){returnToAllPhotos();return}
         const firstMonth=months.find(m=>m.month.slice(0,4)===year);
         if(firstMonth)jumpToGlobalMonth(firstMonth.month);
       }else{
         galleryJumpTo(year);
       }
-      for(const b of bar.children)b.classList.toggle('galleryYearCurrent',b===button);
     };
     bar.append(button);
   }
+  const reset=el('galleryYearReset');
+  reset.classList.toggle('hidden',!fullIndex||!gallerySelectedYear);
 }
 let gallery=[],zoom=1,panX=0,panY=0,preloadTimer=null,viewerSerial=0,shownShare='',shownDir='',filmNodes=new Map();
 let originalController=null, originalObjectUrl=null;
@@ -1167,7 +1183,7 @@ function leaveGlobalGallery(){
   if(!allPhotosMode)return;
   if(previewIndex>=0)closePreview();
   gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
-  allPhotosMode=false;allPhotoScanToken++;allPhotoSubsetMode=false;allPhotoTimeline=[];view=previousFileView;
+  allPhotosMode=false;allPhotoScanToken++;allPhotoSubsetMode=false;allPhotoTimeline=[];gallerySelectedYear='';view=previousFileView;
   el('app').classList.remove('globalGalleryOpen');
   el('globalGallerySummary').classList.add('hidden');
   el('galleryPageFooter').classList.add('hidden');
@@ -1187,15 +1203,16 @@ async function loadGlobalTimeline(token=allPhotoScanToken){
     if(token===allPhotoScanToken)message('Не удалось загрузить список месяцев: '+e.message);
   }
 }
-async function jumpToGlobalMonth(monthKey){
+async function jumpToGlobalOffset(offset,monthKey=''){
   if(!allPhotosMode||allPhotoSubsetMode)return;
-  const month=allPhotoTimeline.find(item=>item.month===monthKey);
-  if(!month)return;
-  // Month positions refer to the entire database, not the loaded page.
+  // Invalidate the old month/page fetch before resetting the offset, so a
+  // response from the previous year cannot overwrite the full gallery.
   const token=++allPhotoScanToken;
-  allPhotoStartOffset=month.offset;allPhotoNextOffset=month.offset;
+  gallerySelectedYear=monthKey?monthKey.slice(0,4):'';
+  allPhotoStartOffset=offset;allPhotoNextOffset=offset;
   allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;galleryRenderSignature='';
   resetGalleryVirtual();window.scrollTo({top:0,behavior:'instant'});
+  el('galleryMonthJump').value=monthKey;
   render();
   while(allPhotoPageBusy&&allPhotosMode&&token===allPhotoScanToken){
     await new Promise(resolve=>setTimeout(resolve,80));
@@ -1205,11 +1222,32 @@ async function jumpToGlobalMonth(monthKey){
   if(!allPhotosMode||token!==allPhotoScanToken)return;
   requestAnimationFrame(()=>{
     if(token!==allPhotoScanToken)return;
-    const heading=el('entries').querySelector('.galleryMonth');
-    heading?.scrollIntoView({behavior:'smooth',block:'start'});
+    if(monthKey){
+      el('entries').querySelector('.galleryMonth')?.scrollIntoView({
+        behavior:'smooth',block:'start'
+      });
+    }else{
+      window.scrollTo({top:0,behavior:'instant'});
+    }
     el('galleryMonthJump').value=monthKey;
   });
   scanAllPhotos(token);
+}
+function returnToAllPhotos(){
+  if(!allPhotosMode||allPhotoSubsetMode)return;
+  if(!gallerySelectedYear&&allPhotoStartOffset===0){
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
+  }
+  return jumpToGlobalOffset(0);
+}
+async function jumpToGlobalMonth(monthKey){
+  if(!allPhotosMode||allPhotoSubsetMode)return;
+  if(!monthKey)return returnToAllPhotos();
+  const month=allPhotoTimeline.find(item=>item.month===monthKey);
+  if(!month)return;
+  // Month positions refer to the entire database, not the loaded page.
+  await jumpToGlobalOffset(month.offset,monthKey);
 }
 async function loadGlobalPage(reset=false){
   if(allPhotoPageBusy||!allPhotosMode||allPhotoSubsetMode)return;
@@ -1275,7 +1313,7 @@ async function enterGlobalGallery(){
   previousFileView=view==='gallery'?'grid':view;
   gallerySettingsOpen(false);el('app').classList.remove('gallerySearching');
   el('app').classList.remove('filesSearching');
-  allPhotosMode=true;view='gallery';allPhotoSubsetMode=false;
+  allPhotosMode=true;view='gallery';allPhotoSubsetMode=false;gallerySelectedYear='';
   allPhotoStartOffset=0;allPhotoNextOffset=0;allPhotoTimeline=[];allPhotoTimelineCheckedAt=0;
   allPhotos=[];allPhotoTotal=0;allPhotoStatus=null;
   const token=++allPhotoScanToken;
@@ -2098,10 +2136,11 @@ el('selectionDelete').onclick=async()=>{
 el('galleryZoomOut').onclick=()=>{setGalleryColumns(galleryColumns-1);if(allPhotosMode){galleryRenderSignature='';resetGalleryVirtual();renderAllGallery()}};
 el('galleryZoomIn').onclick=()=>{setGalleryColumns(galleryColumns+1);if(allPhotosMode){galleryRenderSignature='';resetGalleryVirtual();renderAllGallery()}};
 el('galleryMonthJump').onchange=e=>{
-  const key=e.target.value;if(!key)return;
+  const key=e.target.value;
   if(allPhotosMode&&!allPhotoSubsetMode)jumpToGlobalMonth(key);
-  else{const [year,month]=key.split('-');if(year)galleryJumpTo(year,month)}
+  else if(key){const [year,month]=key.split('-');if(year)galleryJumpTo(year,month)}
 };
+el('galleryYearReset').onclick=returnToAllPhotos;
 el('galleryPickDone').onclick=clearGalleryPick;
 el('galleryPickDownload').onclick=async()=>{
   const chosen=[...galleryPicked.values()];
