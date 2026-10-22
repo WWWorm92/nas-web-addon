@@ -894,7 +894,37 @@ button:active{transform:scale(.975)}
 #app .mobileFilesHeader button.hasNasIcon,#app .mobileGalleryHeader button.hasNasIcon{padding:8px}
 #app .mobileNav button.hasNasIcon{flex-direction:column;gap:5px}
 #app .mobileNav button.hasNasIcon .nasIcon{width:26px;height:26px}
-#app .mobileNav button.hasNasIcon .nasIconLabel{font-size:inherit}
+/* Compact labels must not inherit the 22px icon font-size of the button. */
+#app #mobileNav.mobileNav button.hasNasIcon{min-width:0;max-width:100%;overflow:hidden;gap:3px}
+#app #mobileNav.mobileNav button.hasNasIcon .nasIconLabel{
+  display:block;
+  width:100%;
+  max-width:100%;
+  height:auto;
+  min-height:0;
+  margin:0;
+  padding:0;
+  background:transparent;
+  border:0;
+  border-radius:0;
+  color:inherit;
+  font-size:10px;
+  font-weight:650;
+  line-height:1.2;
+  text-align:center;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+/* Plus icon gets the accent background, never the caption. */
+#app #mobileNav.mobileNav button.mobileAdd.hasNasIcon > .nasIcon{
+  box-sizing:content-box;
+  padding:3px;
+  width:26px;
+  height:26px;
+  background:var(--accentbg);
+  border-radius:11px;
+}
 #app #refresh.hasNasIcon,#app #gridView.hasNasIcon,#app #listView.hasNasIcon,
 #app #galleryView.hasNasIcon,#app #galleryZoomIn.hasNasIcon,#app #galleryZoomOut.hasNasIcon{gap:0}
 .logo.hasNasIcon .nasIcon{width:28px;height:28px}
