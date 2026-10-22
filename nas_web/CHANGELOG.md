@@ -1,3 +1,10 @@
+## 0.22.38
+
+- Fix gallery year navigation trapping users in paginated year/month mode. Add an always-visible **Все фото** chip before the year shortcuts and a contextual **← Все фото** button next to the month picker after jumping.
+- Clicking the selected year again also returns to the full chronological gallery; clearing the month dropdown does the same.
+- Restore the starting page at photo offset 0 without leaving the gallery or rebuilding the underlying photo index. Invalidate obsolete in-flight pagination requests so older year responses cannot overwrite the restored gallery.
+- Preserve active year highlighting through virtual-grid renders and return to the top of the unified photo library on reset. Add dedicated Node UI regressions for chips, selected state, jump offset, reset and request tokens.
+
 ## 0.22.37
 
 - Speed up multi-select Move to Trash: send up to 500 selected siblings per request, reuse one authorized SMB session, list the source and trash folders once per batch, use atomic SMB renames, and record all successful recycle moves in one SQLite transaction. Return honest partial-success counts and retain separate permanent deletion rules inside .recycle.
