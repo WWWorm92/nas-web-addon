@@ -31,12 +31,16 @@ jobs:
           ]:
               im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
               d = ImageDraw.Draw(im)
-              d.rounded_rectangle((2, 2, size-3, size-3), radius=size//4, fill="#17263b")
-              d.rounded_rectangle((size*.18,size*.27,size*.82,size*.71), radius=size*.075, fill="#87b3ff")
-              d.rounded_rectangle((size*.18,size*.21,size*.48,size*.34), radius=size*.045, fill="#87b3ff")
-              d.rounded_rectangle((size*.235,size*.36,size*.765,size*.64),radius=size*.05,fill="#253d5b")
-              for x in (.35, .49, .63):
-                  d.ellipse((size*(x-.027),size*.473,size*(x+.027),size*.527), fill="#9bc5ff")
+              sc=size/256
+              def box(coords):
+                  return tuple(round(v*sc) for v in coords)
+              d.rounded_rectangle(box((4,4,252,252)),radius=round(54*sc),fill="#17263b")
+              d.rounded_rectangle(box((48,66,208,190)),radius=round(22*sc),
+                                  outline="#87b3ff",width=max(1,round(14*sc)))
+              d.line(box((48,139,208,139)),fill="#87b3ff",width=max(1,round(12*sc)))
+              for x in (80,110):
+                  d.ellipse(box((x-8,156,x+8,172)),fill="#9bc5ff")
+              d.line(box((154,164,180,164)),fill="#9bc5ff",width=max(1,round(11*sc)))
               path=Path(filename)
               path.parent.mkdir(parents=True,exist_ok=True)
               im.save(path,format="PNG",optimize=True)
