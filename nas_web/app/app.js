@@ -797,7 +797,7 @@ function updateMobileNav(){
   el('mobileHome').classList.toggle('navSelected',!allPhotosMode);
   updateDesktopWorkspace();
 }
-function hideMenu(){el('fileMenu').classList.add('hidden');el('fileMenu').replaceChildren()}
+function hideMenu(){el('fileMenu').classList.add('hidden');el('fileMenu').classList.remove('photoPreviewMenu');el('fileMenu').replaceChildren()}
 function menuButton(text,fn,danger=false){const btn=document.createElement('button');btn.textContent=text;if(danger)btn.classList.add('danger');btn.onclick=()=>{hideMenu();fn()};return btn}
 function openMenu(f,button){
 const inTrash=dir==='.recycle'||dir.startsWith('.recycle/');
@@ -893,6 +893,7 @@ function openGalleryPhotoMenu(f,anchor,fromViewer=false){
     return;
   }
   const menu=el('fileMenu');menu.replaceChildren();
+  menu.classList.toggle('photoPreviewMenu',fromViewer);
   for(const action of actions)menu.append(menuButton(action.label,action.run,!!action.danger));
   menu.classList.remove('hidden');
   const rect=anchor.getBoundingClientRect(),width=226,height=235;
