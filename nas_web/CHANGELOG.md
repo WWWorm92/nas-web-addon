@@ -1,3 +1,10 @@
+## 0.22.43
+
+- Keep the mobile file-manager Back button and SMB breadcrumb path permanently attached to the Files header while scrolling. Previously the header was sticky but the separate path row scrolled underneath it and disappeared.
+- Wrap title/actions and path in one sticky mobile block with a solid theme-aware background. Preserve the existing path buttons, folder navigation and horizontal path scrolling.
+- Ensure this header is hidden on desktop and in the global Photos gallery, with the selection toolbar pinned below it on phones.
+- Add a regression test for the navigation wrapper and sticky CSS.
+
 ## 0.22.42
 
 - Fix full-screen photo viewer displaying folder photos in seemingly random order compared to the file manager. The viewer previously used the raw SMB listing while the folder UI applied name/date/size sorting.
