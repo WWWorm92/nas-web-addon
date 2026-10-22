@@ -59,11 +59,16 @@ class ProfileVisibilityTests(unittest.TestCase):
     def test_hidden_folder_does_not_remove_pending_exif_work(self):
         """The visible UI may say 0 remaining, while hidden photos still need EXIF."""
         owner = g.key("alice")
-        target = "Alice/photo1.jpg"
+        target = "Alice/unchecked.jpg"
+        # Add a unique pending photo: existing fixture photos share known dates
+        # with another owner, and shared-metadata reuse would complete those
+        # checks automatically before the background worker sees them.
         with g.connect() as db:
             db.execute(
-                "UPDATE photos SET taken=NULL, exif_checked=0 WHERE owner=? AND "
-                "share='Photo' AND path=?", (owner, target))
+                "INSERT INTO photos(owner,share,path,folder,name,size,modified,"
+                "taken,exif_checked,sort_key) VALUES (?,?,?,?,?,?,?,NULL,0,?)",
+                (owner, "Photo", target, "Alice", "unchecked.jpg",
+                 10, 1700000000, "2023-11-14T22:13:20"))
         profiles.bind("alice", "Photo", "Alice")
         profiles.set_visibility("alice", "Photo", "Alice", False)
 
