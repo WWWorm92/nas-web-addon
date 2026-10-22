@@ -1,6 +1,6 @@
 """Adapter exposing NAS Web's existing methods using SMB2/3-capable Impacket."""
 from impacket.smbconnection import SMBConnection as ImpacketConnection
-from impacket.smb3structs import FILE_CREATE
+FILE_CREATE = 0x00000002  # SMB create disposition: new file only; never overwrite
 
 class Share:
     def __init__(self, name):
