@@ -544,7 +544,7 @@ el('mobileSearch').onclick=()=>{
 };
 el('mobileAdd').onclick=()=>openMobileSheet('Добавить',[
   {label:'＋ Создать папку',run:()=>el('folder').click()},
-  {label:'↑ Загрузить файлы',run:()=>el('upload').click()}
+  {label:'↑ Загрузить файлы',run:startFileUpload}
 ]);
 el('mobilePhotos').onclick=()=>{closeMobileSheet();enterGlobalGallery()};
 // 'Ещё' is a small account/library drawer. File actions live in the
@@ -1714,14 +1714,15 @@ async function deleteItem(f){
     if(approved)await mutate('delete',{path,directory:!!f.directory});
   }
 }
-function chooseUploadDestination(files){
+function chooseUploadDestination(files,onConfirmed=null){
   return new Promise(resolve=>{
     let share=shares.includes(selected)?selected:shares[0],folder=dir||'';
     const overlay=document.createElement('div');
+    overlay.className='nasUploadDestination';
     overlay.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:16px';
     const panel=document.createElement('div');
     panel.style.cssText='width:min(480px,100%);max-height:85vh;overflow:auto;background:var(--panel,#20242c);color:var(--text,#fff);border:1px solid var(--border,#555);border-radius:18px;padding:20px;display:grid;gap:12px;box-shadow:0 20px 70px #0008';
-    const heading=document.createElement('strong');heading.textContent='Куда загрузить '+files.length+' файл(ов)?';
+    const heading=document.createElement('strong');heading.textContent=files?'Куда загрузить '+files.length+' файл(ов)?':'Выберите папку для загрузки';
     const select=document.createElement('select');select.style.cssText='width:100%;padding:12px;border-radius:10px;background:var(--panel2,#303642);color:inherit';
     for(const name of shares){const option=document.createElement('option');option.value=name;option.textContent=name;select.append(option)}
     select.value=share;
@@ -1730,10 +1731,15 @@ function chooseUploadDestination(files){
     const status=document.createElement('small');
     const actions=document.createElement('div');actions.style.cssText='display:flex;gap:10px;justify-content:flex-end';
     const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Отмена';
-    const confirm=document.createElement('button');confirm.type='button';confirm.textContent='Загрузить сюда';confirm.className='primary';
-    const close=value=>{overlay.remove();resolve(value)};
+    const confirm=document.createElement('button');confirm.type='button';confirm.textContent=onConfirmed?'Выбрать файлы':'Загрузить сюда';confirm.className='primary';
+    const close=value=>{++generation;overlay.remove();resolve(value)};
     cancel.onclick=()=>close(null);
-    confirm.onclick=()=>close({share,path:folder});
+    confirm.onclick=()=>{
+      const target={share,path:folder};
+      close(target);
+      // iOS requires the native photo picker to open in this same user gesture.
+      if(onConfirmed)onConfirmed(target);
+    };
     overlay.onclick=e=>{if(e.target===overlay)close(null)};
     const addFolder=(name,path)=>{
       const btn=document.createElement('button');btn.type='button';btn.textContent='📁 '+name;
@@ -1885,13 +1891,33 @@ function uploadOne(file,target,job){
     setUploadStage(job,'sending',0);xhr.send(form);
   });
 }
-async function uploadFiles(files){
-  if(!shares.length||!files.length)return;
+let pendingUploadTarget=null;
+function startFileUpload(){
+  if(!shares.length){message('Нет доступных SMB-шар для загрузки');return}
+  if(uploadBatchBusy){message('Дождитесь завершения текущей загрузки');showUploadCenter();return}
+  if(document.querySelector('.nasUploadDestination'))return;
+  pendingUploadTarget=null;
+  // Choose the SMB destination before opening the iPhone/desktop file picker.
+  // Large iOS Photos selections may not yield a change event at all; the folder
+  // selector should never depend on that potentially expensive native operation.
+  chooseUploadDestination(null,target=>{
+    pendingUploadTarget=target;
+    const input=el('upload');
+    input.value=''; // Re-selecting the same files must trigger a new change event.
+    input.click();
+  });
+}
+async function uploadFiles(files,initialTarget=null){
+  if(!files.length){message('Файлы не выбраны');return}
+  if(!shares.length){message('Нет доступных SMB-шар для загрузки');return}
+  if(initialTarget&&!shares.includes(initialTarget.share)){
+    message('Выбранная SMB-шара больше недоступна. Повторите загрузку');return;
+  }
   if(uploadBatchBusy){message('Дождитесь завершения текущей загрузки');showUploadCenter();return}
   uploadBatchBusy=true;
   let target=null,success=0,failed=0;
   try{
-    target=await chooseUploadDestination(files);
+    target=initialTarget||await chooseUploadDestination(files);
     if(!target)return;
     const jobs=files.map(file=>({name:file.name,bytes:file.size,stage:'queued',progress:0,
       sent:0,speed:0,remaining:null,sampleAt:0,sampleBytes:0,xhr:null,error:''}));
@@ -2298,7 +2324,17 @@ el('gridView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='g
 el('listView').onclick=()=>{leaveGlobalGallery();galleryDateGeneration++;view='list';localStorage.setItem('nas_view',view);render()};
 el('galleryView').onclick=()=>enterGlobalGallery();
 el('uploadCenterButton').onclick=showUploadCenter;
-el('upload').onchange=e=>{uploadFiles([...e.target.files]);e.target.value=''};
+el('uploadStart').onclick=startFileUpload;
+el('upload').onchange=e=>{
+  const files=Array.from(e.target.files||[]);
+  const target=pendingUploadTarget;
+  pendingUploadTarget=null;
+  // Keep the input's native File objects alive until the next selection; Safari
+  // may still be materializing iCloud originals when change is dispatched.
+  if(!files.length){message('Файлы не выбраны');return}
+  uploadFiles(files,target).catch(err=>message('Ошибка загрузки: '+err.message));
+};
+el('upload').addEventListener('cancel',()=>{pendingUploadTarget=null});
 el('closePreview').onclick=closePreview;
 function showPreviewInfo(){
   if(previewIndex<0)return;
@@ -2441,7 +2477,7 @@ work.addEventListener('drop',e=>{
   e.preventDefault();dragDepth=0;work.classList.remove('drop');
   if(draggedFiles){endFileDrag();return}
   const files=[...e.dataTransfer.files];
-  if(files.length)uploadFiles(files);
+  if(files.length)uploadFiles(files).catch(err=>message('Ошибка загрузки: '+err.message));
 });
 
 // User profiles are linked to the SMB login, not to an editable display name.
