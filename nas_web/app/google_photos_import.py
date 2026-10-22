@@ -340,7 +340,7 @@ def taken_from_json(raw):
     try:
         data = json.loads(raw)
         seconds = int(data["photoTakenTime"]["timestamp"])
-        if not 315532800 <= seconds <= 4102444800:
+        if not -2208988800 <= seconds <= 4102444800:
             return None
         return datetime.fromtimestamp(seconds, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     except (KeyError, ValueError, OverflowError, TypeError):
@@ -840,7 +840,7 @@ def classify_import_error(exc):
     elif "NO_SPACE" in value or "DISK_FULL" in value or "ENOSPC" in value:
         category = "SMB_SPACE"
         hint = "Недостаточно места на SMB-диске"
-    elif "НЕдОПУСТИМОЕ" in value or "INVALID" in value or (
+    elif "НЕДОПУСТИМОЕ" in value or "INVALID" in value or (
             isinstance(exc, ValueError) and "импортируемого файла" in str(exc)):
         category = "FILENAME"
         hint = "Имя файла недопустимо для импорта"
@@ -922,11 +922,28 @@ def process_takeout(zip_path, conn, username, share, folder, job, reconnect=None
     A disconnected SMB connection must not cause all remaining files to fail:
     reopen a user-authenticated session and retry a transient failure twice.
     """
-    processed = imported = skipped = failed = 0
+    processed = imported = skipped = failed = dated = missing_dates = restored_dates = 0
     existing = {e.filename for e in conn.listPath(share, "/" + folder, timeout=30)}
     pending = {}
     active_conn = conn
     with ExitStack() as active_sessions, zipfile.ZipFile(zip_path) as archive:
+        def flush_dates():
+            nonlocal active_conn
+            if not pending:
+                return
+            for attempt in range(3):
+                try:
+                    index_imported_batch(active_conn, username, share, folder, pending)
+                    pending.clear()
+                    return
+                except Exception as exc:
+                    if not transient_import_error(exc) or reconnect is None or attempt == 2:
+                        LOG.exception("Unable to index imported Takeout dates; %d remain pending",
+                                      len(pending))
+                        return
+                    active_conn._nasweb_failed = True
+                    active_conn = active_sessions.enter_context(reconnect())
+
         members = archive.infolist()
         if len(members) > MAX_ENTRIES:
             raise ValueError("В архиве слишком много файлов")
@@ -970,16 +987,23 @@ def process_takeout(zip_path, conn, username, share, folder, job, reconnect=None
                             active_conn = active_sessions.enter_context(reconnect())
                 imported += (result == "imported")
                 skipped += (result == "skipped")
+                dated += bool(taken)
+                missing_dates += not bool(taken)
+                if result == "skipped" and taken:
+                    restored_dates += 1
             except Exception as exc:
                 failed += 1
                 record_import_failure(job, entry.filename, exc)
             processed += 1
             job_update(job, processed=processed, imported=imported, skipped=skipped, failed=failed)
-        try:
-            index_imported_batch(active_conn, username, share, folder, pending)
-        except Exception:
-            LOG.exception("Unable to index imported Takeout photos; SMB files are intact")
-    return {"imported": imported, "skipped": skipped, "failed": failed}
+            # Do not defer all date writes until the very end: a network
+            # disconnect late in a large Takeout previously lost every date.
+            if len(pending) >= 400:
+                flush_dates()
+        flush_dates()
+    return {"imported": imported, "skipped": skipped, "failed": failed,
+            "dated": dated, "missing_dates": missing_dates, "restored_dates": restored_dates,
+            "pending_dates": len(pending)}
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
