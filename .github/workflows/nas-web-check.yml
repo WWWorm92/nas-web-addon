@@ -610,7 +610,8 @@ jobs:
           assert 'path.split("/")' in main
           assert "dir.startsWith('.recycle/')" in js
           assert "isTrashItemPath" in js
-          assert "trash:'<path" in js
+          icons=Path("nas_web/app/nas-icons.js").read_text()
+          assert "trash:'<path" in icons or "'trash-2':'<path" in icons
           assert "restoreItem(f)" in js and "trash/restore" in js
           assert "УДАЛИТЬ" not in js
           assert "input:!!f.directory" not in js
