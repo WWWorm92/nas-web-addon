@@ -1,5 +1,6 @@
 """Adapter exposing NAS Web's existing methods using SMB2/3-capable Impacket."""
 from impacket.smbconnection import SMBConnection as ImpacketConnection
+from impacket.smb3structs import FILE_CREATE
 
 class Share:
     def __init__(self, name):
@@ -67,6 +68,11 @@ class SMBConnection:
 
     def storeFile(self, share, path, handle, **kwargs):
         self.conn.putFile(share, path.replace("/", "\\"), handle.read)
+
+    def storeFileNew(self, share, path, handle, **kwargs):
+        """Create-only: a colliding remote staging name must not be overwritten."""
+        self.conn.putFile(share, path.replace("/", "\\"), handle.read,
+                          mode=FILE_CREATE)
 
     def createDirectory(self, share, path):
         return self.conn.createDirectory(share, path.replace("/", "\\"))
