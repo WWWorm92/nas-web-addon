@@ -959,15 +959,15 @@ def process_takeout(zip_path, conn, username, share, folder, job, reconnect=None
                                                       stream, existing, taken=taken,
                                                       limit=entry.file_size + 1, pending=pending)
                             break
-                    except Exception as exc:
-                        if not transient_import_error(exc) or reconnect is None or attempt == 2:
-                            raise
-                        # The pool should discard the original broken session.
-                        active_conn._nasweb_failed = True
-                        LOG.warning("Reconnecting SMB during Takeout import job=%s attempt=%d",
-                                    job[:10], attempt + 1)
-                        # Newly acquired connections are scoped to this archive.
-                        active_conn = active_sessions.enter_context(reconnect())
+                        except Exception as exc:
+                            if not transient_import_error(exc) or reconnect is None or attempt == 2:
+                                raise
+                            # The pool should discard the original broken session.
+                            active_conn._nasweb_failed = True
+                            LOG.warning("Reconnecting SMB during Takeout import job=%s attempt=%d",
+                                        job[:10], attempt + 1)
+                            # Newly acquired connections are scoped to this archive.
+                            active_conn = active_sessions.enter_context(reconnect())
                 imported += (result == "imported")
                 skipped += (result == "skipped")
             except Exception as exc:
