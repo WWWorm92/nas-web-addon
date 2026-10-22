@@ -102,7 +102,7 @@ function harness(total=1030){
   await empty.view.loadGlobalPage(true);
   for(let i=0;i<4;i++)await empty.tick();
   assert.equal(empty.view.read().loaded,90);
-  assert.match(empty.view.read().error,/пустую страницу/);
+  assert.match(empty.view.read().error,/пустая страница/);
   assert.equal(empty.view.read().offset,90);
   assert.deepEqual(empty.requests,[0,90]);
   console.log('Gallery pagination: 1305 photos, scrolling, retry and empty-page guard OK');
