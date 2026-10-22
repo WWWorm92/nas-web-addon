@@ -1,3 +1,11 @@
+## 0.22.40
+
+- Fix **All photos** infinite scrolling stalling after a few pages: the old gallery relied on a single IntersectionObserver threshold crossing at the Show More sentinel. A persistent intersection no longer stops new pages.
+- Independently recheck near-bottom pagination on scroll, window resize, and **after every completed page**; avoid duplicate concurrent fetches and stop at the actual database total.
+- Make the next-page action available as soon as there are more indexed photos, even while the SMB tree/background EXIF scan is running. Do not discard already loaded pages on scan completion when someone has scrolled down.
+- Handle failed or unexpectedly empty pages without hammering the NAS in a request loop. Show an explicit **Retry loading** button using the same offset and keep existing photos on screen.
+- Add Node regression covering 1,305 photos / 15 pages with a perpetually visible sentinel, scroll-to-load behavior, failed page retry and an unexpectedly empty page.
+
 ## 0.22.39
 
 - Remove the native **"Перейти к месяцу"** dropdown from the gallery. Replace it with a compact, horizontally scrollable **month timeline**: drag/swipe on mobile, mouse wheel, arrow buttons or keyboard on desktop. Each date chip shows the month and number of photos.
